@@ -2,9 +2,9 @@
  * ApiaryGuard - Raspberry Pi Pico + W6100 Ethernet
  * Kompletny system monitoringu i sterowania ulami
  * 
- * Wymagane biblioteki (zainstaluj przez Arduino IDE Board Manager):
+ * Wymagane biblioteki (zainstaluj przez Arduino IDE Board Manager / Library Manager):
  * - Raspberry Pi Pico/RP2040 by Earle F. Philhower III
- * - Ethernet by Arduino (dla W6100)
+ * - W6100Ethernet by WIZnet (lub Ethernet z obsługą W6100)
  * - DHT sensor library by Adafruit
  * - Adafruit SGP41 Library
  * - ArduinoJson by Benoit Blanchon
@@ -16,15 +16,17 @@
  *   MISO -> GP8 (SPI1 RX)
  *   SCK  -> GP6 (SPI1 SCK)
  *   RST  -> GP4
- *   INT  -> GP3
+ *   INT  -> GP3 (opcjonalny, do obsługi przerwań)
  * 
  * SGP41 (I2C):
  *   SDA  -> GP0
  *   SCL  -> GP1
+ * 
+ * UWAGA: W6100 wymaga biblioteki W6100Ethernet lub Ethernet z właściwym driverem!
  */
 
 #include <SPI.h>
-#include <Ethernet.h>
+#include <Ethernet.h>  // Dla W6100 użyj biblioteki W6100Ethernet lub Ethernet z driverem W6100
 #include <DHT.h>
 #include <Adafruit_SGP41.h>
 #include <EEPROM.h>
@@ -38,13 +40,13 @@ IPAddress subnet(255, 255, 255, 0);
 EthernetServer server(8080);
 
 // ==================== PINY GPIO RASPBERRY PICO ====================
-// W6100 SPI1
+// W6100 SPI1 - poprawne przypisanie pinów
 #define W6100_CS   5
-#define W6100_MOSI 7
-#define W6100_MISO 8
-#define W6100_SCK  6
+#define W6100_MOSI 7   // SPI1 TX (Master Out Slave In)
+#define W6100_MISO 8   // SPI1 RX (Master In Slave Out)
+#define W6100_SCK  6   // SPI1 SCK
 #define W6100_RST  4
-#define W6100_INT  3
+#define W6100_INT  3   // Opcjonalny pin przerwań
 
 // HX711 (Waga)
 #define HX711_DT   9
@@ -85,6 +87,9 @@ DHT dht(DHT_PIN, DHT_TYPE);
 Adafruit_SGP41 sgp;
 HardwareSerial& radarSerial = Serial1;
 
+// Bufor na dane JSON (większy dla ArduinoJson v7)
+#define JSON_BUFFER_SIZE 512
+
 // ==================== ZMIENNE GLOBALNE ====================
 unsigned long lastHeartbeat = 0;
 unsigned long lastSensorRead = 0;
@@ -110,45 +115,55 @@ float weightScale = 1.0;
 
 // ==================== FUNKCJE POMOCNICZE ====================
 
-// Inicjalizacja W6100
+// Inicjalizacja W6100 - poprawiona obsługa SPI i resetu
 bool initW6100() {
+  // Konfiguracja pinów
   pinMode(W6100_CS, OUTPUT);
   digitalWrite(W6100_CS, HIGH);
   
   pinMode(W6100_RST, OUTPUT);
-  digitalWrite(W6100_RST, LOW);
-  delay(100);
-  digitalWrite(W6100_RST, HIGH);
-  delay(200);
+  digitalWrite(W6100_RST, HIGH);  // Aktywny stan wysoki
   
-  pinMode(W6100_INT, INPUT);
+  pinMode(W6100_INT, INPUT_PULLUP);  // Pull-up dla pinu przerwań
   
-  // Konfiguracja SPI1 dla W6100
-  SPI.setRX(W6100_MISO);
-  SPI.setTX(W6100_MOSI);
-  SPI.setSCK(W6100_SCK);
+  // Konfiguracja SPI1 dla W6100 - ustawienie pinów przed SPI.begin()
+  SPI.setRX(W6100_MISO);   // MISO na GP8
+  SPI.setTX(W6100_MOSI);   // MOSI na GP7
+  SPI.setSCK(W6100_SCK);   // SCK na GP6
   SPI.begin();
   
-  // Reset W6100
-  digitalWrite(W6100_CS, LOW);
+  // Reset W6100 - sekwencja resetu
+  digitalWrite(W6100_RST, LOW);
   delay(10);
-  digitalWrite(W6100_CS, HIGH);
-  delay(100);
+  digitalWrite(W6100_RST, HIGH);
+  delay(250);  // Czekaj aż chip się zresetuje (min. 200ms)
   
-  // Inicjalizacja Ethernet
+  // Wybór chipu niski przed inicjalizacją
+  digitalWrite(W6100_CS, LOW);
+  delayMicroseconds(10);
+  digitalWrite(W6100_CS, HIGH);
+  delay(50);
+  
+  // Inicjalizacja Ethernet z CS pinem
   Ethernet.init(W6100_CS);
   
+  // Sprawdź status sprzętu przed próbą połączenia
+  uint8_t hwStatus = Ethernet.hardwareStatus();
+  if (hwStatus == EthernetNoHardware) {
+    Serial.println("W6100: Nie wykryto sprzętu! Sprawdź połączenia SPI.");
+    return false;
+  }
+  
+  // Spróbuj uzyskać adres IP (statyczny lub DHCP)
   if (Ethernet.begin(mac, ip, gateway, subnet)) {
     Serial.println("W6100: Połączono");
     Serial.print("IP: ");
     Serial.println(Ethernet.localIP());
     return true;
   } else {
-    Serial.println("W6100: Błąd konfiguracji DHCP/statycznego IP");
-    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-      Serial.println("W6100: Nie wykryto sprzętu!");
-    } else if (Ethernet.linkStatus() == LinkOFF) {
-      Serial.println("W6100: Kabel niepodłączony");
+    Serial.println("W6100: Błąd konfiguracji IP");
+    if (Ethernet.linkStatus() == LinkOFF) {
+      Serial.println("W6100: Kabel niepodłączony lub brak linku");
     }
     return false;
   }
@@ -294,9 +309,10 @@ void readAllSensors() {
   sensors.motionDetected = readRadar();
 }
 
-// Wysyłanie danych przez HTTP
-void sendData() {
-  if (client.connected()) {
+// Wysyłanie danych przez HTTP - poprawiona obsługa klienta
+void sendData(EthernetClient& ethClient) {
+  if (ethClient.connected()) {
+    // Użyj DynamicJsonDocument dla ArduinoJson v7 lub StaticJsonDocument dla mniejszych obiektów
     JsonDocument doc;
     doc["temp"] = sensors.temperature;
     doc["hum"] = sensors.humidity;
@@ -310,17 +326,21 @@ void sendData() {
     doc["timestamp"] = millis();
     
     String json;
-    serializeJson(doc, json);
+    if (serializeJson(doc, json) == 0) {
+      Serial.println("Błąd serializacji JSON!");
+      ethClient.stop();
+      return;
+    }
     
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: application/json");
-    client.println("Connection: close");
-    client.print("Content-Length: ");
-    client.println(json.length());
-    client.println();
-    client.println(json);
+    ethClient.println("HTTP/1.1 200 OK");
+    ethClient.println("Content-Type: application/json");
+    ethClient.println("Connection: close");
+    ethClient.print("Content-Length: ");
+    ethClient.println(json.length());
+    ethClient.println();
+    ethClient.println(json);
     delay(1);
-    client.stop();
+    ethClient.stop();
   }
 }
 
@@ -344,30 +364,69 @@ void handleCommand(String cmd) {
   }
 }
 
-// Serwer HTTP
+// Serwer HTTP - poprawiona obsługa klienta
 void handleServer() {
-  EthernetClient client = server.available();
-  if (client) {
-    String request = client.readStringUntil('\r');
-    client.readStringUntil('\n');  // Pomiń resztę nagłówka
+  EthernetClient ethClient = server.available();
+  if (ethClient) {
+    // Czekaj na dane z timeoutem
+    unsigned long timeout = millis();
+    while (!ethClient.available() && (millis() - timeout < 1000)) {
+      delay(1);
+    }
+    
+    if (!ethClient.available()) {
+      ethClient.stop();
+      return;
+    }
+    
+    String request = ethClient.readStringUntil('\r');
+    ethClient.readStringUntil('\n');  // Pomiń resztę nagłówka
     
     if (request.indexOf("/api/data") >= 0) {
-      sendData();
+      readAllSensors();  // Odśwież dane przed wysłaniem
+      sendData(ethClient);
     } else if (request.indexOf("/api/cmd?") >= 0) {
       int start = request.indexOf("?") + 1;
       String cmd = request.substring(start);
       cmd.trim();
       handleCommand(cmd);
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: text/plain");
-      client.println();
-      client.println("OK");
+      ethClient.println("HTTP/1.1 200 OK");
+      ethClient.println("Content-Type: text/plain");
+      ethClient.println("Connection: close");
+      ethClient.println();
+      ethClient.println("OK");
+      delay(1);
+      ethClient.stop();
+    } else if (request.indexOf("/") >= 0) {
+      // Strona główna - podstawowe info
+      ethClient.println("HTTP/1.1 200 OK");
+      ethClient.println("Content-Type: text/html");
+      ethClient.println("Connection: close");
+      ethClient.println();
+      ethClient.println("<!DOCTYPE html><html><head><title>ApiaryGuard</title></head><body>");
+      ethClient.println("<h1>ApiaryGuard - Raspberry Pi Pico</h1>");
+      ethClient.print("<p>Status: ");
+      ethClient.print(Ethernet.linkStatus() == LinkON ? "Połączony" : "Rozłączony");
+      ethClient.println("</p>");
+      ethClient.print("<p>IP: ");
+      ethClient.print(Ethernet.localIP());
+      ethClient.println("</p>");
+      ethClient.println("<p>Endpoints:</p>");
+      ethClient.println("<ul>");
+      ethClient.println("<li><a href='/api/data'>GET /api/data</a> - Dane z sensorów</li>");
+      ethClient.println("<li>GET /api/cmd?SET_RELAYS:X - Ustaw przekaźniki</li>");
+      ethClient.println("</ul>");
+      ethClient.println("</body></html>");
+      delay(1);
+      ethClient.stop();
     } else {
-      client.println("HTTP/1.1 404 Not Found");
-      client.println();
+      ethClient.println("HTTP/1.1 404 Not Found");
+      ethClient.println("Connection: close");
+      ethClient.println();
+      ethClient.println("Not Found");
+      delay(1);
+      ethClient.stop();
     }
-    delay(1);
-    client.stop();
   }
 }
 
@@ -400,7 +459,7 @@ void setup() {
   Wire.begin();
   
   if (!sgp.begin(&Wire)) {
-    Serial.println("SGP41 nie wykryty!");
+    Serial.println("SGP41 nie wykryty! Sprawdź połączenia I2C.");
   } else {
     Serial.println("SGP41 wykryty");
     sgp.measureCO2();

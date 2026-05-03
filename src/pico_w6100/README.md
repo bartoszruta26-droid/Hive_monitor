@@ -25,10 +25,12 @@ Kompletny firmware dla Raspberry Pi Pico z modułem Ethernet W6100 do monitoring
 | DHT22      | GP11 | Digital | Temp/Wilg |
 | MEMS Mic   | GP26 | ADC0    | Audio RMS |
 | Piezo      | GP27 | ADC1    | Wibracje |
-| SGP41 (SDA)| GP2  | I2C     | CO2/VOC |
-| SGP41 (SCL)| GP3  | I2C     | Clock |
+| SGP41 (SDA)| GP0  | I2C     | CO2/VOC (zmienione z GP2!) |
+| SGP41 (SCL)| GP1  | I2C     | Clock (zmienione z GP3!) |
 | LD2410B TX | GP28 | UART1 RX| Radar MMWave |
 | LD2410B RX | GP29 | UART1 TX| Radar MMWave |
+
+**UWAGA:** Połączenia I2C dla SGP41 zostały zmienione z GP2/GP3 na GP0/GP1, aby uniknąć konfliktu z pinem INT W6100 (GP3).
 
 ### Efektory
 | Efektor | GPIO | Typ | PWM |
@@ -40,13 +42,14 @@ Kompletny firmware dla Raspberry Pi Pico z modułem Ethernet W6100 do monitoring
 
 ## 📦 Wymagane biblioteki Arduino
 
-Zainstaluj przez **Arduino IDE → Tools → Board → Boards Manager**:
+Zainstaluj przez **Arduino IDE → Tools → Board → Boards Manager** oraz **Sketch → Include Library → Manage Libraries**:
 
-1. **Raspberry Pi Pico/RP2040** by Earle F. Philhower III
-2. **Ethernet** by Arduino (dla W6100)
-3. **DHT sensor library** by Adafruit
-4. **Adafruit SGP41 Library**
-5. **ArduinoJson** by Benoit Blanchon
+1. **Raspberry Pi Pico/RP2040** by Earle F. Philhower III (Boards Manager)
+2. **W6100Ethernet** by WIZnet LUB **Ethernet** by Arduino z driverem W6100 (Library Manager)
+   - *Uwaga: Standardowa biblioteka Ethernet może nie obsługiwać W6100! Użyj dedykowanej biblioteki W6100Ethernet.*
+3. **DHT sensor library** by Adafruit (Library Manager)
+4. **Adafruit SGP41 Library** (Library Manager)
+5. **ArduinoJson** by Benoit Blanchon (Library Manager, wersja 7.x)
 
 ## ⚙️ Konfiguracja sieciowa
 
@@ -119,9 +122,9 @@ W6100: Kabel niepodłączony
 
 #### SGP41 nie wykryty
 ```
-SGP41 nie wykryty!
+SGP41 nie wykryty! Sprawdź połączenia I2C.
 ```
-**Rozwiązanie:** Sprawdź połączenia I2C (GP2/GP3) i pull-up resistors (4.7kΩ)
+**Rozwiązanie:** Sprawdź połączenia I2C (GP0/GP1) i rezystory pull-up (4.7kΩ). Upewnij się, że używasz GP0 i GP1, a NIE GP2/GP3!
 
 ## 📊 Struktura kodu
 
