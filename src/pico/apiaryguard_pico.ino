@@ -4022,119 +4022,99 @@ void loop() {
     }
   }
   
-  // 2. Obsługa Sieci W6100
+  // 2. Obsługa Sieci W6100 - HTTP Server z GUI i API
   EthernetClient client = server.available();
   if (client) {
     String request = client.readStringUntil('\r');
     client.flush();
     
-    // Prosty protokół HTTP/GET lub binarny
-    // Przykład: GET /status
-    if(request.indexOf("/status") > 0) {
+    Serial.print("[HTTP] Ządanie: ");
+    Serial.println(request);
+    
+    auto sendHeader = [&](const char* contentType) {
       client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: application/json");
+      client.printf("Content-Type: %s\r\n", contentType);
       client.println("Connection: close");
       client.println();
-      client.print("{\"temp\":"); client.print(temperature);
-      client.print(",\"hum\":"); client.print(humidity);
-      client.print(",\"weight\":"); client.print(hx711_value);
-      client.print(",\"co2\":"); client.print(co2_eq);
-      client.print(",\"voc\":"); client.print(voc_idx);
-      client.print(",\"audio\":"); client.print(audio_rms);
-      client.print(",\"motion\":"); client.print(motion_detected ? 1 : 0);
-      client.println("}");
-    } else if (request.indexOf("/heater/on") > 0) {
-      analogWrite(HEATER_PWM, 200); // PWM 0-255
-      client.println("HTTP/1.1 200 OK\n\nHeater ON");
-    } else if (request.indexOf("/heater/off") > 0) {
-      analogWrite(HEATER_PWM, 0);
-      client.println("HTTP/1.1 200 OK\n\nHeater OFF");
-    } else if (request.indexOf("/fan/on") > 0) {
-      analogWrite(FAN_PWM, 255);
-      client.println("HTTP/1.1 200 OK\n\nFan ON");
-    } else if (request.indexOf("/fan/off") > 0) {
-      analogWrite(FAN_PWM, 0);
-      client.println("HTTP/1.1 200 OK\n\nFan OFF");
-    } else if (request.indexOf("/pump/on") > 0) {
-      digitalWrite(PUMP_RELAY, HIGH);
-      client.println("HTTP/1.1 200 OK\n\nPump ON");
-    } else if (request.indexOf("/pump/off") > 0) {
-      digitalWrite(PUMP_RELAY, LOW);
-      client.println("HTTP/1.1 200 OK\n\nPump OFF");
+    };
+    
+    // STRONA GŁÓWNA - HUMAN READABLE GUI
+    if(request.indexOf("/") == 0 && request.indexOf(".json") < 0 && 
+       request.indexOf("/status") < 0 && request.indexOf("/metrics") < 0 &&
+       request.indexOf("/events") < 0 && request.indexOf("/anomalies") < 0 &&
+       request.indexOf("/heater") < 0 && request.indexOf("/fan") < 0 && 
+       request.indexOf("/pump") < 0) {
+      
+      sendHeader("text/html; charset=utf-8");
+      client.println("<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'><title>ApiaryGuard</title>");
+      client.println("<style>body{font-family:Arial;background:#667eea;padding:20px}.card{background:white;border-radius:10px;padding:15px;margin:10px 0}.metric{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee}</style></head><body>");
+      client.println("<h1>ApiaryGuard - Monitoring Ula</h1>");
+      client.printf("<p>IP: %s | Uptime: %lu s</p>", Ethernet.localIP().toString().c_str(), millis()/1000);
+      
+      client.println("<div class='card'><h2>Środowisko</h2>");
+      client.printf("<div class='metric'><span>Temperatura</span><span>%.1f C</span></div>", temperature);
+      client.printf("<div class='metric'><span>Wilgotność</span><span>%.1f %%</span></div>", humidity);
+      client.printf("<div class='metric'><span>CO2</span><span>%d ppm</span></div>", co2_eq);
+      client.printf("<div class='metric'><span>VOC</span><span>%d</span></div>", voc_idx);
+      client.printf("<div class='metric'><span>Waga</span><span>%.2f kg</span></div>", (float)hx711_value/1000.0f);
+      client.println("</div>");
+      
+      client.println("<div class='card'><h2>Audio</h2>");
+      client.printf("<div class='metric'><span>RMS</span><span>%.3f V</span></div>", currentAudioMetrics.rms_amplitude);
+      client.printf("<div class='metric'><span>Aktywnosc</span><span>%.1f %%</span></div>", currentAudioMetrics.bee_activity_index);
+      client.printf("<div class='metric'><span>Zdrowie</span><span>%.1f %%</span></div>", currentAudioMetrics.hive_health_audio);
+      client.println("</div>");
+      
+      client.println("<div class='card'><h2>Waga</h2>");
+      client.printf("<div class='metric'><span>Waga</span><span>%.3f kg</span></div>", currentHX711Metrics.mean_weight);
+      client.printf("<div class='metric'><span>Trend 1h</span><span>%.4f kg/h</span></div>", currentHX711Metrics.trend_slope_1h);
+      client.printf("<div class='metric'><span>Zapas dni</span><span>%.1f</span></div>", currentHX711Metrics.food_reserve_days);
+      client.println("</div>");
+      
+      client.println("<div class='card'><h2>Radar</h2>");
+      if(radarDataCount > 0) {
+        RadarDataPoint& lr = radarBuffer[(radarBufferIndex>0)?radarBufferIndex-1:RADAR_BUFFER_SIZE-1];
+        client.printf("<div class='metric'><span>Cele</span><span>%d</span></div>", lr.target_count);
+        client.printf("<div class='metric'><span>Dystans</span><span>%.2f m</span></div>", lr.distance);
+        client.printf("<div class='metric'><span>Zdrowie ula</span><span>%.2f %%</span></div>", currentMetrics.hive_health_index);
+      }
+      client.println("</div>");
+      
+      client.println("<div class='card'><h2>Powietrze</h2>");
+      client.printf("<div class='metric'><span>CO2</span><span>%d ppm</span></div>", currentAirQualityMetrics.co2_equivalent);
+      client.printf("<div class='metric'><span>VOC</span><span>%d</span></div>", currentAirQualityMetrics.voc_index);
+      client.printf("<div class='metric'><span>IAQ</span><span>%.0f</span></div>", currentAirQualityMetrics.iaq_index);
+      client.println("</div>");
+      
+      client.println("<h3>API:</h3>");
+      client.println("<a href='/status'>Status JSON</a> | ");
+      client.println("<a href='/radar/status'>Radar</a> | ");
+      client.println("<a href='/radar/anomalies'>Anomalie</a>");
+      client.println("</body></html>");
     }
-    // Nowe endpointy API dla modułu analizy radaru
-    else if (request.indexOf("/radar/status") > 0) {
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: application/json");
-      client.println("Connection: close");
-      client.println();
+    else if(request.indexOf("/status") > 0) {
+      sendHeader("application/json");
+      client.printf("{\"temp\":%.1f,\"hum\":%.1f,\"weight\":%.3f,\"co2\":%d,\"voc\":%d}", temperature, humidity, (float)hx711_value/1000.0f, co2_eq, voc_idx);
+    }
+    else if(request.indexOf("/heater/on") > 0) { analogWrite(HEATER_PWM, 200); sendHeader("text/plain"); client.println("Heater ON"); }
+    else if(request.indexOf("/heater/off") > 0) { analogWrite(HEATER_PWM, 0); sendHeader("text/plain"); client.println("Heater OFF"); }
+    else if(request.indexOf("/fan/on") > 0) { analogWrite(FAN_PWM, 255); sendHeader("text/plain"); client.println("Fan ON"); }
+    else if(request.indexOf("/fan/off") > 0) { analogWrite(FAN_PWM, 0); sendHeader("text/plain"); client.println("Fan OFF"); }
+    else if(request.indexOf("/pump/on") > 0) { digitalWrite(PUMP_RELAY, HIGH); sendHeader("text/plain"); client.println("Pump ON"); }
+    else if(request.indexOf("/pump/off") > 0) { digitalWrite(PUMP_RELAY, LOW); sendHeader("text/plain"); client.println("Pump OFF"); }
+    else if(request.indexOf("/radar/status") > 0) {
+      sendHeader("application/json");
       client.print("{\"radar_data_count\":"); client.print(radarDataCount);
-      client.print(",\"last_target_count\":"); 
-      client.print(radarBuffer[(radarBufferIndex > 0) ? radarBufferIndex - 1 : RADAR_BUFFER_SIZE - 1].target_count);
-      client.print(",\"last_distance\":"); 
-      client.print(radarBuffer[(radarBufferIndex > 0) ? radarBufferIndex - 1 : RADAR_BUFFER_SIZE - 1].distance, 3);
-      client.print(",\"last_energy\":"); 
-      client.print(radarBuffer[(radarBufferIndex > 0) ? radarBufferIndex - 1 : RADAR_BUFFER_SIZE - 1].energy, 3);
-      client.print(",\"trend_slope\":"); client.print(currentTrend.slope, 5);
-      client.print(",\"trend_mean_energy\":"); client.print(currentTrend.mean_energy, 3);
-      client.print(",\"anomaly_type\":\""); client.print(anomalyTypeToString(lastAnomaly.type));
-      client.print("\",\"anomaly_direction\":\""); client.print(changeDirectionToString(lastAnomaly.direction));
-      client.print("\",\"is_positive_change\":"); client.print(isPositiveChange(lastAnomaly) ? "true" : "false");
-      client.print(",\"anomaly_severity\":"); client.print(lastAnomaly.severity, 2);
-      client.print(",\"anomaly_confidence\":"); client.print(lastAnomaly.confidence, 2);
-      
-      // Dodaj pełne metryki radaru (15+ parametrów)
-      client.print(",\"metrics\":{\"mean_distance\":"); client.print(currentMetrics.mean_distance, 4);
-      client.print(",\"std_distance\":"); client.print(currentMetrics.std_distance, 4);
-      client.print(",\"min_distance\":"); client.print(currentMetrics.min_distance, 4);
-      client.print(",\"max_distance\":"); client.print(currentMetrics.max_distance, 4);
-      client.print(",\"range_distance\":"); client.print(currentMetrics.range_distance, 4);
-      
-      client.print(",\"mean_energy\":"); client.print(currentMetrics.mean_energy, 4);
-      client.print(",\"std_energy\":"); client.print(currentMetrics.std_energy, 4);
-      client.print(",\"min_energy\":"); client.print(currentMetrics.min_energy, 4);
-      client.print(",\"max_energy\":"); client.print(currentMetrics.max_energy, 4);
-      client.print(",\"energy_variance\":"); client.print(currentMetrics.energy_variance, 4);
-      client.print(",\"energy_cv\":"); client.print(currentMetrics.energy_cv, 4);
-      
-      client.print(",\"mean_speed\":"); client.print(currentMetrics.mean_speed, 4);
-      client.print(",\"std_speed\":"); client.print(currentMetrics.std_speed, 4);
-      client.print(",\"max_speed_abs\":"); client.print(currentMetrics.max_speed_abs, 4);
-      
-      client.print(",\"activity_ratio\":"); client.print(currentMetrics.activity_ratio, 2);
-      client.print(",\"idle_time_percent\":"); client.print(currentMetrics.idle_time_percent, 2);
-      client.print(",\"motion_intensity\":"); client.print(currentMetrics.motion_intensity, 4);
-      
-      client.print(",\"target_rate\":"); client.print(currentMetrics.target_rate, 2);
-      client.print(",\"max_target_count\":"); client.print(currentMetrics.max_target_count);
-      client.print(",\"target_density\":"); client.print(currentMetrics.target_density, 2);
-      
-      client.print(",\"trend_slope\":"); client.print(currentMetrics.trend_slope, 5);
-      client.print(",\"trend_correlation\":"); client.print(currentMetrics.trend_correlation, 4);
-      client.print(",\"acceleration_rate\":"); client.print(currentMetrics.acceleration_rate, 5);
-      
-      client.print(",\"signal_quality\":"); client.print(currentMetrics.signal_quality, 2);
-      client.print(",\"anomaly_score\":"); client.print(currentMetrics.anomaly_score, 3);
+      client.print(",\"last_target_count\":"); client.print(radarBuffer[(radarBufferIndex>0)?radarBufferIndex-1:RADAR_BUFFER_SIZE-1].target_count);
+      client.print(",\"last_distance\":"); client.print(radarBuffer[(radarBufferIndex>0)?radarBufferIndex-1:RADAR_BUFFER_SIZE-1].distance, 3);
       client.print(",\"hive_health_index\":"); client.print(currentMetrics.hive_health_index, 2);
-      
-      client.print(",\"power_spectrum_peak\":"); client.print(currentMetrics.power_spectrum_peak, 4);
-      client.print(",\"zero_crossing_rate\":"); client.print(currentMetrics.zero_crossing_rate, 4);
-      client.print(",\"entropy\":"); client.print(currentMetrics.entropy, 4);
-      client.println("}}");
+      client.println("}");
     }
-    else if (request.indexOf("/radar/anomalies") > 0) {
-      client.println("HTTP/1.1 200 OK");
-      client.println("Content-Type: application/json");
-      client.println("Connection: close");
-      client.println();
+    else if(request.indexOf("/radar/anomalies") > 0) {
+      sendHeader("application/json");
       client.print("{\"last_anomaly\":{\"type\":\""); client.print(anomalyTypeToString(lastAnomaly.type));
-      client.print("\",\"direction\":\""); client.print(changeDirectionToString(lastAnomaly.direction));
-      client.print("\",\"severity\":"); client.print(lastAnomaly.severity, 2);
-      client.print(",\"confidence\":"); client.print(lastAnomaly.confidence, 2);
-      client.print(",\"description\":\""); client.print(lastAnomaly.description);
-      client.print("\"},\"pozytek_status\":\""); 
-      client.print(isPositiveChange(lastAnomaly) ? "POZYTYWNY" : (lastAnomaly.type == AnomalyEvent::NONE ? "NORMALNY" : "NEGATYWNY"));
-      client.println("\"}");
+      client.print("\",\"pozytek\":\""); client.print(isPositiveChange(lastAnomaly)?"POZYTYWNY":"NEGATYWNY");
+      client.println("\"}}");
     }
     
     delay(1);
