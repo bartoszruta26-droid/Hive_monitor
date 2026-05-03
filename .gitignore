@@ -2,9 +2,6 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.elf
-*.hex
-*.bin
 *.out
 
 # Dependencies
@@ -15,18 +12,15 @@ lib/
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # Build outputs
 build/
