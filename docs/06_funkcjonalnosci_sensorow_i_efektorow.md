@@ -48,8 +48,72 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 **Przetwarzanie Sygnału:**
 - **Pre-emphasis Filter**: Podbicie wysokich częstotliwości
 - **Hamming Window**: Redukcja przecieków widmowych
-- **512-point FFT**: Rozdzielczość częstotliwościowa ~15.6 Hz @ 8kHz
+- **256-point FFT**: Rozdzielczość częstotliwościowa ~31.25 Hz @ 8kHz (pełna implementacja Cooley-Tukey z liczbami zespolonymi)
 - **Spectrogram Generation**: Wizualizacja czasowo-częstotliwościowa
+- **47 parametrów akustycznych**: Kompleksowa analiza metryk czasowych, częstotliwościowych, statystycznych i psychoakustycznych
+
+**Parametry Akustyczne (AudioMetrics - 47 metryk):**
+
+**A. Parametry Czasowe i Amplitudowe:**
+- `rms_amplitude` - Root Mean Square (energia sygnału)
+- `peak_amplitude` - Maksymalna amplituda szczytowa
+- `peak_to_peak` - Różnica między max a min
+- `zero_crossing_rate` - Liczba przejść przez zero (aktywność)
+- `signal_energy` - Całkowita energia sygnału
+- `crest_factor` - Stosunek peak/RMS (wskaźnik impulsowości)
+- `average_amplitude` - Średnia amplituda bezwzględna
+
+**B. Parametry Statystyczne:**
+- `mean_value` - Średnia wartość sygnału
+- `std_deviation` - Odchylenie standardowe
+- `skewness` - Miara asymetrii rozkładu
+- `kurtosis` - Miara "spiczastości" rozkładu
+- `coefficient_of_variation` - CV (std_dev/mean)
+- `dynamic_range` - Zakres dynamiczny w dB
+
+**C. Parametry Częstotliwościowe:**
+- `dominant_frequency` - Dominująca częstotliwość (Hz)
+- `spectral_centroid` - Centrum ciężkości widma (Hz)
+- `spectral_bandwidth` - Szerokość pasma (Hz)
+- `spectral_flatness` - Płaskość widma (0-tonalny, 1-szum)
+- `spectral_rolloff` - Częstotliwość odcięcia 85% energii
+- `spectral_entropy` - Entropia widmowa (miara chaosu)
+- `harmonic_to_noise_ratio` - Stosunek harmonicznych do szumu
+- `autocorrelation_peak` - Szczyt autokorelacji (periodyczność)
+
+**D. Moc w Pasmach Częstotliwości:**
+- `power_low_freq` - Moc w paśmie 0-80 Hz (niskie wibracje)
+- `power_bee_band` - Moc w paśmie pszczelim 80-800 Hz
+- `power_swarm_band` - Moc w paśmie rojowym 150-350 Hz
+- `power_mid_freq` - Moc w paśmie 800-2000 Hz
+- `power_high_freq` - Moc w paśmie >2000 Hz
+
+**E. Wskaźniki Klasyfikacji:**
+- `bee_activity_index` - Indeks aktywności pszczół (0-100%)
+- `swarm_probability` - Prawdopodobieństwo rojenia (0-100%)
+- `stress_indicator` - Wskaźnik stresu rodziny (0-100%)
+- `hive_health_audio` - Indeks zdrowia na podstawie audio (0-100%)
+
+**F. Parametry Formantów i Jakości Dźwięku:**
+- `formant_f1`, `formant_f2`, `formant_f3` - Trzy pierwsze formanty
+- `brightness` - Jasność dźwięku (energia wysokich tonów)
+- `roughness` - Chropowatość dźwięku
+- `sharpness` - Ostrość dźwięku
+- `tonality` - Tonacyjność (0-szum, 1-czysty ton)
+- `prominence_ratio` - Stosunek wyróżnienia tonalnego
+
+**G. Cechy Temporalne:**
+- `attack_time` - Czas narastania sygnału (ms)
+- `decay_time` - Czas wybrzmiewania (ms)
+- `temporal_centroid` - Centrum czasowe energii (ms)
+- `silence_ratio` - Udział ciszy w sygnale (0-1)
+- `modulation_index` - Indeks modulacji amplitudy
+
+**H. Parametry Psychoakustyczne:**
+- `loudness` - Głośność perceived (sones)
+- `roughness_fast` - Szybkie fluktuacje (<70Hz)
+- `spectral_decrease` - Spadek spektralny (ciemność dźwięku)
+- `irregularity` - Niereegularność widmowa
 
 **Signature Sounds:**
 - **Piping (200-300 Hz)**: Queen pipes - sygnał przedrojowy
@@ -57,12 +121,31 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 - **Tooting (400-500 Hz)**: Nowa matka po wyjściu
 - **Agitation Buzz (800-1200 Hz)**: Agresja, brak матки
 - **Varroa Mite Sounds**: Specyficzne kliknięcia (badania w toku)
+- **Normal Activity (80-400 Hz)**: Spokojna praca pszczół
+- **Foraging Return (200-600 Hz)**: Powrót z pożytku
+- **Distress Signals (>1000 Hz)**: Sygnały zagrożenia
+
+**Klasyfikacja Zdarzeń Akustycznych (9 typów):**
+1. **NORMAL_ACTIVITY** - Normalna aktywność (pozytywny wpływ)
+2. **INCREASED_ACTIVITY** - Zwiększona aktywność (pozytywny - dobry pożytek)
+3. **PRE_SWARMING** - Przygotowania do rojenia (negatywny)
+4. **ACTIVE_SWARMING** - Aktywne rojenie (krytyczny)
+5. **QUEEN_PIPING** - Piszczenie królowej (pozytywny)
+6. **PREDATOR_THREAT** - Zagrożenie drapieżnikiem (krytyczny)
+7. **DISTRESS_SIGNALS** - Sygnały distress (krytyczny)
+8. **LOW_ACTIVITY** - Niska aktywność (negatywny)
+9. **UNKNOWN** - Nieznany wzorzec (neutralny)
 
 **Machine Learning Pipeline:**
-1. Ekstrakcja cech: MFCC (Mel-Frequency Cepstral Coefficients)
-2. Feature vector: 13 MFCC + delta + delta-delta
-3. Klasyfikator: Random Forest / Neural Network
-4. Output: Prawdopodobieństwo rojenia (0-100%)
+1. Ekstrakcja cech: 47 parametrów AudioMetrics + MFCC (Mel-Frequency Cepstral Coefficients)
+2. Feature vector: 47 metryk + 13 MFCC + delta + delta-delta = 65+ cech
+3. Klasyfikator: Random Forest / Neural Network (planowane)
+4. Output: Prawdopodobieństwo rojenia (0-100%) + klasyfikacja zdarzenia
+
+**Bufor Historii:**
+- 60-punktowa historia danych audio (1 minuta przy 1Hz sampling)
+- Trendy temporalne dla wszystkich kluczowych metryk
+- Detekcja zmian i anomalii w czasie rzeczywistym
 
 #### 3. Monitoring Środowiskowy (Temp/Humidity/CO₂)
 

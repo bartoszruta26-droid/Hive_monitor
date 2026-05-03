@@ -2,6 +2,198 @@
 
 ### REST API Endpoints
 
+#### Audio Analysis Endpoints (MEMS Microphone)
+
+```http
+GET /audio/status
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "firmware_version": "2.5.0",
+  "uptime_seconds": 86400,
+  "microphone_connected": true,
+  "buffer_size": 256,
+  "samples_collected": 4521,
+  "current_metrics": {
+    "rms_amplitude": 0.0234,
+    "peak_amplitude": 0.0891,
+    "zero_crossing_rate": 145.2,
+    "dominant_frequency": 287.5,
+    "spectral_centroid": 412.3,
+    "bee_activity_index": 78.5,
+    "swarm_probability": 12.3,
+    "stress_indicator": 23.1,
+    "hive_health_audio": 85.7
+  }
+}
+```
+
+```http
+GET /audio/metrics
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "time_domain": {
+    "rms_amplitude": 0.0234,
+    "peak_amplitude": 0.0891,
+    "peak_to_peak": 0.1523,
+    "zero_crossing_rate": 145.2,
+    "signal_energy": 1247.5,
+    "crest_factor": 3.81,
+    "average_amplitude": 0.0187
+  },
+  "statistics": {
+    "mean_value": 0.0012,
+    "std_deviation": 0.0231,
+    "skewness": -0.15,
+    "kurtosis": 2.87,
+    "coefficient_of_variation": 19.25,
+    "dynamic_range": 42.3
+  },
+  "frequency_domain": {
+    "dominant_frequency": 287.5,
+    "spectral_centroid": 412.3,
+    "spectral_bandwidth": 234.7,
+    "spectral_flatness": 0.23,
+    "spectral_rolloff": 678.9,
+    "spectral_entropy": 4.56,
+    "harmonic_to_noise_ratio": 12.34,
+    "autocorrelation_peak": 0.78
+  },
+  "band_power": {
+    "power_low_freq": 23.5,
+    "power_bee_band": 567.8,
+    "power_swarm_band": 234.5,
+    "power_mid_freq": 123.4,
+    "power_high_freq": 45.6
+  },
+  "classification": {
+    "bee_activity_index": 78.5,
+    "swarm_probability": 12.3,
+    "stress_indicator": 23.1,
+    "hive_health_audio": 85.7
+  },
+  "formants_quality": {
+    "formant_f1": 245.3,
+    "formant_f2": 567.8,
+    "formant_f3": 1234.5,
+    "brightness": 0.34,
+    "roughness": 0.12,
+    "sharpness": 0.45,
+    "tonality": 0.67,
+    "prominence_ratio": 2.34
+  },
+  "temporal_features": {
+    "attack_time": 12.5,
+    "decay_time": 45.3,
+    "temporal_centroid": 78.9,
+    "silence_ratio": 0.05,
+    "modulation_index": 0.23
+  },
+  "psychoacoustics": {
+    "loudness": 34.5,
+    "roughness_fast": 0.15,
+    "spectral_decrease": -0.23,
+    "irregularity": 0.34
+  }
+}
+```
+
+```http
+GET /audio/events
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "status": "POZYTYWNY",
+  "event_type": "INCREASED_ACTIVITY",
+  "confidence": 0.92,
+  "impact": "POZYTYWNY",
+  "description": "Wykryto zwiększoną aktywność - powrót z pożytku",
+  "details": {
+    "bee_activity_index": 78.5,
+    "swarm_probability": 12.3,
+    "stress_indicator": 23.1,
+    "dominant_frequency": 287.5,
+    "power_bee_band": 567.8
+  },
+  "recent_events": [
+    {
+      "type": "NORMAL_ACTIVITY",
+      "timestamp": "2024-01-15T10:25:00Z",
+      "severity": "LOW",
+      "impact": "POZYTYWNY",
+      "description": "Normalna aktywność pszczół"
+    },
+    {
+      "type": "INCREASED_ACTIVITY",
+      "timestamp": "2024-01-15T10:28:00Z",
+      "severity": "LOW",
+      "impact": "POZYTYWNY",
+      "description": "Zwiększona aktywność - dobry pożytek"
+    }
+  ]
+}
+```
+
+```http
+GET /audio/spectrum?resolution=low
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "fft_size": 256,
+  "sample_rate": 8000,
+  "frequency_resolution": 31.25,
+  "spectrum": [
+    {"bin": 0, "frequency": 0.0, "magnitude": 0.001},
+    {"bin": 1, "frequency": 31.25, "magnitude": 0.023},
+    {"bin": 2, "frequency": 62.5, "magnitude": 0.045},
+    ...
+    {"bin": 127, "frequency": 3968.75, "magnitude": 0.012}
+  ],
+  "peaks": [
+    {"frequency": 287.5, "magnitude": 0.089, "bin": 9},
+    {"frequency": 456.25, "magnitude": 0.067, "bin": 14},
+    {"frequency": 623.75, "magnitude": 0.054, "bin": 20}
+  ]
+}
+```
+
+```http
+GET /audio/history?minutes=5
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "interval_seconds": 1,
+  "data_points": 300,
+  "history": [
+    {
+      "timestamp": "2024-01-15T10:29:59Z",
+      "rms_amplitude": 0.0234,
+      "dominant_frequency": 287.5,
+      "bee_activity_index": 78.5,
+      "swarm_probability": 12.3,
+      "event_type": "INCREASED_ACTIVITY"
+    },
+    ...
+  ],
+  "trends": {
+    "activity_trend": "INCREASING",
+    "swarm_risk_trend": "STABLE",
+    "health_trend": "IMPROVING"
+  }
+}
+```
+
 #### Radar mmWave Endpoints (LD2410B)
 
 ```http

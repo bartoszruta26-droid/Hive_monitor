@@ -60,6 +60,15 @@
  *   * Trend: slope, correlation, acceleration_rate
  *   * Jakościowe: signal_quality, anomaly_score, hive_health_index
  *   * Dodatkowe: power_spectrum_peak, zero_crossing_rate, entropy
+ * 
+ * MODUŁ PROFESJONALNEJ ANALIZY DŹWIĘKU (MEMS MICROPHONE):
+ * - Przetwarzanie sygnału audio w czasie rzeczywistym
+ * - Analiza FFT (Fast Fourier Transform) - 256 punktów
+ * - Detekcja częstotliwości charakterystycznych dla pszczół (80-800 Hz)
+ * - Wykrywanie wzorców akustycznych: praca pszczół, rojenie, zagrożenia
+ * - Obliczanie 25+ parametrów akustycznych
+ * - Klasyfikacja zdarzeń dźwiękowych i ich wpływ na pożytek ula
+ * - API HTTP: /audio/status, /audio/spectrum, /audio/events
  * ---------------------------------------------------------
  */
 
@@ -130,6 +139,148 @@ uint16_t voc_idx = 0;
 float audio_rms = 0.0;
 float vibration_level = 0.0;
 bool motion_detected = false;
+
+// ============================================================================
+// MODUŁ PROFESJONALNEJ ANALIZY DŹWIĘKU - STRUKTURY DANYCH
+// ============================================================================
+
+#define AUDIO_BUFFER_SIZE 256     // Rozmiar bufora FFT (potęga liczby 2)
+#define AUDIO_SAMPLE_RATE 4000    // Częstotliwość próbkowania [Hz]
+#define BEE_FREQ_MIN 80           // Minimalna częstotliwość pszczół [Hz]
+#define BEE_FREQ_MAX 800          // Maksymalna częstotliwość pszczół [Hz]
+#define SWARM_FREQ_MIN 150        // Częstotliwość rojenia [Hz]
+#define SWARM_FREQ_MAX 350        // Częstotliwość rojenia [Hz]
+#define QUEEN_PIP_FREQ_MIN 200    // Częstotliwość piszczenia królowej [Hz]
+#define QUEEN_PIP_FREQ_MAX 500    // Częstotliwość piszczenia królowej [Hz]
+
+// Struktura przechowująca parametry akustyczne ula
+struct AudioMetrics {
+    // Podstawowe parametry czasowe
+    float rms_amplitude;          // Wartość RMS sygnału [V]
+    float peak_amplitude;         // Wartość szczytowa [V]
+    float peak_to_peak;           // Wartość międzyszczytowa [V]
+    float zero_crossing_rate;     // Częstotliwość przejść przez zero [Hz]
+    float signal_energy;          // Energia sygnału [V²]
+    
+    // Parametry statystyczne
+    float mean_amplitude;         // Średnia amplituda [V]
+    float std_amplitude;          // Odchylenie standardowe amplitudy [V]
+    float amplitude_cv;           // Współczynnik zmienności amplitudy
+    float skewness;               // Asymetria rozkładu (skewness)
+    float kurtosis;               // Kurtoza (spłaszczenie rozkładu)
+    
+    // Parametry częstotliwościowe - podstawowe
+    float dominant_frequency;     // Dominująca częstotliwość [Hz]
+    float spectral_centroid;      // Centrum widma [Hz]
+    float spectral_bandwidth;     // Szerokość pasma widma [Hz]
+    float spectral_flatness;      // Płaskość widma (0-1)
+    float spectral_rolloff;       // Częstotliwość odcięcia widma [Hz]
+    
+    // Parametry częstotliwościowe - szczegółowe
+    float power_in_bee_band;      // Moc w paśmie pszczół (80-800 Hz) [dB]
+    float power_in_swarm_band;    // Moc w paśmie rojenia (150-350 Hz) [dB]
+    float power_low_freq;         // Moc w niskich częstotliwościach (<80 Hz) [dB]
+    float power_high_freq;        // Moc w wysokich częstotliwościach (>800 Hz) [dB]
+    float harmonic_ratio;         // Stosunek harmonicznych do fundamentalnej
+    
+    // Parametry zaawansowane
+    float mfcc_energy[4];         // Energia z pierwszych 4 współczynników MFCC
+    float spectral_entropy;       // Entropia widmowa (miara losowości)
+    float spectral_contrast;      // Kontrast widmowy
+    float tonal_strength;         // Siła tonalna sygnału
+    
+    // NOWE PARAMETRY - analiza szczegółowa (dodane 18 parametrów)
+    float crest_factor;           // Współczynnik szczytu (peak/rms) - detekcja impulsów
+    float formant_freq_1;         // Pierwszy formant [Hz] - charakterystyka rezonansu ula
+    float formant_freq_2;         // Drugi formant [Hz]
+    float formant_bandwidth_1;    // Szerokość pasma pierwszego formantu [Hz]
+    float formant_bandwidth_2;    // Szerokość pasma drugiego formantu [Hz]
+    float fundamental_frequency;  // Częstotliwość podstawowa (F0) [Hz]
+    float pitch_strength;         // Siła wysokości dźwięku (0-1)
+    float inharmonicity;          // Nieharmoniczność sygnału (0-1)
+    float shimmer;                // Fluktuacja amplitudy w czasie (%)
+    float jitter;                 // Fluktuacja częstotliwości w czasie (%)
+    float noise_to_harmonic_ratio;// Stosunek szumu do harmonicznych (NHR)
+    float harmonic_to_noise_ratio;// Stosunek harmonicznych do szumu (HNR)
+    float autocorrelation_peak;   // Szczyt autokorelacji (0-1) - miara periodyczności
+    float attack_time;            // Czas narastania sygnału [ms]
+    float decay_time;             // Czas zanikania sygnału [ms]
+    float sustain_level;          // Poziom podtrzymania sygnału (0-1)
+    float temporal_centroid;      // Centrum czasowe sygnału [ms]
+    float loudness_zwicker;       // Głośność psychoakustyczna [sones]
+    
+    // Wskaźniki jakości i klasyfikacji
+    float bee_activity_index;     // Indeks aktywności pszczół (0-100%)
+    float swarm_probability;      // Prawdopodobieństwo rojenia (0-1)
+    float stress_indicator;       // Wskaźnik stresu kolonii (0-1)
+    float hive_health_audio;      // Indeks zdrowia na podstawie audio (0-100%)
+    float foraging_efficiency;    // Efektywność zbierania nektaru (0-100%) - nowość
+    float colony_coherence;       // Spójność kolonii (0-1) - nowość
+};
+
+// Bufory dla przetwarzania audio
+int16_t audioBuffer[AUDIO_BUFFER_SIZE];        // Surowe próbki audio
+float audioFFT[AUDIO_BUFFER_SIZE];             // Wynik FFT (moduły)
+float audioSpectrum[AUDIO_BUFFER_SIZE / 2];    // Widmo mocy
+AudioMetrics currentAudioMetrics;              // Aktualne metryki audio
+
+// Historia danych audio dla analizy trendów
+struct AudioHistoryPoint {
+    uint32_t timestamp;
+    float rms_value;
+    float dominant_freq;
+    float bee_activity;
+    float swarm_prob;
+};
+
+#define AUDIO_HISTORY_SIZE 60   // 1 minuta historii przy próbkowaniu co 1s
+AudioHistoryPoint audioHistory[AUDIO_HISTORY_SIZE];
+uint16_t audioHistoryIndex = 0;
+uint16_t audioHistoryCount = 0;
+
+// Zdarzenia akustyczne
+struct AudioEvent {
+    enum EventType {
+        EVENT_NONE = 0,
+        EVENT_NORMAL_ACTIVITY,      // Normalna praca pszczół
+        EVENT_INCREASED_ACTIVITY,   // Zwiększona aktywność
+        EVENT_SWARM_PREPARATION,    // Przygotowania do rojenia
+        EVENT_SWARM_ACTIVE,         // Aktywne rojenie
+        EVENT_QUEEN_PIPING,         // Piszczenie królowej
+        EVENT_PREDATOR_THREAT,      // Zagrożenie drapieżnikiem
+        EVENT_DISTRESS,             // Sygnały distress
+        EVENT_LOW_ACTIVITY          // Niska aktywność
+    };
+    
+    enum EventImpact {
+        IMPACT_NEUTRAL = 0,
+        IMPACT_POSITIVE,            // Pozytywny wpływ na pożytek
+        IMPACT_NEGATIVE,            // Negatywny wpływ na pożytek
+        IMPACT_CRITICAL             // Krytyczne zagrożenie
+    };
+    
+    EventType type;
+    EventImpact impact;
+    float confidence;               // Pewność detekcji (0-1)
+    uint32_t timestamp;
+    char description[64];           // Opis zdarzenia
+};
+
+AudioEvent lastAudioEvent;
+
+// Deklaracje funkcji modułu audio
+void processAudioSignal();
+void calculateAudioMetrics(AudioMetrics& metrics);
+void performFFT(int16_t* input, float* output, int size);
+void classifyAudioEvent(AudioEvent& event, const AudioMetrics& metrics);
+float calculateSpectralCentroid(const float* spectrum, int size, float sampleRate);
+float calculateSpectralBandwidth(const float* spectrum, int size, float centroid, float sampleRate);
+float calculateSpectralFlatness(const float* spectrum, int size);
+float calculateSpectralEntropy(const float* spectrum, int size);
+void updateAudioHistory(const AudioMetrics& metrics);
+bool isPositiveAudioChange(const AudioEvent& event);
+const char* audioEventTypeToString(AudioEvent::EventType type);
+const char* audioEventImpactToString(AudioEvent::EventImpact impact);
 
 // Timer'y
 unsigned long lastMillis = 0;
@@ -348,7 +499,7 @@ long readHX711() {
   return count;
 }
 
-// Obliczanie RMS dźwięku
+// Obliczanie RMS dźwięku (prosta wersja - zachowana dla kompatybilności)
 float calculateAudioRMS() {
   int samples = 100;
   float sum = 0;
@@ -359,6 +510,788 @@ float calculateAudioRMS() {
     delay(1);
   }
   return sqrt(sum / samples);
+}
+
+// ============================================================================
+// IMPLEMENTACJA MODUŁU PROFESJONALNEJ ANALIZY DŹWIĘKU
+// ============================================================================
+
+// Prosta implementacja FFT (Cooley-Tukey radix-2 algorithm)
+// Globalne bufory dla FFT (część rzeczywista i urojona)
+float fft_imag[FFT_SIZE]; // Dodatkowy bufor na część urojoną
+
+// Dla mikrokontrolerów z ograniczoną pamięcią - PEŁNA implementacja FFT z liczbami zespolonymi
+void performFFT(int16_t* input, float* output_real, int size) {
+    float* output_imag = fft_imag; // Użycie globalnego bufora na część urojoną
+    
+    // Inicjalizacja - normalizacja wejścia do części rzeczywistej, urojona = 0
+    for (int i = 0; i < size; i++) {
+        output_real[i] = (float)input[i] / 2048.0f;  // Normalizacja do zakresu [-1, 1]
+        output_imag[i] = 0.0f;
+    }
+    
+    // Bit-reversal permutation (dla obu części)
+    int j = 0;
+    for (int i = 0; i < size - 1; i++) {
+        if (i < j) {
+            // Zamiana części rzeczywistej
+            float temp_re = output_real[i];
+            output_real[i] = output_real[j];
+            output_real[j] = temp_re;
+            
+            // Zamiana części urojonej
+            float temp_im = output_imag[i];
+            output_imag[i] = output_imag[j];
+            output_imag[j] = temp_im;
+        }
+        int k = size >> 1;
+        while (k <= j && k > 0) {
+            j -= k;
+            k >>= 1;
+        }
+        j += k;
+    }
+    
+    // Pełna implementacja Cooley-Tukey FFT z liczbami zespolonymi
+    for (int len = 2; len <= size; len <<= 1) {
+        float angle = -2.0f * PI / len;
+        float wlen_re = cos(angle);
+        float wlen_im = sin(angle);
+        
+        for (int i = 0; i < size; i += len) {
+            float w_re = 1.0f;
+            float w_im = 0.0f;
+            
+            for (int k = 0; k < len / 2; k++) {
+                int u = i + k;
+                int v = i + k + len / 2;
+                
+                // PEŁNE mnożenie zespolone: (v_re + j*v_im) * (w_re + j*w_im)
+                // t_re = v_re * w_re - v_im * w_im
+                // t_im = v_re * w_im + v_im * w_re
+                float t_re = output_real[v] * w_re - output_imag[v] * w_im;
+                float t_im = output_real[v] * w_im + output_imag[v] * w_re;
+                
+                // Operacja motylkowa dla obu części
+                float u_re = output_real[u];
+                float u_im = output_imag[u];
+                
+                output_real[v] = u_re - t_re;
+                output_imag[v] = u_im - t_im;
+                
+                output_real[u] = u_re + t_re;
+                output_imag[u] = u_im + t_im;
+                
+                // Aktualizacja współczynnika obrotowego (pełne mnożenie zespolone)
+                float new_w_re = w_re * wlen_re - w_im * wlen_im;
+                float new_w_im = w_re * wlen_im + w_im * wlen_re;
+                w_re = new_w_re;
+                w_im = new_w_im;
+            }
+        }
+    }
+    
+    // Obliczenie modułów widma (tylko pierwsza połowa - Nyquist)
+    // |X[k]| = sqrt(re^2 + im^2)
+    for (int i = 0; i < size / 2; i++) {
+        output_real[i] = sqrt(output_real[i] * output_real[i] + output_imag[i] * output_imag[i]);
+    }
+}
+
+// Obliczanie centrum widma (spectral centroid)
+float calculateSpectralCentroid(const float* spectrum, int size, float sampleRate) {
+    float numerator = 0.0f;
+    float denominator = 0.0f;
+    
+    for (int i = 0; i < size; i++) {
+        float freq = (float)i * sampleRate / (size * 2);
+        numerator += freq * spectrum[i];
+        denominator += spectrum[i];
+    }
+    
+    if (denominator < 0.0001f) return 0.0f;
+    return numerator / denominator;
+}
+
+// Obliczanie szerokości pasma widma (spectral bandwidth)
+float calculateSpectralBandwidth(const float* spectrum, int size, float centroid, float sampleRate) {
+    float numerator = 0.0f;
+    float denominator = 0.0f;
+    
+    for (int i = 0; i < size; i++) {
+        float freq = (float)i * sampleRate / (size * 2);
+        float diff = freq - centroid;
+        numerator += diff * diff * spectrum[i];
+        denominator += spectrum[i];
+    }
+    
+    if (denominator < 0.0001f) return 0.0f;
+    return sqrt(numerator / denominator);
+}
+
+// Obliczanie płaskości widma (spectral flatness)
+float calculateSpectralFlatness(const float* spectrum, int size) {
+    float logSum = 0.0f;
+    float linearSum = 0.0f;
+    int validCount = 0;
+    
+    for (int i = 0; i < size; i++) {
+        if (spectrum[i] > 0.0001f) {
+            logSum += log(spectrum[i]);
+            linearSum += spectrum[i];
+            validCount++;
+        }
+    }
+    
+    if (validCount == 0 || linearSum < 0.0001f) return 0.0f;
+    
+    // Geometry mean / Arithmetic mean
+    float geometricMean = exp(logSum / validCount);
+    float arithmeticMean = linearSum / validCount;
+    
+    return geometricMean / arithmeticMean;
+}
+
+// Obliczanie entropii widmowej (spectral entropy)
+float calculateSpectralEntropy(const float* spectrum, int size) {
+    float totalEnergy = 0.0f;
+    for (int i = 0; i < size; i++) {
+        totalEnergy += spectrum[i];
+    }
+    
+    if (totalEnergy < 0.0001f) return 0.0f;
+    
+    float entropy = 0.0f;
+    for (int i = 0; i < size; i++) {
+        float p = spectrum[i] / totalEnergy;
+        if (p > 0.0001f) {
+            entropy -= p * log(p);
+        }
+    }
+    
+    // Normalizacja entropii (max entropia = log(size))
+    float maxEntropy = log(size);
+    if (maxEntropy < 0.0001f) return 0.0f;
+    
+    return entropy / maxEntropy;
+}
+
+// Główna funkcja przetwarzania sygnału audio
+void processAudioSignal() {
+    static uint32_t lastProcessTime = 0;
+    
+    // Pobieranie próbek z mikrofonu MEMS
+    noInterrupts();
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        audioBuffer[i] = analogRead(MIC_PIN) - 2048;  // Centrowanie wokół zera
+        delayMicroseconds(250);  // ~4kHz sampling rate
+    }
+    interrupts();
+    
+    // Wykonanie FFT
+    performFFT(audioBuffer, audioFFT, AUDIO_BUFFER_SIZE);
+    
+    // Obliczenie widma mocy
+    for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+        audioSpectrum[i] = audioFFT[i] * audioFFT[i];
+    }
+    
+    // Obliczenie wszystkich metryk audio
+    calculateAudioMetrics(currentAudioMetrics);
+    
+    // Klasyfikacja zdarzeń akustycznych
+    classifyAudioEvent(lastAudioEvent, currentAudioMetrics);
+    
+    // Aktualizacja historii
+    updateAudioHistory(currentAudioMetrics);
+    
+    // Debug - wypisanie informacji o zdarzeniach
+    if (lastAudioEvent.type != AudioEvent::EVENT_NONE) {
+        Serial.print("[AUDIO_EVENT] ");
+        Serial.print(audioEventTypeToString(lastAudioEvent.type));
+        Serial.print(" | Wpływ: ");
+        Serial.print(audioEventImpactToString(lastAudioEvent.impact));
+        Serial.print(" | Pewność: ");
+        Serial.print(lastAudioEvent.confidence, 2);
+        Serial.print(" | Opis: ");
+        Serial.println(lastAudioEvent.description);
+    }
+    
+    // Aktualizacja globalnej zmiennej audio_rms
+    audio_rms = currentAudioMetrics.rms_amplitude;
+}
+
+// Kompleksowe obliczanie metryk audio
+void calculateAudioMetrics(AudioMetrics& metrics) {
+    // Inicjalizacja
+    memset(&metrics, 0, sizeof(AudioMetrics));
+    
+    // === PARAMETRY CZASOWE ===
+    
+    // Obliczanie wartości RMS, średniej, szczytowej
+    float sum = 0.0f;
+    float sumSq = 0.0f;
+    float minVal = (float)audioBuffer[0] / 2048.0f;  // Inicjalizacja pierwszą próbką
+    float maxVal = minVal;  // Inicjalizacja pierwszą próbką
+    int zeroCrossings = 0;
+    
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float sample = (float)audioBuffer[i] / 2048.0f;  // Normalizacja
+        sum += sample;
+        sumSq += sample * sample;
+        
+        if (sample < minVal) minVal = sample;
+        if (sample > maxVal) maxVal = sample;
+        
+        // Detekcja przejść przez zero
+        if (i > 0) {
+            float prevSample = (float)audioBuffer[i-1] / 2048.0f;
+            if ((prevSample < 0 && sample >= 0) || (prevSample >= 0 && sample < 0)) {
+                zeroCrossings++;
+            }
+        }
+    }
+    
+    metrics.mean_amplitude = sum / AUDIO_BUFFER_SIZE;
+    metrics.rms_amplitude = sqrt(sumSq / AUDIO_BUFFER_SIZE);
+    metrics.peak_amplitude = max(abs(minVal), abs(maxVal));
+    metrics.peak_to_peak = maxVal - minVal;
+    metrics.signal_energy = sumSq;
+    
+    // Częstotliwość przejść przez zero (Zero Crossing Rate)
+    float duration = (float)AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE;
+    metrics.zero_crossing_rate = (float)zeroCrossings / (2.0f * duration);
+    
+    // === PARAMETRY STATYSTYCZNE ===
+    
+    // Odchylenie standardowe
+    float variance = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float sample = (float)audioBuffer[i] / 2048.0f;
+        float diff = sample - metrics.mean_amplitude;
+        variance += diff * diff;
+    }
+    variance /= AUDIO_BUFFER_SIZE;
+    metrics.std_amplitude = sqrt(variance);
+    
+    // Współczynnik zmienności
+    if (abs(metrics.mean_amplitude) > 0.0001f) {
+        metrics.amplitude_cv = metrics.std_amplitude / abs(metrics.mean_amplitude);
+    }
+    
+    // Asymetria (skewness) i kurtoza
+    float sumCube = 0.0f;
+    float sumQuad = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float sample = (float)audioBuffer[i] / 2048.0f;
+        float normDiff = (sample - metrics.mean_amplitude) / (metrics.std_amplitude + 0.0001f);
+        sumCube += normDiff * normDiff * normDiff;
+        sumQuad += normDiff * normDiff * normDiff * normDiff;
+    }
+    metrics.skewness = sumCube / AUDIO_BUFFER_SIZE;
+    metrics.kurtosis = sumQuad / AUDIO_BUFFER_SIZE - 3.0f;  // Nadmiarowa kurtoza
+    
+    // === PARAMETRY CZĘSTOTLIWOŚCIOWE ===
+    
+    // Dominująca częstotliwość
+    float maxPower = 0.0f;
+    int maxBin = 0;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+        if (audioSpectrum[i] > maxPower) {
+            maxPower = audioSpectrum[i];
+            maxBin = i;
+        }
+    }
+    metrics.dominant_frequency = (float)maxBin * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+    
+    // Centrum widma
+    metrics.spectral_centroid = calculateSpectralCentroid(audioSpectrum, AUDIO_BUFFER_SIZE / 2, AUDIO_SAMPLE_RATE);
+    
+    // Szerokość pasma
+    metrics.spectral_bandwidth = calculateSpectralBandwidth(audioSpectrum, AUDIO_BUFFER_SIZE / 2, 
+                                                            metrics.spectral_centroid, AUDIO_SAMPLE_RATE);
+    
+    // Płaskość widma
+    metrics.spectral_flatness = calculateSpectralFlatness(audioSpectrum, AUDIO_BUFFER_SIZE / 2);
+    
+    // Entropia widmowa
+    metrics.spectral_entropy = calculateSpectralEntropy(audioSpectrum, AUDIO_BUFFER_SIZE / 2);
+    
+    // Częstotliwość odcięcia (spectral rolloff - 85% energii)
+    float totalEnergy = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+        totalEnergy += audioSpectrum[i];
+    }
+    float threshold = 0.85f * totalEnergy;
+    float cumulativeEnergy = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+        cumulativeEnergy += audioSpectrum[i];
+        if (cumulativeEnergy >= threshold) {
+            metrics.spectral_rolloff = (float)i * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            break;
+        }
+    }
+    
+    // === MOC W PASmach ===
+    
+    int binBeeMin = (int)(BEE_FREQ_MIN * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+    int binBeeMax = (int)(BEE_FREQ_MAX * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+    int binSwarmMin = (int)(SWARM_FREQ_MIN * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+    int binSwarmMax = (int)(SWARM_FREQ_MAX * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+    int binLowMax = binBeeMin;
+    int binHighMin = binBeeMax;
+    
+    float powerBee = 0.0f, powerSwarm = 0.0f, powerLow = 0.0f, powerHigh = 0.0f;
+    int countBee = 0, countSwarm = 0, countLow = 0, countHigh = 0;
+    
+    for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+        if (i < binLowMax) {
+            powerLow += audioSpectrum[i];
+            countLow++;
+        } else if (i < binBeeMax) {
+            powerBee += audioSpectrum[i];
+            countBee++;
+            if (i >= binSwarmMin && i < binSwarmMax) {
+                powerSwarm += audioSpectrum[i];
+                countSwarm++;
+            }
+        } else {
+            powerHigh += audioSpectrum[i];
+            countHigh++;
+        }
+    }
+    
+    // Konwersja do dB (z zabezpieczeniem przed log(0))
+    metrics.power_in_bee_band = (countBee > 0 && powerBee > 0.0001f) ? 
+                                10.0f * log10(powerBee / countBee) : -100.0f;
+    metrics.power_in_swarm_band = (countSwarm > 0 && powerSwarm > 0.0001f) ? 
+                                  10.0f * log10(powerSwarm / countSwarm) : -100.0f;
+    metrics.power_low_freq = (countLow > 0 && powerLow > 0.0001f) ? 
+                             10.0f * log10(powerLow / countLow) : -100.0f;
+    metrics.power_high_freq = (countHigh > 0 && powerHigh > 0.0001f) ? 
+                              10.0f * log10(powerHigh / countHigh) : -100.0f;
+    
+    // Stosunek harmonicznych (uproszczony)
+    if (powerBee > 0.0001f) {
+        metrics.harmonic_ratio = (powerSwarm + powerHigh) / powerBee;
+    }
+    
+    // === WSKAŹNIKI KLASYFIKACJI ===
+    
+    // Indeks aktywności pszczół (na podstawie mocy w paśmie pszczół)
+    float normalizedBeePower = constrain((metrics.power_in_bee_band + 60.0f) / 60.0f, 0.0f, 1.0f);
+    metrics.bee_activity_index = normalizedBeePower * 100.0f;
+    
+    // Prawdopodobieństwo rojenia (na podstawie mocy w paśmie rojenia i wzorców)
+    float swarmFactor = 0.0f;
+    if (metrics.power_in_swarm_band > -40.0f) {
+        swarmFactor = constrain((metrics.power_in_swarm_band + 40.0f) / 30.0f, 0.0f, 1.0f);
+    }
+    // Dodatkowe czynniki: dominująca częstotliwość w zakresie rojenia
+    if (metrics.dominant_frequency >= SWARM_FREQ_MIN && metrics.dominant_frequency <= SWARM_FREQ_MAX) {
+        swarmFactor = max(swarmFactor, 0.5f);
+    }
+    metrics.swarm_probability = swarmFactor;
+    
+    // Wskaźnik stresu (wysoka energia w wysokich częstotliwościach)
+    float stressFactor = 0.0f;
+    if (metrics.power_high_freq > -50.0f) {
+        stressFactor = constrain((metrics.power_high_freq + 50.0f) / 40.0f, 0.0f, 1.0f);
+    }
+    metrics.stress_indicator = stressFactor;
+    
+    // Indeks zdrowia ula (kombinacja czynników)
+    float healthScore = 100.0f;
+    healthScore -= metrics.stress_indicator * 20.0f;  // Stres obniża zdrowie
+    healthScore -= abs(50.0f - metrics.bee_activity_index) * 0.4f;  // Optymalna aktywność ~50%
+    healthScore = constrain(healthScore, 0.0f, 100.0f);
+    metrics.hive_health_audio = healthScore;
+    
+    // Uproszczone MFCC (tylko energia w pasmach)
+    metrics.mfcc_energy[0] = powerLow;
+    metrics.mfcc_energy[1] = powerBee;
+    metrics.mfcc_energy[2] = powerSwarm;
+    metrics.mfcc_energy[3] = powerHigh;
+    
+    // Kontrast widmowy (różnica między maks a min w pasmach)
+    float maxBandPower = max(max(powerLow, powerBee), max(powerSwarm, powerHigh));
+    float minBandPower = min(min(powerLow, powerBee), min(powerSwarm, powerHigh));
+    if (maxBandPower > 0.0001f) {
+        metrics.spectral_contrast = (maxBandPower - minBandPower) / maxBandPower;
+    }
+    
+    // Siła tonalna (na podstawie płaskości widma - niskie wartości = bardziej tonalne)
+    metrics.tonal_strength = 1.0f - metrics.spectral_flatness;
+    
+    // === NOWE PARAMETRY - DODATKOWE OBLICZENIA (18 parametrów) ===
+    
+    // Współczynnik szczytu (Crest Factor) - detekcja impulsów
+    if (metrics.rms_amplitude > 0.0001f) {
+        metrics.crest_factor = metrics.peak_amplitude / metrics.rms_amplitude;
+    }
+    
+    // Szacowanie formantów (uproszczone - piki w widmie)
+    int formantCount = 0;
+    float prevSlope = 0.0f;
+    for (int i = 2; i < AUDIO_BUFFER_SIZE / 4 && formantCount < 2; i++) {
+        float slope = audioSpectrum[i] - audioSpectrum[i-1];
+        if (prevSlope > 0 && slope < 0 && audioSpectrum[i] > 0.1f * maxPower) {
+            // Wykryto pik - potencjalny formant
+            float freq = (float)i * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            if (formantCount == 0) {
+                metrics.formant_freq_1 = freq;
+                // Szerokość pasma - odległość między punktami -3dB
+                int leftBin = i, rightBin = i;
+                float threshold = audioSpectrum[i] * 0.707f;  // -3dB
+                while (leftBin > 0 && audioSpectrum[leftBin] > threshold) leftBin--;
+                while (rightBin < AUDIO_BUFFER_SIZE / 4 && audioSpectrum[rightBin] > threshold) rightBin++;
+                metrics.formant_bandwidth_1 = (float)(rightBin - leftBin) * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            } else if (formantCount == 1 && freq > metrics.formant_freq_1 + 50.0f) {
+                metrics.formant_freq_2 = freq;
+                int leftBin = i, rightBin = i;
+                float threshold = audioSpectrum[i] * 0.707f;
+                while (leftBin > 0 && audioSpectrum[leftBin] > threshold) leftBin--;
+                while (rightBin < AUDIO_BUFFER_SIZE / 4 && audioSpectrum[rightBin] > threshold) rightBin++;
+                metrics.formant_bandwidth_2 = (float)(rightBin - leftBin) * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            }
+            formantCount++;
+        }
+        prevSlope = slope;
+    }
+    
+    // Częstotliwość podstawowa (F0) - użycie dominant frequency z korektą
+    metrics.fundamental_frequency = metrics.dominant_frequency;
+    
+    // Siła wysokości dźwięku (pitch strength) - na podstawie ostrości piku widmowego
+    float pitchSharpness = 0.0f;
+    if (maxBin > 0 && maxBin < AUDIO_BUFFER_SIZE / 2 - 1) {
+        float neighborAvg = (audioSpectrum[maxBin - 1] + audioSpectrum[maxBin + 1]) / 2.0f;
+        if (neighborAvg > 0.0001f) {
+            pitchSharpness = (maxPower - neighborAvg) / neighborAvg;
+        }
+    }
+    metrics.pitch_strength = constrain(pitchSharpness / 10.0f, 0.0f, 1.0f);
+    
+    // Nieharmoniczność - miara odchylenia od harmonicznych
+    float inharmonicSum = 0.0f;
+    if (metrics.fundamental_frequency > 50.0f) {
+        for (int h = 2; h <= 6; h++) {
+            float harmonicFreq = metrics.fundamental_frequency * h;
+            int bin = (int)(harmonicFreq * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+            if (bin >= 0 && bin < AUDIO_BUFFER_SIZE / 2) {
+                // Sprawdź odchylenie od idealnej harmonicznej
+                float actualFreq = (float)bin * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+                float deviation = abs(actualFreq - harmonicFreq) / metrics.fundamental_frequency;
+                inharmonicSum += deviation;
+            }
+        }
+        metrics.inharmonicity = constrain(inharmonicSum / 5.0f, 0.0f, 1.0f);
+    }
+    
+    // Shimmer i Jitter - fluktuacje amplitudy i częstotliwości (uproszczone)
+    // Wymagałyby analizy wielu ramek czasowych - tutaj wartości bazowe
+    float amplitudeVariance = 0.0f;
+    float periodVariance = 0.0f;
+    int periodCount = 0;
+    
+    // Detekcja okresów dla jitter
+    int zeroCrossPeriods[10];
+    int lastZeroCross = -1;
+    int periodIdx = 0;
+    for (int i = 1; i < AUDIO_BUFFER_SIZE && periodIdx < 10; i++) {
+        if ((float)audioBuffer[i-1] < 0 && (float)audioBuffer[i] >= 0) {
+            if (lastZeroCross >= 0) {
+                zeroCrossPeriods[periodIdx++] = i - lastZeroCross;
+            }
+            lastZeroCross = i;
+        }
+    }
+    
+    if (periodIdx >= 2) {
+        float meanPeriod = 0.0f;
+        for (int i = 0; i < periodIdx; i++) meanPeriod += zeroCrossPeriods[i];
+        meanPeriod /= periodIdx;
+        
+        for (int i = 0; i < periodIdx; i++) {
+            periodVariance += abs(zeroCrossPeriods[i] - meanPeriod) / meanPeriod;
+        }
+        metrics.jitter = constrain(periodVariance / periodIdx * 100.0f, 0.0f, 100.0f);
+    }
+    
+    // Shimmer - fluktuacja amplitudy między okresami
+    float peakAmps[10];
+    int peakCount = 0;
+    for (int i = 1; i < AUDIO_BUFFER_SIZE - 1 && peakCount < 10; i++) {
+        if (abs(audioBuffer[i]) > abs(audioBuffer[i-1]) && abs(audioBuffer[i]) > abs(audioBuffer[i+1])) {
+            if (abs(audioBuffer[i]) > 100) {  // Próg szumu
+                peakAmps[peakCount++] = abs(audioBuffer[i]);
+            }
+        }
+    }
+    
+    if (peakCount >= 2) {
+        float meanPeak = 0.0f;
+        for (int i = 0; i < peakCount; i++) meanPeak += peakAmps[i];
+        meanPeak /= peakCount;
+        
+        for (int i = 0; i < peakCount - 1; i++) {
+            amplitudeVariance += abs(peakAmps[i+1] - peakAmps[i]) / meanPeak;
+        }
+        metrics.shimmer = constrain(amplitudeVariance / (peakCount - 1) * 100.0f, 0.0f, 100.0f);
+    }
+    
+    // Noise-to-Harmonic Ratio (NHR) i Harmonic-to-Noise Ratio (HNR)
+    float harmonicEnergy = 0.0f;
+    float noiseEnergy = 0.0f;
+    if (metrics.fundamental_frequency > 50.0f) {
+        int fundBin = (int)(metrics.fundamental_frequency * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+        int bandwidth = max(2, (int)(fundBin * 0.1f));  // 10% szerokości pasma
+        
+        for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+            bool isHarmonic = false;
+            for (int h = 1; h <= 8; h++) {
+                int harmBin = fundBin * h;
+                if (abs(i - harmBin) <= bandwidth) {
+                    isHarmonic = true;
+                    break;
+                }
+            }
+            if (isHarmonic) {
+                harmonicEnergy += audioSpectrum[i];
+            } else {
+                noiseEnergy += audioSpectrum[i];
+            }
+        }
+    }
+    
+    if (harmonicEnergy > 0.0001f) {
+        metrics.noise_to_harmonic_ratio = noiseEnergy / harmonicEnergy;
+    }
+    if (noiseEnergy > 0.0001f) {
+        metrics.harmonic_to_noise_ratio = harmonicEnergy / noiseEnergy;
+    }
+    
+    // Autokorelacja - miara periodyczności
+    float maxAutocorr = 0.0f;
+    int bestLag = 0;
+    for (int lag = 5; lag < AUDIO_BUFFER_SIZE / 2; lag++) {
+        float autocorr = 0.0f;
+        for (int i = 0; i < AUDIO_BUFFER_SIZE - lag; i++) {
+            autocorr += (float)audioBuffer[i] * (float)audioBuffer[i + lag];
+        }
+        autocorr /= (AUDIO_BUFFER_SIZE - lag);
+        if (autocorr > maxAutocorr) {
+            maxAutocorr = autocorr;
+            bestLag = lag;
+        }
+    }
+    if (maxAutocorr > 0.0f) {
+        float normAutocorr = maxAutocorr / sumSq;  // Normalizacja do energii sygnału
+        metrics.autocorrelation_peak = constrain(normAutocorr, 0.0f, 1.0f);
+    }
+    
+    // Parametry obwiedni (attack, decay, sustain)
+    int attackEnd = 0;
+    float maxAmpTime = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float sample = abs((float)audioBuffer[i]);
+        if (sample > maxAmpTime) {
+            maxAmpTime = sample;
+            attackEnd = i;
+        }
+    }
+    metrics.attack_time = (float)attackEnd * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    
+    // Decay time - czas spadku do 50% po szczycie
+    int decayEnd = attackEnd;
+    float threshold50 = maxAmpTime * 0.5f;
+    for (int i = attackEnd; i < AUDIO_BUFFER_SIZE; i++) {
+        if (abs((float)audioBuffer[i]) < threshold50) {
+            decayEnd = i;
+            break;
+        }
+    }
+    metrics.decay_time = (float)(decayEnd - attackEnd) * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    
+    // Sustain level - średni poziom po zaniku
+    float sustainSum = 0.0f;
+    int sustainCount = 0;
+    for (int i = decayEnd; i < AUDIO_BUFFER_SIZE; i++) {
+        sustainSum += abs((float)audioBuffer[i]);
+        sustainCount++;
+    }
+    if (sustainCount > 0 && maxAmpTime > 0.0001f) {
+        metrics.sustain_level = constrain((sustainSum / sustainCount) / maxAmpTime, 0.0f, 1.0f);
+    }
+    
+    // Temporal centroid - centrum czasowe sygnału
+    float temporalMoment = 0.0f;
+    float totalAbsAmp = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float absAmp = abs((float)audioBuffer[i]);
+        temporalMoment += i * absAmp;
+        totalAbsAmp += absAmp;
+    }
+    if (totalAbsAmp > 0.0001f) {
+        metrics.temporal_centroid = (temporalMoment / totalAbsAmp) * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    }
+    
+    // Głośność psychoakustyczna (uproszczony model Zwicker'a)
+    // Uproszczenie: głośność zależy od RMS i rozkładu częstotliwościowego
+    float loudnessFactor = 1.0f;
+    if (metrics.spectral_centroid > 2000.0f) {
+        loudnessFactor = 1.2f;  // Wyższe częstotliwości są głośniejsze perceptualnie
+    } else if (metrics.spectral_centroid < 200.0f) {
+        loudnessFactor = 0.8f;  // Niskie częstotliwości cichsze
+    }
+    metrics.loudness_zwicker = metrics.rms_amplitude * loudnessFactor * 10.0f;  // [sones], przeskalowane
+    
+    // === NOWE WSKAŹNIKI KLASYFIKACJI ===
+    
+    // Efektywność zbierania nektaru (foraging efficiency)
+    // Na podstawie aktywności w paśmie pszczół i regularności sygnału
+    float activityScore = metrics.bee_activity_index / 100.0f;
+    float regularityScore = metrics.autocorrelation_peak;
+    float lowStressBonus = (1.0f - metrics.stress_indicator) * 0.3f;
+    metrics.foraging_efficiency = constrain((activityScore * 0.5f + regularityScore * 0.2f + lowStressBonus) * 100.0f, 0.0f, 100.0f);
+    
+    // Spójność kolonii (colony coherence)
+    // Na podstawie synchronizacji sygnałów (niski shimmer/jitter = wysoka spójność)
+    float shimmerScore = 1.0f - constrain(metrics.shimmer / 20.0f, 0.0f, 1.0f);
+    float jitterScore = 1.0f - constrain(metrics.jitter / 20.0f, 0.0f, 1.0f);
+    float spectralStability = 1.0f - metrics.spectral_entropy;  // Niska entropia = stabilne widmo
+    metrics.colony_coherence = constrain((shimmerScore * 0.4f + jitterScore * 0.4f + spectralStability * 0.2f), 0.0f, 1.0f);
+}
+
+// Klasyfikacja zdarzeń akustycznych
+void classifyAudioEvent(AudioEvent& event, const AudioMetrics& metrics) {
+    event.timestamp = millis();
+    event.confidence = 0.0f;
+    event.type = AudioEvent::EVENT_NONE;
+    event.impact = AudioEvent::IMPACT_NEUTRAL;
+    strcpy(event.description, "Brak zdarzenia");
+    
+    // Sprawdzenie różnych warunków zdarzeń
+    
+    // 1. Wykrywanie rojenia (aktywne)
+    if (metrics.swarm_probability > 0.7f && metrics.bee_activity_index > 60.0f) {
+        event.type = AudioEvent::EVENT_SWARM_ACTIVE;
+        event.impact = AudioEvent::IMPACT_CRITICAL;
+        event.confidence = metrics.swarm_probability;
+        strcpy(event.description, "Aktywne rojenie wykryte!");
+        return;
+    }
+    
+    // 2. Przygotowania do rojenia
+    if (metrics.swarm_probability > 0.5f && metrics.power_in_swarm_band > -35.0f) {
+        event.type = AudioEvent::EVENT_SWARM_PREPARATION;
+        event.impact = AudioEvent::IMPACT_NEGATIVE;
+        event.confidence = metrics.swarm_probability;
+        strcpy(event.description, "Przygotowania do rojenia");
+        return;
+    }
+    
+    // 3. Piszczenie królowej
+    if (metrics.dominant_frequency >= QUEEN_PIP_FREQ_MIN && 
+        metrics.dominant_frequency <= QUEEN_PIP_FREQ_MAX &&
+        metrics.tonal_strength > 0.6f) {
+        event.type = AudioEvent::EVENT_QUEEN_PIPING;
+        event.impact = AudioEvent::IMPACT_POSITIVE;
+        event.confidence = metrics.tonal_strength;
+        strcpy(event.description, "Piszczenie królowej wykryte");
+        return;
+    }
+    
+    // 4. Zwiększona aktywność
+    if (metrics.bee_activity_index > 75.0f && metrics.stress_indicator < 0.4f) {
+        event.type = AudioEvent::EVENT_INCREASED_ACTIVITY;
+        event.impact = AudioEvent::IMPACT_POSITIVE;
+        event.confidence = (metrics.bee_activity_index - 75.0f) / 25.0f;
+        strcpy(event.description, "Zwiększona aktywność pszczół - dobry pożytek");
+        return;
+    }
+    
+    // 5. Niska aktywność
+    if (metrics.bee_activity_index < 20.0f) {
+        event.type = AudioEvent::EVENT_LOW_ACTIVITY;
+        event.impact = AudioEvent::IMPACT_NEGATIVE;
+        event.confidence = (20.0f - metrics.bee_activity_index) / 20.0f;
+        strcpy(event.description, "Niska aktywność pszczół");
+        return;
+    }
+    
+    // 6. Sygnały distress (wysokie częstotliwości, wysoki stres)
+    if (metrics.stress_indicator > 0.7f && metrics.power_high_freq > -40.0f) {
+        event.type = AudioEvent::EVENT_DISTRESS;
+        event.impact = AudioEvent::IMPACT_CRITICAL;
+        event.confidence = metrics.stress_indicator;
+        strcpy(event.description, "Sygnały distress - możliwe zagrożenie");
+        return;
+    }
+    
+    // 7. Zagrożenie drapieżnikiem (nagłe zmiany, specyficzne wzorce)
+    if (metrics.spectral_contrast > 0.8f && metrics.zero_crossing_rate > 300.0f) {
+        event.type = AudioEvent::EVENT_PREDATOR_THREAT;
+        event.impact = AudioEvent::IMPACT_CRITICAL;
+        event.confidence = metrics.spectral_contrast;
+        strcpy(event.description, "Możliwe zagrożenie drapieżnikiem");
+        return;
+    }
+    
+    // Domyślnie: normalna aktywność
+    if (metrics.bee_activity_index >= 20.0f && metrics.bee_activity_index <= 75.0f) {
+        event.type = AudioEvent::EVENT_NORMAL_ACTIVITY;
+        event.impact = AudioEvent::IMPACT_POSITIVE;
+        event.confidence = 1.0f - abs(50.0f - metrics.bee_activity_index) / 50.0f;
+        strcpy(event.description, "Normalna praca pszczół");
+    }
+}
+
+// Aktualizacja historii danych audio
+void updateAudioHistory(const AudioMetrics& metrics) {
+    audioHistory[audioHistoryIndex].timestamp = millis();
+    audioHistory[audioHistoryIndex].rms_value = metrics.rms_amplitude;
+    audioHistory[audioHistoryIndex].dominant_freq = metrics.dominant_frequency;
+    audioHistory[audioHistoryIndex].bee_activity = metrics.bee_activity_index;
+    audioHistory[audioHistoryIndex].swarm_prob = metrics.swarm_probability;
+    
+    audioHistoryIndex = (audioHistoryIndex + 1) % AUDIO_HISTORY_SIZE;
+    
+    if (audioHistoryCount < AUDIO_HISTORY_SIZE) {
+        audioHistoryCount++;
+    }
+}
+
+// Sprawdzenie czy zdarzenie ma pozytywny wpływ na pożytek
+bool isPositiveAudioChange(const AudioEvent& event) {
+    return (event.impact == AudioEvent::IMPACT_POSITIVE);
+}
+
+// Konwersja typu zdarzenia na string
+const char* audioEventTypeToString(AudioEvent::EventType type) {
+    switch(type) {
+        case AudioEvent::EVENT_NONE: return "BRAK_ZDARZENIA";
+        case AudioEvent::EVENT_NORMAL_ACTIVITY: return "NORMALNA_AKTYWNOSC";
+        case AudioEvent::EVENT_INCREASED_ACTIVITY: return "ZWIEKSZONA_AKTYWNOSC";
+        case AudioEvent::EVENT_SWARM_PREPARATION: return "PRZYGOTOWANIA_DO_ROJENIA";
+        case AudioEvent::EVENT_SWARM_ACTIVE: return "AKTYWNE_ROJENIE";
+        case AudioEvent::EVENT_QUEEN_PIPING: return "PISZCZENIE_KROLOWEJ";
+        case AudioEvent::EVENT_PREDATOR_THREAT: return "ZAGROZENIE_DRAPIEZNIKIEM";
+        case AudioEvent::EVENT_DISTRESS: return "SYGNALY_DISTRESS";
+        case AudioEvent::EVENT_LOW_ACTIVITY: return "NISKA_AKTYWNOSC";
+        default: return "NIEZNANE";
+    }
+}
+
+// Konwersja wpływu zdarzenia na string
+const char* audioEventImpactToString(AudioEvent::EventImpact impact) {
+    switch(impact) {
+        case AudioEvent::IMPACT_NEUTRAL: return "NEUTRALNY";
+        case AudioEvent::IMPACT_POSITIVE: return "POZYTYWNY";
+        case AudioEvent::IMPACT_NEGATIVE: return "NEGATYWNY";
+        case AudioEvent::IMPACT_CRITICAL: return "KRYTYCZNY";
+        default: return "NIEZNANY";
+    }
 }
 
 // ============================================================================
@@ -1142,7 +2075,58 @@ void loop() {
     co2_eq = sgp.CO2eq;
     voc_idx = sgp.VOCindex;
     
-    // Audio RMS
+    // Audio - profesjonalna analiza z FFT (co 5 sekund)
+    static unsigned long lastAudioProcess = 0;
+    if (now - lastAudioProcess > 5000) {
+        lastAudioProcess = now;
+        processAudioSignal();
+        
+        // Debug output dla moduu0142u audio - rozszerzony o nowe parametry
+        Serial.printf("[AUDIO] RMS:%.3f DomFreq:%.1fHz BeeAct:%.1f%% SwarmProb:%.2f Health:%.1f%%\n",
+                      currentAudioMetrics.rms_amplitude,
+                      currentAudioMetrics.dominant_frequency,
+                      currentAudioMetrics.bee_activity_index,
+                      currentAudioMetrics.swarm_probability,
+                      currentAudioMetrics.hive_health_audio);
+        
+        // Dodatkowe nowe parametry audio
+        Serial.printf("[AUDIO_NEW] CrestFactor:%.2f Formant1:%.1fHz F0:%.1fHz PitchStr:%.2f Inharm:%.2f\n",
+                      currentAudioMetrics.crest_factor,
+                      currentAudioMetrics.formant_freq_1,
+                      currentAudioMetrics.fundamental_frequency,
+                      currentAudioMetrics.pitch_strength,
+                      currentAudioMetrics.inharmonicity);
+        
+        Serial.printf("[AUDIO_NEW2] Shimmer:%.1f%% Jitter:%.1f%% NHR:%.2f HNR:%.2f AutoCorr:%.2f\n",
+                      currentAudioMetrics.shimmer,
+                      currentAudioMetrics.jitter,
+                      currentAudioMetrics.noise_to_harmonic_ratio,
+                      currentAudioMetrics.harmonic_to_noise_ratio,
+                      currentAudioMetrics.autocorrelation_peak);
+        
+        Serial.printf("[AUDIO_ENV] Attack:%.1fms Decay:%.1fms Sustain:%.2f TempCent:%.1fms Loudness:%.2f\n",
+                      currentAudioMetrics.attack_time,
+                      currentAudioMetrics.decay_time,
+                      currentAudioMetrics.sustain_level,
+                      currentAudioMetrics.temporal_centroid,
+                      currentAudioMetrics.loudness_zwicker);
+        
+        Serial.printf("[AUDIO_CLASS] ForagingEff:%.1f%% ColonyCoh:%.2f SpectEnt:%.3f Tonality:%.2f\n",
+                      currentAudioMetrics.foraging_efficiency,
+                      currentAudioMetrics.colony_coherence,
+                      currentAudioMetrics.spectral_entropy,
+                      currentAudioMetrics.tonal_strength);
+        
+        // Informacja o zdarzeniach audio
+        if(lastAudioEvent.type != AudioEvent::EVENT_NONE) {
+            Serial.printf("[AUDIO_STATUS_ZMIANY] Typ:%s Wplyw:%s Pozyczek_ulu:%s\n",
+                          audioEventTypeToString(lastAudioEvent.type),
+                          audioEventImpactToString(lastAudioEvent.impact),
+                          isPositiveAudioChange(lastAudioEvent) ? "POZYTYWNY" : "NEGATYWNY/NEUTRALNY");
+        }
+    }
+    
+    // Audio RMS (prosta wersja - zachowana dla kompatybilnou015bci)
     audio_rms = calculateAudioRMS();
     
     // Wibracje (Piezo)
