@@ -1,1 +1,60 @@
-Nothing to output - the file changes contain only source/config files (.md files) with no build artifacts, dependencies, or temp files that need to be ignored.
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.hex
+*.bin
+*.elf
+*.map
+*.lst
+*.sym
+
+# Dependencies
+.pio/
+.platformio/
+lib/
+.Python
+venv/
+.venv/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.bak
+*.~
+*~
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+build/
+dist/
+output/
+release/
+debug/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+.eggs/
+```

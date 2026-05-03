@@ -4039,7 +4039,7 @@ void loop() {
     };
     
     // STRONA GŁÓWNA - HUMAN READABLE GUI
-    if(request.indexOf("/") == 0 && request.indexOf(".json") < 0 && 
+    if(request.indexOf("GET / ") >= 0 && request.indexOf(".json") < 0 && 
        request.indexOf("/status") < 0 && request.indexOf("/metrics") < 0 &&
        request.indexOf("/events") < 0 && request.indexOf("/anomalies") < 0 &&
        request.indexOf("/heater") < 0 && request.indexOf("/fan") < 0 && 
@@ -4113,7 +4113,8 @@ void loop() {
     else if(request.indexOf("/radar/anomalies") > 0) {
       sendHeader("application/json");
       client.print("{\"last_anomaly\":{\"type\":\""); client.print(anomalyTypeToString(lastAnomaly.type));
-      client.print("\",\"pozytek\":\""); client.print(isPositiveChange(lastAnomaly)?"POZYTYWNY":"NEGATYWNY");
+      client.print("\",\"pozytek_status\":\""); 
+      client.print(isPositiveChange(lastAnomaly) ? "POZYTYWNY" : (lastAnomaly.type == AnomalyEvent::NONE ? "NORMALNY" : "NEGATYWNY"));
       client.println("\"}}");
     }
     
