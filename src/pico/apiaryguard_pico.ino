@@ -91,6 +91,21 @@
  * - Detekcja zdarzeń: przepływ nektaru, rojenie, niski zapas, atak drapieżnika
  * - Klasyfikacja wpływu zdarzeń na pożytek ula (pozytywny/negatywny/krytyczny)
  * - API HTTP: /hx711/status, /hx711/metrics, /hx711/events, /hx711/forecast
+ * 
+ * MODUŁ PROFESJONALNEJ ANALIZY JAKOŚCI POWIETRZA (SGP41):
+ * - Bufor cyrkularny 144 punktów (24 godziny przy odczycie co 10 minut)
+ * - Obliczanie 24+ parametrów jakości powietrza w ulu:
+ *   * Podstawowe: CO2_eq, VOC_index, NOx_equivalent
+ *   * Statystyczne: mean/std/min/max/range (CO2, VOC)
+ *   * Trendy: slope_1h/slope_4h/slope_24h, trend_direction, trend_strength
+ *   * Indeksy jakości: IAQ_index (Indoor Air Quality), air_quality_level
+ *   * Zdrowie ula: ventilation_need, stress_from_air, hive_comfort_index
+ *   * Zagrożenia: poor_ventilation_alert, contamination_risk, mold_risk
+ *   * Temporalne: variability_index, stability_score, change_rate
+ *   * Korelacje: temp_humidity_correlation, comfort_zone_percent
+ *   * Progi: co2_warning_level, voc_alert_level, combined_risk_score
+ * - Detekcja zdarzeń: słaba wentylacja, zanieczyszczenie, pleśń, stres kolonii
+ * - API HTTP: /airquality/status, /airquality/metrics, /airquality/events
  * ---------------------------------------------------------
  */
 
