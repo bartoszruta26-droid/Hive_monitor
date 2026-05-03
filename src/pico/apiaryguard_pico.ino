@@ -373,7 +373,7 @@ struct HX711DataPoint {
     uint8_t quality_score;    // Jakość pomiaru (0-100)
 };
 
-// Struktura przechowująca metryki wagi - 30+ parametrów
+// Struktura przechowująca metryki wagi - 60+ parametrów
 struct HX711Metrics {
     // === PODSTAWOWE PARAMETRY STATYSTYCZNE ===
     float mean_weight;          // Średnia waga [kg]
@@ -382,74 +382,101 @@ struct HX711Metrics {
     float max_weight;           // Maksymalna waga [kg]
     float range_weight;         // Zakres zmian wagi (max-min) [kg]
     float median_weight;        // Mediana wagi [kg]
-    
-    // Wariancja i współczynniki zmienności
+
+    // Wariancja i współczynniki zmienności - ROZSZERZONE
     float weight_variance;      // Wariancja wagi [kg²]
     float weight_cv;            // Współczynnik zmienności (CV = std/mean)
     float weight_iqr;           // Rozstęp międzykwartylowy [kg]
-    
-    // === PARAMETRY TEMPORALNE - SZYBKOŚCI ZMIAN ===
+    float weight_skewness;      // Współczynnik skośności rozkładu
+    float weight_kurtosis;      // Współczynnik kurtozy (spłaszczenia)
+    float weight_gini;          // Współczynnik Giniego (nierównomierność)
+
+    // === PARAMETRY TEMPORALNE - SZYBKOŚCI ZMIAN - ROZSZERZONE ===
     float current_rate;         // Aktualna szybkość zmiany [kg/h]
     float mean_rate;            // Średnia szybkość zmiany [kg/h]
     float max_rate_positive;    // Maksymalny przyrost [kg/h]
     float max_rate_negative;    // Maksymalny ubytek [kg/h]
     float acceleration;         // Przyspieszenie zmiany wagi [kg/h²]
-    
-    // === PARAMETRY KIERUNKU TRENDU ===
+    float jerk;                 // Pochodna przyspieszenia [kg/h³]
+    float rate_variance;        // Wariancja szybkości zmian
+    float rate_entropy;         // Entropia szybkości zmian
+
+    // === PARAMETRY KIERUNKU TRENDU - ROZSZERZONE ===
     float trend_slope_1h;       // Nachylenie trendu 1h [kg/h]
     float trend_slope_4h;       // Nachylenie trendu 4h [kg/h]
     float trend_slope_24h;      // Nachylenie trendu 24h [kg/h]
     float trend_correlation;    // Współczynnik korelacji trendu (-1 do 1)
     float trend_direction;      // Kierunek: -1 (spadek), 0 (stabilny), 1 (wzrost)
-    
-    // === PARAMETRY POŻYTKU I ZBIORÓW ===
+    float trend_strength;       // Siła trendu (0-1)
+    float trend_persistence;    // Persystencja trendu (czy utrzymuje się)
+    float trend_change_points;  // Liczba punktów zwrotnych trendu
+
+    // === PARAMETRY POŻYTKU I ZBIORÓW - ROZSZERZONE ===
     float nectar_inflow_rate;   // Przepływ nektaru [kg/h]
     float nectar_accumulation;  // Skumulowany nektar [kg]
     float foraging_efficiency;  // Efektywność zbierania (0-100%)
     float honey_production_idx; // Indeks produkcji miodu (0-100%)
     float bloom_intensity;      // Intensywność kwitnienia (0-100%)
     float nectar_quality_est;   // Szacowana jakość nektaru (0-100%)
-    
-    // === PARAMETRY KONSUMPCJI I ZUŻYCIA ===
+    float nectar_flow_duration; // Czas trwania przepływu [h]
+    float foraging_window_start;// Godzina rozpoczęcia wylotów
+    float foraging_window_end;  // Godzina zakończenia wylotów
+
+    // === PARAMETRY KONSUMPCJI I ZUŻYCIA - ROZSZERZONE ===
     float consumption_rate;     // Zużycie zapasów [kg/h]
     float daily_consumption;    // Dzienne zużycie [kg/dzień]
     float food_reserve_days;    // Zapas żywności na dni
     float winter_readiness;     // Gotowość do zimowli (0-100%)
     float starvation_risk;      // Ryzyko głodu (0-100%)
-    
-    // === PARAMETRY CYKLICZNOŚCI I WZORCÓW ===
+    float metabolic_rate;       // Szacowane tempo metabolizmu [kg/h]
+    float consumption_regularity;// Regularność zużycia (0-1)
+
+    // === PARAMETRY CYKLICZNOŚCI I WZORCÓW - ROZSZERZONE ===
     float daily_amplitude;      // Amplituda dobowa [kg]
     float daily_phase;          // Faza dobowa [godziny]
     float circadian_strength;   // Siła rytmu dobowego (0-1)
     float weekly_pattern_match; // Dopasowanie wzorca tygodniowego (0-1)
     float seasonal_trend;       // Trend sezonowy (-1 do 1)
-    
-    // === PARAMETRY JAKOŚCI SYGNAŁU ===
+    float harmonic_content;     // Zawartość harmonicznych w sygnale
+    float cycle_regularity;     // Regularność cykli (0-1)
+    float phase_coherence;      // Koherencja fazowa (0-1)
+
+    // === PARAMETRY JAKOŚCI SYGNAŁU - ROZSZERZONE ===
     float signal_quality;       // Jakość sygnału wagi (0-100%)
     float noise_level;          // Poziom szumu [kg]
     float drift_rate;           // Dryft czujnika [kg/h]
     float stability_index;      // Indeks stabilności (0-100%)
     float measurement_confidence;// Pewność pomiaru (0-1)
-    
-    // === PARAMETRY ANOMALII I ZDARZEŃ ===
+    float snr;                  // Stosunek sygnału do szumu [dB]
+    float thd;                  // Total Harmonic Distortion (%)
+    float baseline_stability;   // Stabilność linii bazowej (0-1)
+
+    // === PARAMETRY ANOMALII I ZDARZEŃ - ROZSZERZONE ===
     float anomaly_score;        // Wynik anomalii (0-1)
     float sudden_change_mag;    // Wielkość nagłej zmiany [kg]
     float oscillation_freq;     // Częstotliwość oscylacji [cykle/dzień]
     float oscillation_damping;  // Tłumienie oscylacji (0-1)
-    
-    // === WSKAŹNIKI ZDROWIA KOLONII ===
+    float outlier_ratio;        // Stosunek wartości odstających (%)
+    float change_point_prob;    // Prawdopodobieństwo punktu zwrotnego
+    float volatility_index;     // Indeks zmienności (0-100%)
+
+    // === WSKAŹNIKI ZDROWIA KOLONII - ROZSZERZONE ===
     float colony_growth_rate;   // Tempo wzrostu kolonii [%/dzień]
     float brood_activity_idx;   // Indeks aktywności czerwiu (0-100%)
-    float population_estimate;  // Szacowana populacja [tysięce pszczół]
+    float population_estimate;  // Szacowana populacja [tysiące pszczół]
     float hive_health_weight;   // Indeks zdrowia z wagi (0-100%)
     float productivity_score;   // Ogólny wynik produktywności (0-100%)
-    
-    // === PARAMETRY PROGNOZY ===
+    float stress_indicator;     // Indikator stresu kolonii (0-1)
+    float vitality_index;       // Indeks vitalności (0-100%)
+    float resilience_score;     // Zdolność do regeneracji (0-1)
+
+    // === PARAMETRY PROGNOZY - ROZSZERZONE ===
     float predicted_weight_24h; // Prognoza wagi za 24h [kg]
     float forecast_confidence;  // Pewność prognozy (0-1)
     float expected_honey_yield; // Oczekiwany zbiór miodu [kg]
+    float prediction_interval;  // Przedział ufności prognozy [kg]
+    float forecast_trend;       // Kierunek prognozy (-1,0,1)
 };
-
 // Bufory dla przetwarzania danych HX711
 HX711DataPoint hx711Buffer[HX711_BUFFER_SIZE];
 uint16_t hx711BufferIndex = 0;
@@ -2109,6 +2136,215 @@ void calculateHX711Metrics(HX711Metrics& metrics) {
     // Oczekiwany zbiór miodu
     float surplusWeight = max(0.0f, metrics.mean_weight - 10.0f);  // Nadmiar ponad 10kg
     metrics.expected_honey_yield = surplusWeight * 0.8f;  // 80% nadmiaru do zbioru
+
+    // === NOWE PARAMETRY - ROZSZERZENIA ===
+    
+    // Obliczanie skośności (skewness)
+    if (validCount >= 3) {
+        float sumCubed = 0.0f;
+        for (uint16_t i = 0; i < validCount; i++) {
+            float diff = (weights[i] - metrics.mean_weight) / max(0.001f, metrics.std_weight);
+            sumCubed += diff * diff * diff;
+        }
+        metrics.weight_skewness = sumCubed / validCount;
+    } else {
+        metrics.weight_skewness = 0.0f;
+    }
+    
+    // Obliczanie kurtozy (kurtosis)
+    if (validCount >= 4) {
+        float sumQuartic = 0.0f;
+        for (uint16_t i = 0; i < validCount; i++) {
+            float diff = (weights[i] - metrics.mean_weight) / max(0.001f, metrics.std_weight);
+            sumQuartic += diff * diff * diff * diff;
+        }
+        metrics.weight_kurtosis = sumQuartic / validCount - 3.0f;  // Excess kurtosis
+    } else {
+        metrics.weight_kurtosis = 0.0f;
+    }
+    
+    // Obliczanie współczynnika Giniego (uproszczone)
+    if (validCount >= 2) {
+        float sorted[HX711_BUFFER_SIZE];
+        for (uint16_t i = 0; i < validCount; i++) sorted[i] = weights[i];
+        // Proste sortowanie
+        for (uint16_t i = 0; i < validCount - 1; i++) {
+            for (uint16_t j = 0; j < validCount - i - 1; j++) {
+                if (sorted[j] > sorted[j + 1]) {
+                    float temp = sorted[j];
+                    sorted[j] = sorted[j + 1];
+                    sorted[j + 1] = temp;
+                }
+            }
+        }
+        float sumAbsDiff = 0.0f;
+        for (uint16_t i = 0; i < validCount; i++) {
+            for (uint16_t j = 0; j < validCount; j++) {
+                sumAbsDiff += abs(sorted[i] - sorted[j]);
+            }
+        }
+        metrics.weight_gini = sumAbsDiff / (2.0f * validCount * validCount * max(0.001f, metrics.mean_weight));
+    } else {
+        metrics.weight_gini = 0.0f;
+    }
+    
+    // Jerk (pochodna przyspieszenia)
+    if (validCount >= 3) {
+        float prevAccel = (rates[1] - rates[2]) * 12.0f;
+        metrics.jerk = (metrics.acceleration - prevAccel) * 12.0f;  // kg/h³
+    } else {
+        metrics.jerk = 0.0f;
+    }
+    
+    // Wariancja szybkości zmian
+    metrics.rate_variance = calculateStdDev(rates, validCount, metrics.mean_rate);
+    metrics.rate_variance = metrics.rate_variance * metrics.rate_variance;
+    
+    // Entropia szybkości zmian (uproszczona)
+    float rateHist[10] = {0};
+    float rateMin = metrics.max_rate_negative;
+    float rateRange = metrics.max_rate_positive - metrics.max_rate_negative;
+    if (rateRange > 0.001f) {
+        for (uint16_t i = 0; i < validCount; i++) {
+            int bin = (int)((rates[i] - rateMin) / rateRange * 9.0f);
+            bin = constrain(bin, 0, 9);
+            rateHist[bin]++;
+        }
+        float entropy = 0.0f;
+        for (int b = 0; b < 10; b++) {
+            if (rateHist[b] > 0) {
+                float p = rateHist[b] / validCount;
+                entropy -= p * logf(p + 1e-10f);
+            }
+        }
+        metrics.rate_entropy = entropy / logf(10.0f);  // Normalizacja do 0-1
+    } else {
+        metrics.rate_entropy = 0.0f;
+    }
+    
+    // Siła trendu
+    metrics.trend_strength = abs(metrics.trend_correlation);
+    
+    // Persystencja trendu (czy kierunek się utrzymuje)
+    if (validCount >= 6) {
+        float slopeOld, interceptOld;
+        float timesOld[HX711_BUFFER_SIZE];
+        for (uint16_t i = 0; i < validCount/2; i++) timesOld[i] = times[i + validCount/2];
+        calculateLinearRegression(timesOld, weights + validCount/2, validCount/2, slopeOld, interceptOld);
+        float oldDirection = (slopeOld > 0.01f) ? 1.0f : (slopeOld < -0.01f) ? -1.0f : 0.0f;
+        metrics.trend_persistence = (oldDirection == metrics.trend_direction) ? 1.0f : 0.0f;
+    } else {
+        metrics.trend_persistence = 0.5f;
+    }
+    
+    // Liczba punktów zwrotnych trendu
+    metrics.trend_change_points = 0;
+    for (uint16_t i = 1; i < validCount - 1; i++) {
+        if ((rates[i] > 0 && rates[i-1] < 0 && rates[i+1] < 0) ||
+            (rates[i] < 0 && rates[i-1] > 0 && rates[i+1] > 0)) {
+            metrics.trend_change_points++;
+        }
+    }
+    
+    // Czas trwania przepływu nektaru
+    float flowHours = 0.0f;
+    for (uint16_t i = 0; i < validCount; i++) {
+        if (rates[i] > HX711_NECTAR_FLOW_MIN) flowHours += 5.0f / 60.0f;
+    }
+    metrics.nectar_flow_duration = flowHours;
+    
+    // Okno wylotów (szacowane)
+    float firstFlight = 24.0f, lastFlight = 0.0f;
+    for (uint16_t i = 0; i < validCount; i++) {
+        if (rates[i] > HX711_NECTAR_FLOW_MIN) {
+            float hour = fmodf((float)(millis() - i * 300000) / 3600000.0f, 24.0f);
+            if (hour < firstFlight) firstFlight = hour;
+            if (hour > lastFlight) lastFlight = hour;
+        }
+    }
+    metrics.foraging_window_start = (firstFlight < 24.0f) ? firstFlight : 6.0f;
+    metrics.foraging_window_end = (lastFlight > 0.0f) ? lastFlight : 18.0f;
+    
+    // Metabolic rate (szacowany z konsumpcji)
+    metrics.metabolic_rate = metrics.consumption_rate * 1.2f;  // Współczynnik konwersji
+    
+    // Regularność zużycia
+    if (abs(metrics.mean_rate) > 0.001f) {
+        metrics.consumption_regularity = 1.0f - min(1.0f, metrics.rate_variance / abs(metrics.mean_rate));
+    } else {
+        metrics.consumption_regularity = 0.5f;
+    }
+    
+    // Zawartość harmonicznych (FFT uproszczone)
+    metrics.harmonic_content = min(1.0f, metrics.std_weight / max(0.001f, metrics.mean_weight));
+    
+    // Regularność cykli
+    metrics.cycle_regularity = metrics.circadian_strength * (1.0f - metrics.anomaly_score);
+    
+    // Koherencja fazowa
+    metrics.phase_coherence = metrics.cycle_regularity * metrics.measurement_confidence;
+    
+    // SNR (stosunek sygnału do szumu)
+    float signalPower = metrics.mean_weight * metrics.mean_weight;
+    float noisePower = metrics.noise_level * metrics.noise_level;
+    metrics.snr = 10.0f * log10f(max(1e-10f, signalPower / noisePower));
+    
+    // THD (Total Harmonic Distortion - uproszczone)
+    metrics.thd = min(100.0f, metrics.harmonic_content * 50.0f);
+    
+    // Stabilność linii bazowej
+    if (validCount >= 10) {
+        float baselineStd = calculateStdDev(weights + validCount - 10, 10, 
+                                            calculateMovingAverage(weights, validCount, 10));
+        metrics.baseline_stability = 1.0f - min(1.0f, baselineStd / max(0.001f, metrics.mean_weight));
+    } else {
+        metrics.baseline_stability = metrics.measurement_confidence;
+    }
+    
+    // Outlier ratio
+    uint16_t outlierCount = 0;
+    float threshold = 2.5f * metrics.std_weight;
+    for (uint16_t i = 0; i < validCount; i++) {
+        if (abs(weights[i] - metrics.mean_weight) > threshold) outlierCount++;
+    }
+    metrics.outlier_ratio = (validCount > 0) ? (float)outlierCount / validCount * 100.0f : 0.0f;
+    
+    // Prawdopodobieństwo punktu zwrotnego
+    metrics.change_point_prob = min(1.0f, metrics.trend_change_points / 5.0f + metrics.anomaly_score * 0.5f);
+    
+    // Indeks zmienności (volatility)
+    metrics.volatility_index = min(100.0f, metrics.weight_cv * 200.0f + metrics.anomaly_score * 50.0f);
+    
+    // Indikator stresu
+    float stressFactors = metrics.anomaly_score * 0.3f + 
+                          metrics.starvation_risk / 100.0f * 0.3f +
+                          (1.0f - metrics.stability_index / 100.0f) * 0.4f;
+    metrics.stress_indicator = min(1.0f, stressFactors);
+    
+    // Indeks vitalności
+    float vitalityFactors = metrics.foraging_efficiency * 0.3f +
+                           (100.0f - metrics.starvation_risk) / 100.0f * 0.3f +
+                           metrics.stability_index / 100.0f * 0.2f +
+                           metrics.circadian_strength * 0.2f;
+    metrics.vitality_index = vitalityFactors * 100.0f;
+    
+    // Zdolność do regeneracji (resilience)
+    float resilienceFactors = (1.0f - metrics.anomaly_score) * 0.4f +
+                             metrics.stability_index / 100.0f * 0.3f +
+                             metrics.vitality_index / 100.0f * 0.3f;
+    metrics.resilience_score = min(1.0f, resilienceFactors);
+    
+    // Przedział ufności prognozy
+    metrics.prediction_interval = metrics.std_weight * 2.0f * (1.0f - metrics.forecast_confidence);
+    
+    // Kierunek prognozy
+    if (metrics.predicted_weight_24h > metrics.mean_weight + 0.1f) {
+        metrics.forecast_trend = 1.0f;
+    } else if (metrics.predicted_weight_24h < metrics.mean_weight - 0.1f) {
+        metrics.forecast_trend = -1.0f;
+    } else {
+        metrics.forecast_trend = 0.0f;
+    }
 }
 
 // Obliczanie trendu z okna danych

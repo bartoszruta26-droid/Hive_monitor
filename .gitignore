@@ -3,25 +3,33 @@
 *.o
 *.obj
 *.hex
-*.elf
 *.bin
-*.out
+*.elf
+*.map
+*.lst
+*.sym
+*.lss
 
 # Dependencies
 .pio/
 .platformio/
 lib/
-src/lib/
+.Python
+venv/
+.venv/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+*.bak
+*.~
+*~
 
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
@@ -32,4 +40,6 @@ src/lib/
 # Build outputs
 build/
 dist/
+output/
+.release/
 ```
