@@ -1,1 +1,57 @@
-Nothing should be ignored since only a README.md file was modified and no build artifacts, dependencies, or temp files were detected in the changes.
+```
+# Documentation build artifacts (if any)
+docs/_build/
+docs/build/
+docs/site/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Dependencies
+venv/
+.venv/
+.env/
+node_modules/
+
+# Build directories
+build/
+dist/
+*.egg-info/
+
+# Coverage reports
+.coverage
+htmlcov/
+.coverage.*
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
