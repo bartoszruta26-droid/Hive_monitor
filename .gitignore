@@ -1,55 +1,38 @@
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
-*.class
-*.exe
-*.dll
-*.so
-*.a
-*.out
-
-# Dependencies
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
+# Arduino build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+*.sym
 
 # Build directories
-dist/
 build/
-target/
-.gradle/
+dist/
 
-# Python specific
-*.pyc
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-*.pyo
-*.pyd
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Editors
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+*.tmp
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Cache directories
+.cache/
+__pycache__/
+.pycache/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Compressed files
 *.zip
