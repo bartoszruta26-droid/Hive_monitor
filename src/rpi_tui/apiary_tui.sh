@@ -56,14 +56,43 @@ declare -a HIVE_CO2
 declare -a HIVE_VOC
 declare -a HIVE_MOTION
 declare -a HIVE_IAQ
+# Audio parametry
 declare -a HIVE_AUDIO_RMS
 declare -a HIVE_AUDIO_FREQ
 declare -a HIVE_SWARM_PROB
+declare -a HIVE_BEE_ACTIVITY
+declare -a HIVE_SPECTRAL_CENTROID
+declare -a HIVE_AUDIO_HEALTH
+# Radar parametry
 declare -a HIVE_RADAR_DIST
 declare -a HIVE_RADAR_ENERGY
 declare -a HIVE_RADAR_ACT
+declare -a HIVE_RADAR_HEALTH
+declare -a HIVE_RADAR_ANOMALY
+# HX711 parametry
 declare -a HIVE_WAG_RATE
 declare -a HIVE_WAG_TREND
+declare -a HIVE_HX_MEAN
+declare -a HIVE_NECTAR_INFLOW
+declare -a HIVE_COLONY_GROWTH
+declare -a HIVE_PRODUCTIVITY
+# Temp/Humidity parametry
+declare -a HIVE_HEAT_INDEX
+declare -a HIVE_COMFORT_INDEX
+declare -a HIVE_BROOD_STRESS
+# Air Quality parametry
+declare -a HIVE_IAQ_INDEX
+declare -a HIVE_VENTILATION_NEED
+# Piezo parametry
+declare -a HIVE_PIEZO_ACTIVITY
+declare -a HIVE_PREDATOR_SCORE
+# Barometric parametry
+declare -a HIVE_PRESSURE
+declare -a HIVE_WEATHER_TREND
+declare -a HIVE_FORAGING_COND
+# Light parametry
+declare -a HIVE_LUX
+declare -a HIVE_CIRCADIAN_SYNC
 
 # Inicjalizacja katalogów i plików
 init_system() {
