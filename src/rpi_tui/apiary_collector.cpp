@@ -765,37 +765,121 @@ public:
         Logger::getInstance().info( "Kolektor danych zatrzymany.");
     }
 
-    // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON lub CSV)
+    // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON) - OBSŁUGA WIELU ULl
     std::string getStatusJSON() {
         std::lock_guard<std::mutex> lock(data_mutex);
         std::stringstream json;
         json << "{";
+        json << "\"timestamp\":" << std::time(nullptr) << ",";
+        json << "\"hive_count\":" << hives_data.size() << ",";
+        json << "\"hives\":{";
+        
         bool first = true;
         for (const auto& pair : hives_data) {
             if (!first) json << ",";
             first = false;
+            
             const auto& d = pair.second;
-            json << "\"" << d.hive_id << "\":{"
-                 << "\"temp\":" << d.temperature << ","
-                 << "\"hum\":" << d.humidity << ","
-                 << "\"weight\":" << d.weight << ","
-                 << "\"bat\":" << d.battery_level << ","
-                 << "\"co2\":" << d.co2_eq << ","
-                 << "\"voc\":" << d.voc_idx << ","
-                 << "\"motion\":" << d.motion_detected << ","
-                 << "\"online\":" << (d.is_online ? "true" : "false") << ","
-                 << "\"audio_rms\":" << d.audio_rms << ","
-                 << "\"audio_freq\":" << d.audio_dominant_freq << ","
-                 << "\"swarm_prob\":" << d.audio_swarm_prob << ","
-                 << "\"radar_dist\":" << d.radar_distance << ","
-                 << "\"radar_energy\":" << d.radar_energy << ","
-                 << "\"radar_activity\":" << d.radar_activity << ","
-                 << "\"weight_rate\":" << d.weight_rate << ","
-                 << "\"weight_trend\":" << d.weight_trend << ","
-                 << "\"air_iaq\":" << d.air_iaq
-                 << "}";
+            json << "\"" << d.hive_id << "\":{";
+            
+            // Podstawowe parametry (9)
+            json << "\"temp\":" << d.temperature << ",";
+            json << "\"hum\":" << d.humidity << ",";
+            json << "\"weight\":" << d.weight << ",";
+            json << "\"bat\":" << d.battery_level << ",";
+            json << "\"co2\":" << d.co2_eq << ",";
+            json << "\"voc\":" << d.voc_idx << ",";
+            json << "\"motion\":" << d.motion_detected << ",";
+            json << "\"online\":" << (d.is_online ? "true" : "false") << ",";
+            json << "\"last_seen\":" << d.timestamp << ",";
+            
+            // Audio parametry (wybrane z 97+)
+            json << "\"audio\":{\"rms\":" << d.audio_rms << ",";
+            json << "\"freq\":" << d.audio_dominant_freq << ",";
+            json << "\"swarm_prob\":" << d.audio_swarm_prob << ",";
+            json << "\"bee_activity\":" << d.audio_bee_activity << ",";
+            json << "\"spectral_centroid\":" << d.audio_spectral_centroid << ",";
+            json << "\"power_bee_band\":" << d.audio_power_bee_band << ",";
+            json << "\"crest_factor\":" << d.audio_crest_factor << ",";
+            json << "\"spectral_entropy\":" << d.audio_spectral_entropy << ",";
+            json << "\"foraging_eff\":" << d.audio_foraging_eff << ",";
+            json << "\"hive_health\":" << d.audio_hive_health << ",";
+            json << "\"aci\":" << d.audio_aci << ",";
+            json << "\"bi\":" << d.audio_bi << ",";
+            json << "\"adi\":" << d.audio_adi << ",";
+            json << "\"nhr\":" << d.audio_nhr << ",";
+            json << "\"loudness\":" << d.audio_loudness << "},";
+            
+            // Radar MMWave parametry (wybrane z 27)
+            json << "\"radar\":{\"dist\":" << d.radar_distance << ",";
+            json << "\"energy\":" << d.radar_energy << ",";
+            json << "\"activity\":" << d.radar_activity << ",";
+            json << "\"signal_quality\":" << d.radar_signal_quality << ",";
+            json << "\"target_rate\":" << d.radar_target_rate << ",";
+            json << "\"entropy\":" << d.radar_entropy << ",";
+            json << "\"anomaly_score\":" << d.radar_anomaly_score << ",";
+            json << "\"hive_health\":" << d.radar_hive_health << ",";
+            json << "\"max_targets\":" << d.radar_max_targets << ",";
+            json << "\"motion_intensity\":" << d.radar_motion_intensity << "},";
+            
+            // HX711 Waga parametry (wybrane z 105+)
+            json << "\"hx711\":{\"mean\":" << d.hx711_mean << ",";
+            json << "\"std\":" << d.hx711_std << ",";
+            json << "\"slope_1h\":" << d.hx711_slope_1h << ",";
+            json << "\"slope_4h\":" << d.hx711_slope_4h << ",";
+            json << "\"slope_24h\":" << d.hx711_slope_24h << ",";
+            json << "\"nectar_inflow\":" << d.hx711_nectar_inflow << ",";
+            json << "\"consumption_rate\":" << d.hx711_consumption_rate << ",";
+            json << "\"colony_growth\":" << d.hx711_colony_growth << ",";
+            json << "\"productivity\":" << d.hx711_productivity << ",";
+            json << "\"predicted_24h\":" << d.hx711_predicted_24h << ",";
+            json << "\"forecast_conf\":" << d.hx711_forecast_conf << ",";
+            json << "\"winter_readiness\":" << d.hx711_winter_readiness << ",";
+            json << "\"starvation_risk\":" << d.hx711_starvation_risk << ",";
+            json << "\"anomaly_score\":" << d.hx711_anomaly_score << "},";
+            
+            // Temp/Humidity parametry (wybrane z 28)
+            json << "\"th\":{\"heat_index\":" << d.th_heat_index << ",";
+            json << "\"dew_point\":" << d.th_dew_point << ",";
+            json << "\"comfort_index\":" << d.th_comfort_index << ",";
+            json << "\"brood_stress\":" << d.th_brood_stress << ",";
+            json << "\"temp_stability\":" << d.th_temp_stability << ",";
+            json << "\"mold_risk\":" << d.th_mold_risk << ",";
+            json << "\"vpd\":" << d.th_vpd << "},";
+            
+            // Air Quality parametry (wybrane z 24)
+            json << "\"aq\":{\"co2_mean\":" << d.aq_co2_mean << ",";
+            json << "\"voc_mean\":" << d.aq_voc_mean << ",";
+            json << "\"iaq_index\":" << d.aq_iaq_index << ",";
+            json << "\"ventilation_need\":" << d.aq_ventilation_need << ",";
+            json << "\"contamination_risk\":" << d.aq_contamination_risk << ",";
+            json << "\"mold_risk\":" << d.aq_mold_risk << "},";
+            
+            // Piezo Vibration parametry (wybrane z 22)
+            json << "\"piezo\":{\"rms\":" << d.piezo_rms << ",";
+            json << "\"freq\":" << d.piezo_dominant_freq << ",";
+            json << "\"activity\":" << d.piezo_activity_idx << ",";
+            json << "\"bee_traffic\":" << d.piezo_bee_traffic << ",";
+            json << "\"predator_score\":" << d.piezo_predator_score << ",";
+            json << "\"intrusion_prob\":" << d.piezo_intrusion_prob << "},";
+            
+            // Barometric parametry (wybrane z 18)
+            json << "\"baro\":{\"pressure\":" << d.baro_pressure << ",";
+            json << "\"trend_1h\":" << d.baro_trend_1h << ",";
+            json << "\"weather_trend\":" << d.baro_weather_trend << ",";
+            json << "\"storm_prob\":" << d.baro_storm_prob << ",";
+            json << "\"foraging_cond\":" << d.baro_foraging_cond << "},";
+            
+            // Light parametry (wybrane z 17)
+            json << "\"light\":{\"lux\":" << d.light_lux << ",";
+            json << "\"daylight_hours\":" << d.light_daylight_hours << ",";
+            json << "\"circadian_sync\":" << d.light_circadian_sync << ",";
+            json << "\"foraging_idx\":" << d.light_foraging_idx << ",";
+            json << "\"uv\":" << d.light_uv << "}";
+            
+            json << "}";
         }
-        json << "}";
+        json << "}}";
         return json.str();
     }
     
@@ -847,11 +931,102 @@ int main(int argc, char* argv[]) {
     
     collector.start(sim_mode);
 
-    // Pętla główna demona (utrzymuje proces przy życiu)
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        // Tutaj można dodać wysyłkę danych do serwera online
+    // Serwer HTTP API JSON na porcie 8080
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        Logger::getInstance().error("Nie udało się utworzyć socketu HTTP: " + std::string(strerror(errno)));
+        return 1;
     }
 
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in http_addr;
+    memset(&http_addr, 0, sizeof(http_addr));
+    http_addr.sin_family = AF_INET;
+    http_addr.sin_addr.s_addr = INADDR_ANY;
+    http_addr.sin_port = htons(8080);
+
+    if (bind(server_fd, (struct sockaddr*)&http_addr, sizeof(http_addr)) < 0) {
+        Logger::getInstance().error("Błąd bindowania portu HTTP 8080: " + std::string(strerror(errno)));
+        close(server_fd);
+        return 1;
+    }
+
+    if (listen(server_fd, 10) < 0) {
+        Logger::getInstance().error("Błąd listen na porcie HTTP: " + std::string(strerror(errno)));
+        close(server_fd);
+        return 1;
+    }
+
+    Logger::getInstance().info("Serwer HTTP API JSON uruchomiony na porcie 8080");
+    Logger::getInstance().info("Endpointy: GET /api/status, GET /api/hives, GET /health");
+
+    fd_set readfds;
+    struct timeval tv;
+
+    // Główna pętla demona - obsługa HTTP API i danych z Pico
+    while (true) {
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);
+        
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        
+        int activity = select(server_fd + 1, &readfds, NULL, NULL, &tv);
+        
+        if (activity > 0 && FD_ISSET(server_fd, &readfds)) {
+            // Nowe połączenie HTTP
+            struct sockaddr_in client_addr;
+            socklen_t client_len = sizeof(client_addr);
+            int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+            
+            if (client_fd >= 0) {
+                char buffer[4096] = {0};
+                recv(client_fd, buffer, sizeof(buffer)-1, 0);
+                
+                std::string request(buffer);
+                std::string response;
+                std::string content_type = "application/json";
+                
+                // Parsowanie żądania HTTP
+                if (request.find("GET /api/status") != std::string::npos) {
+                    response = collector.getStatusJSON();
+                } else if (request.find("GET /api/hives") != std::string::npos) {
+                    response = collector.getStatusJSON();
+                } else if (request.find("GET /health") != std::string::npos) {
+                    response = "{\"status\":\"ok\",\"timestamp\":" + std::to_string(std::time(nullptr)) + "}";
+                } else if (request.find("GET /api/csv") != std::string::npos) {
+                    response = collector.getStatusCSV();
+                    content_type = "text/csv";
+                } else {
+                    response = "{\"error\":\"Unknown endpoint\",\"available\":[\"/api/status\",\"/api/hives\",\"/health\",\"/api/csv\"]}";
+                }
+                
+                // Nagłówki HTTP
+                std::stringstream http_response;
+                http_response << "HTTP/1.1 200 OK\r\n";
+                http_response << "Content-Type: " << content_type << "\r\n";
+                http_response << "Access-Control-Allow-Origin: *\r\n";
+                http_response << "Content-Length: " << response.length() << "\r\n";
+                http_response << "Connection: close\r\n\r\n";
+                http_response << response;
+                
+                send(client_fd, http_response.str().c_str(), http_response.str().length(), 0);
+                close(client_fd);
+                
+                Logger::getInstance().debug("HTTP: Obsłużono żądanie od " + std::string(inet_ntoa(client_addr.sin_addr)));
+            }
+        }
+        
+        // Co 5 sekund loguj status
+        static time_t last_log = 0;
+        if (std::time(nullptr) - last_log >= 5) {
+            last_log = std::time(nullptr);
+            // Można dodać okresowe logowanie statystyk
+        }
+    }
+
+    close(server_fd);
     return 0;
 }
