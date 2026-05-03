@@ -21,20 +21,125 @@
 #### 1. System Wagowy (HX711 + Strain Gauge)
 
 **Zasada Działania:**
-System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatstone'a, zamontowane pod podstawą ula. Sygnał analogiczny jest wzmacniany i konwertowany przez 24-bitowy ADC HX711.
+System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatstone'a, zamontowane pod podstawą ula. Sygnał analogiczny jest wzmacniany i konwertowany przez 24-bitowy ADC HX711 z rozdzielczością ±5g.
 
 **Algorytmy Przetwarzania:**
 - **Moving Average Filter**: Eliminacja szumu wysokoczęstotliwościowego
+- **EMA (Exponential Moving Average)**: Wygładzanie z większym naciskiem na najnowsze dane
 - **Temperature Compensation**: Korekta dryfu termicznego tensometrów
 - **Auto-Tare**: Automatyczne zerowanie przy instalacji
-- **Outlier Detection**: Odrzucanie anomaliowych odczytów (np. wiatr, ptaki)
+- **Outlier Detection**: Odrzucanie anomaliowych odczytów metodą Z-score (np. wiatr, ptaki)
+- **Linear Regression**: Analiza trendów w oknach czasowych (1h, 4h, 24h)
+
+**80 Parametrów HX711Metrics - Kompleksowa Analiza Danych:**
+
+**A. Podstawowe Parametry Statystyczne (6):**
+- `mean_weight` - Średnia waga [kg]
+- `std_weight` - Odchylenie standardowe wagi [kg]
+- `min_weight`, `max_weight` - Ekstrema wagi [kg]
+- `range_weight` - Zakres zmian (max-min) [kg]
+- `median_weight` - Mediana wagi [kg]
+
+**B. Zaawansowane Parametry Statystyczne (6):**
+- `weight_variance` - Wariancja wagi [kg²]
+- `weight_cv` - Współczynnik zmienności (CV = std/mean)
+- `weight_iqr` - Rozstęp międzykwartylowy [kg]
+- `weight_skewness` - Współczynnik skośności rozkładu
+- `weight_kurtosis` - Współczynnik kurtozy (nadmiarowej)
+- `weight_gini` - Współczynnik Giniego (nierównomierność)
+
+**C. Parametry Temporalne - Szybkości Zmian (8):**
+- `current_rate` - Aktualna szybkość zmiany [kg/h]
+- `mean_rate` - Średnia szybkość zmiany [kg/h]
+- `max_rate_positive` - Maksymalny przyrost [kg/h]
+- `max_rate_negative` - Maksymalny ubytek [kg/h]
+- `acceleration` - Przyspieszenie zmiany wagi [kg/h²]
+- `jerk` - Pochodna przyspieszenia (rate of change of acceleration) [kg/h³]
+- `rate_variance` - Wariancja szybkości zmian
+- `rate_entropy` - Entropia szybkości zmian (miara losowości)
+
+**D. Parametry Kierunku Trendu (9):**
+- `trend_slope_1h`, `trend_slope_4h`, `trend_slope_24h` - Nachylenia trendów [kg/h]
+- `trend_correlation` - Współczynnik korelacji Pearsona (-1 do 1)
+- `trend_direction` - Kierunek: -1 (spadek), 0 (stabilny), 1 (wzrost)
+- `trend_strength` - Siła trendu (0-1, od |correlation|)
+- `trend_persistence` - Persystencja trendu (czy utrzymuje się w czasie)
+- `trend_change_points` - Liczba punktów zwrotnych trendu
+
+**E. Parametry Pożytku i Zbiorów (10):**
+- `nectar_inflow_rate` - Przepływ nektaru [kg/h]
+- `nectar_accumulation` - Skumulowany nektar [kg]
+- `foraging_efficiency` - Efektywność zbierania (0-100%)
+- `honey_production_idx` - Indeks produkcji miodu (0-100%)
+- `bloom_intensity` - Intensywność kwitnienia (0-100%)
+- `nectar_quality_est` - Szacowana jakość nektaru (0-100%)
+- `nectar_flow_duration` - Czas trwania przepływu [h]
+- `foraging_window_start` - Godzina rozpoczęcia wylotów
+- `foraging_window_end` - Godzina zakończenia wylotów
+
+**F. Parametry Konsumpcji i Zużycia (7):**
+- `consumption_rate` - Zużycie zapasów [kg/h]
+- `daily_consumption` - Dzienne zużycie [kg/dzień]
+- `food_reserve_days` - Zapas żywności na dni
+- `winter_readiness` - Gotowość do zimowli (0-100%)
+- `starvation_risk` - Ryzyko głodu (0-100%)
+- `metabolic_rate` - Szacowane tempo metabolizmu [kg/h]
+- `consumption_regularity` - Regularność zużycia (0-1)
+
+**G. Parametry Cykliczności i Wzorców (9):**
+- `daily_amplitude` - Amplituda dobowa [kg]
+- `daily_phase` - Faza dobowa [godziny]
+- `circadian_strength` - Siła rytmu dobowego (0-1)
+- `weekly_pattern_match` - Dopasowanie wzorca tygodniowego (0-1)
+- `seasonal_trend` - Trend sezonowy (-1 do 1)
+- `harmonic_content` - Zawartość harmonicznych w sygnale
+- `cycle_regularity` - Regularność cykli (0-1)
+- `phase_coherence` - Koherencja fazowa (0-1)
+
+**H. Parametry Jakości Sygnału (9):**
+- `signal_quality` - Jakość sygnału wagi (0-100%)
+- `noise_level` - Poziom szumu [kg]
+- `drift_rate` - Dryft czujnika [kg/h]
+- `stability_index` - Indeks stabilności (0-100%)
+- `measurement_confidence` - Pewność pomiaru (0-1)
+- `snr` - Stosunek sygnału do szumu [dB]
+- `thd` - Total Harmonic Distortion (%)
+- `baseline_stability` - Stabilność linii bazowej (0-1)
+
+**I. Parametry Anomalii i Zdarzeń (8):**
+- `anomaly_score` - Wynik anomalii (0-1, Z-score normalized)
+- `sudden_change_mag` - Wielkość nagłej zmiany [kg]
+- `oscillation_freq` - Częstotliwość oscylacji [cykle/dzień]
+- `oscillation_damping` - Tłumienie oscylacji (0-1)
+- `outlier_ratio` - Stosunek wartości odstających (%)
+- `change_point_prob` - Prawdopodobieństwo punktu zwrotnego
+- `volatility_index` - Indeks zmienności (0-100%)
+
+**J. Wskaźniki Zdrowia Kolonii (9):**
+- `colony_growth_rate` - Tempo wzrostu kolonii [%/dzień]
+- `brood_activity_idx` - Indeks aktywności czerwiu (0-100%)
+- `population_estimate` - Szacowana populacja [tysiące pszczół]
+- `hive_health_weight` - Indeks zdrowia z wagi (0-100%)
+- `productivity_score` - Ogólny wynik produktywności (0-100%)
+- `stress_indicator` - Indikator stresu kolonii (0-1)
+- `vitality_index` - Indeks vitalności (0-100%)
+- `resilience_score` - Zdolność do regeneracji (0-1)
+
+**K. Parametry Prognozy (6):**
+- `predicted_weight_24h` - Prognoza wagi za 24h [kg]
+- `forecast_confidence` - Pewność prognozy (0-1)
+- `expected_honey_yield` - Oczekiwany zbiór miodu [kg]
+- `prediction_interval` - Przedział ufności prognozy [kg]
+- `forecast_trend` - Kierunek prognozy (-1, 0, 1)
 
 **Wykrywane Zdarzenia:**
-- **Spadek wagi >2kg w 24h**: Potencjalne rojenie
-- **Stopniowy wzrost wagi**: Intensywne zbieranie nektaru
-- **Nagły spadek >5kg**: Kradzież ula lub katastrofa
-- **Waga <5kg**: Krytycznie niskie zapasy (głód)
+- **Spadek wagi >2kg w 24h**: Potencjalne rojenie (alert)
+- **Stopniowy wzrost wagi**: Intensywne zbieranie nektaru (pozytywne)
+- **Nagły spadek >5kg**: Kradzież ula lub katastrofa (krytyczny alert)
+- **Waga <5kg**: Krytycznie niskie zapasy (głód - alert)
 - **Cykliczne zmiany dobowe**: Normalna aktywność zbieracka
+- **Wysoki stress_indicator**: Stres kolonii (choroba, drapieżniki)
+- **Niski vitality_index**: Spadkowa kondycja rodziny
 
 **Kalibracja:**
 ```bash
@@ -42,6 +147,12 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 ./calibrate_scale.sh --known-weight 10.0 --iterations 100
 # Wynik: współczynnik kalibracyjny zapisany w EEPROM
 ```
+
+**API Endpointy:**
+- `GET /hx711/status` - Aktualny status i wszystkie 80 parametrów
+- `GET /hx711/metrics` - Historia metryk
+- `GET /hx711/events` - Wykryte zdarzenia
+- `GET /hx711/forecast` - Prognoza wagi i zbiorów
 
 #### 2. Analiza Akustyczna (Microphone + FFT)
 

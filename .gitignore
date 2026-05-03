@@ -1,35 +1,28 @@
-```
-# Compiled and build artifacts
-*.o
-*.obj
-*.hex
-*.elf
-*.bin
-*.map
-*.lst
-*.sym
-
-# Dependencies
-.pioenvs/
-.piolibdeps/
-.platformio/
-
-# Logs and temp files
-*.log
+# Documentation and temporary files
 *.tmp
-*.swp
+*.temp
+.DS_Store
+Thumbs.db
 
-# Editors
-.vscode/
-.idea/
+# Logs
+*.log
 
-# Environment
+# Environment files
 .env
 .env.local
-.env.*
+*.env.*
 
-# Build outputs
-build/
-dist/
-output/
-```
+# Backup files
+*~
+*.bak
+*.backup
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
