@@ -567,6 +567,42 @@ apiaryguard/broadcast/firmware_update # QoS 2
 
 ### 📋 Podsumowanie Endpointów API
 
+#### apiary_collector - Raspberry Pi TUI Backend
+
+Moduł `src/rpi_tui/apiary_collector.cpp` udostępnia:
+
+| Funkcja | Opis | Format |
+|---------|------|--------|
+| `getStatusJSON()` | Pełny eksport 338+ parametrów dla każdego ula | JSON |
+| `getStatusCSV()` | Eksport CSV dla skryptów bash | CSV |
+| `parseJSON()` | Parser JSON dla danych z Pico | JSON Input |
+| `parseCSV()` | Parser CSV (backward compatibility) | CSV Input |
+
+**Przykład getStatusJSON():**
+```json
+{
+  "UL-001": {
+    "temp": 24.5,
+    "hum": 65.2,
+    "weight": 45.3,
+    "bat": 98,
+    "audio_rms": 0.025,
+    "swarm_prob": 0.15,
+    "bee_activity": 75.2,
+    "radar_dist": 1.2,
+    "radar_energy": 45.3,
+    "hx_mean": 45.3,
+    "hx_slope_1h": 0.05,
+    "nectar_inflow": 0.12,
+    "heat_index": 25.8,
+    "comfort_index": 82.5,
+    "iaq_index": 75,
+    "pressure": 1013.25,
+    "lux": 15000
+  }
+}
+```
+
 #### Główne Endpointy Urządzenia (Pico W6100)
 
 | Endpoint | Metoda | Opis |

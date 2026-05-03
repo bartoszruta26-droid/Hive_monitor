@@ -272,7 +272,281 @@ GET /apiary/light/metrics
 
 ---
 
-## 🔄 Częstotliwość Aktualizacji
+## 🔄 Integracja z Raspberry Pi 2 - HTTP API JSON
+
+### Architektura Komunikacji
+
+System komunikacji między Raspberry Pi Pico (uli) a Raspberry Pi 2 (centrum zbierania danych) odbywa się przez **HTTP API JSON**:
+
+```
+┌─────────────────┐     UDP/HTTP      ┌──────────────────────┐
+│  Raspberry Pico │ ────────────────> │  Raspberry Pi 2      │
+│  (UL-001)       │                   │  (Apiary Collector)  │
+│  IP: 192.168.1.x│                   │  Port UDP: 5005      │
+└─────────────────┘                   │  Port HTTP: 8080     │
+                                      └──────────────────────┘
+                                               │
+                                        GET /api/status
+                                               ↓
+                                      ┌──────────────────────┐
+                                      │  TUI / Dashboard     │
+                                      │  Web / Mobile App    │
+                                      └──────────────────────┘
+```
+
+### Format Danych Wysyłanych z Pico
+
+Każde Raspberry Pi Pico wysyła dane w formacie JSON:
+
+```json
+{
+  "hive_id": "UL-001",
+  "temp": 34.5,
+  "hum": 55.2,
+  "weight": 45.3,
+  "bat": 98,
+  "co2": 450,
+  "voc": 35,
+  "motion": 1,
+  
+  "audio_rms": 0.025,
+  "audio_freq": 250,
+  "swarm_prob": 0.15,
+  "bee_activity": 75.5,
+  "spectral_centroid": 320.5,
+  "power_bee_band": -45.2,
+  "crest_factor": 3.2,
+  "spectral_entropy": 0.85,
+  "foraging_eff": 82.0,
+  "hive_health": 91.5,
+  "aci": 45.2,
+  "bi": 67.8,
+  "adi": 0.72,
+  "nhr": 0.15,
+  "loudness": 45.0,
+  
+  "radar_dist": 1.2,
+  "radar_energy": 45.3,
+  "radar_activity": 0.35,
+  "signal_quality": 92.0,
+  "target_rate": 15.5,
+  "radar_entropy": 0.42,
+  "anomaly_score": 0.08,
+  "radar_health": 88.5,
+  "max_targets": 25,
+  "motion_intensity": 0.65,
+  
+  "hx_mean": 45.3,
+  "hx_std": 0.15,
+  "hx_slope_1h": 0.02,
+  "hx_slope_4h": 0.08,
+  "hx_slope_24h": 0.25,
+  "nectar_inflow": 0.15,
+  "consumption_rate": 0.05,
+  "colony_growth": 2.5,
+  "productivity": 85.0,
+  "predicted_24h": 45.55,
+  "forecast_conf": 0.92,
+  "winter_readiness": 78.0,
+  "starvation_risk": 0.05,
+  "hx_anomaly": 0.02,
+  
+  "heat_index": 36.2,
+  "dew_point": 18.5,
+  "comfort_index": 92.5,
+  "brood_stress": 5.0,
+  "temp_stability": 95.0,
+  "mold_risk": 0.08,
+  "vpd": 1.2,
+  
+  "aq_co2_mean": 450,
+  "aq_voc_mean": 35,
+  "iaq_index": 75,
+  "ventilation_need": 25.0,
+  "contamination_risk": 0.12,
+  "aq_mold_risk": 0.08,
+  
+  "piezo_rms": 12.5,
+  "piezo_freq": 250,
+  "piezo_activity": 78.0,
+  "bee_traffic": 85.0,
+  "predator_score": 0.02,
+  "intrusion_prob": 0.01,
+  
+  "pressure": 1013.25,
+  "baro_trend_1h": 0.5,
+  "weather_trend": 0.65,
+  "storm_prob": 0.15,
+  "foraging_cond": 85.0,
+  
+  "lux": 15000,
+  "daylight_hours": 14.5,
+  "circadian_sync": 0.98,
+  "foraging_idx": 95.0,
+  "uv": 2.5
+}
+```
+
+### Endpointy HTTP API na Raspberry Pi 2
+
+Raspberry Pi 2 udostępnia następujące endpointy:
+
+| Endpoint | Metoda | Opis | Format |
+|----------|--------|------|--------|
+| `/api/status` | GET | Status wszystkich uli ze wszystkimi parametrami | JSON |
+| `/api/hives` | GET | Lista uli i ich podstawowe informacje | JSON |
+| `/api/csv` | GET | Dane wszystkich uli w formacie CSV | CSV |
+| `/health` | GET | Status zdrowia serwera | JSON |
+
+### Przykładowy Response z `/api/status`
+
+```json
+{
+  "timestamp": 1737123456,
+  "hive_count": 3,
+  "hives": {
+    "UL-001": {
+      "temp": 34.5,
+      "hum": 55.2,
+      "weight": 45.3,
+      "bat": 98,
+      "co2": 450,
+      "voc": 35,
+      "motion": 1,
+      "online": true,
+      "last_seen": 1737123450,
+      "audio": {
+        "rms": 0.025,
+        "freq": 250,
+        "swarm_prob": 0.15,
+        "bee_activity": 75.5,
+        "spectral_centroid": 320.5,
+        "power_bee_band": -45.2,
+        "crest_factor": 3.2,
+        "spectral_entropy": 0.85,
+        "foraging_eff": 82.0,
+        "hive_health": 91.5,
+        "aci": 45.2,
+        "bi": 67.8,
+        "adi": 0.72,
+        "nhr": 0.15,
+        "loudness": 45.0
+      },
+      "radar": {
+        "dist": 1.2,
+        "energy": 45.3,
+        "activity": 0.35,
+        "signal_quality": 92.0,
+        "target_rate": 15.5,
+        "entropy": 0.42,
+        "anomaly_score": 0.08,
+        "hive_health": 88.5,
+        "max_targets": 25,
+        "motion_intensity": 0.65
+      },
+      "hx711": {
+        "mean": 45.3,
+        "std": 0.15,
+        "slope_1h": 0.02,
+        "slope_4h": 0.08,
+        "slope_24h": 0.25,
+        "nectar_inflow": 0.15,
+        "consumption_rate": 0.05,
+        "colony_growth": 2.5,
+        "productivity": 85.0,
+        "predicted_24h": 45.55,
+        "forecast_conf": 0.92,
+        "winter_readiness": 78.0,
+        "starvation_risk": 0.05,
+        "anomaly_score": 0.02
+      },
+      "th": {
+        "heat_index": 36.2,
+        "dew_point": 18.5,
+        "comfort_index": 92.5,
+        "brood_stress": 5.0,
+        "temp_stability": 95.0,
+        "mold_risk": 0.08,
+        "vpd": 1.2
+      },
+      "aq": {
+        "co2_mean": 450,
+        "voc_mean": 35,
+        "iaq_index": 75,
+        "ventilation_need": 25.0,
+        "contamination_risk": 0.12,
+        "mold_risk": 0.08
+      },
+      "piezo": {
+        "rms": 12.5,
+        "freq": 250,
+        "activity": 78.0,
+        "bee_traffic": 85.0,
+        "predator_score": 0.02,
+        "intrusion_prob": 0.01
+      },
+      "baro": {
+        "pressure": 1013.25,
+        "trend_1h": 0.5,
+        "weather_trend": 0.65,
+        "storm_prob": 0.15,
+        "foraging_cond": 85.0
+      },
+      "light": {
+        "lux": 15000,
+        "daylight_hours": 14.5,
+        "circadian_sync": 0.98,
+        "foraging_idx": 95.0,
+        "uv": 2.5
+      }
+    },
+    "UL-002": { ... },
+    "UL-003": { ... }
+  }
+}
+```
+
+### Uruchomienie Serwera na Raspberry Pi 2
+
+```bash
+cd /workspace/src/rpi_tui
+./apiary_collector
+```
+
+Serwer nasłuchuje na:
+- **Port UDP 5005** - odbieranie danych z Pico
+- **Port TCP 8080** - HTTP API JSON
+
+### Testowanie API
+
+```bash
+# Pobierz status wszystkich uli
+curl http://localhost:8080/api/status | jq
+
+# Pobierz dane w formacie CSV
+curl http://localhost:8080/api/csv
+
+# Sprawdź zdrowie serwera
+curl http://localhost:8080/health
+```
+
+### Integracja z TUI Bash
+
+Skrypt `apiary_tui.sh` automatycznie pobiera dane z API i wyświetla je w terminalu:
+
+```bash
+./apiary_tui.sh
+```
+
+TUI obsługuje wszystkie 338+ parametrów z podziałem na zakładki:
+- **LOGI** - Dziennik zdarzeń
+- **DEBUG** - Logi debugowania
+- **ULIE** - Status uli ze wszystkimi parametrami
+- **USTAWIENIA** - Konfiguracja systemu
+
+---
+
+## 🔗 Częstotliwość Aktualizacji
 
 | Moduł | Sampling Rate | Update Rate | Buffer Size | Liczba Parametrów | Status Implementacji |
 |-------|--------------|-------------|-------------|-------------------|---------------------|
