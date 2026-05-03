@@ -189,11 +189,33 @@ struct AudioMetrics {
     float spectral_contrast;      // Kontrast widmowy
     float tonal_strength;         // Siła tonalna sygnału
     
+    // NOWE PARAMETRY - analiza szczegółowa (dodane 18 parametrów)
+    float crest_factor;           // Współczynnik szczytu (peak/rms) - detekcja impulsów
+    float formant_freq_1;         // Pierwszy formant [Hz] - charakterystyka rezonansu ula
+    float formant_freq_2;         // Drugi formant [Hz]
+    float formant_bandwidth_1;    // Szerokość pasma pierwszego formantu [Hz]
+    float formant_bandwidth_2;    // Szerokość pasma drugiego formantu [Hz]
+    float fundamental_frequency;  // Częstotliwość podstawowa (F0) [Hz]
+    float pitch_strength;         // Siła wysokości dźwięku (0-1)
+    float inharmonicity;          // Nieharmoniczność sygnału (0-1)
+    float shimmer;                // Fluktuacja amplitudy w czasie (%)
+    float jitter;                 // Fluktuacja częstotliwości w czasie (%)
+    float noise_to_harmonic_ratio;// Stosunek szumu do harmonicznych (NHR)
+    float harmonic_to_noise_ratio;// Stosunek harmonicznych do szumu (HNR)
+    float autocorrelation_peak;   // Szczyt autokorelacji (0-1) - miara periodyczności
+    float attack_time;            // Czas narastania sygnału [ms]
+    float decay_time;             // Czas zanikania sygnału [ms]
+    float sustain_level;          // Poziom podtrzymania sygnału (0-1)
+    float temporal_centroid;      // Centrum czasowe sygnału [ms]
+    float loudness_zwicker;       // Głośność psychoakustyczna [sones]
+    
     // Wskaźniki jakości i klasyfikacji
     float bee_activity_index;     // Indeks aktywności pszczół (0-100%)
     float swarm_probability;      // Prawdopodobieństwo rojenia (0-1)
     float stress_indicator;       // Wskaźnik stresu kolonii (0-1)
     float hive_health_audio;      // Indeks zdrowia na podstawie audio (0-100%)
+    float foraging_efficiency;    // Efektywność zbierania nektaru (0-100%) - nowość
+    float colony_coherence;       // Spójność kolonii (0-1) - nowość
 };
 
 // Bufory dla przetwarzania audio
@@ -881,6 +903,245 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     
     // Siła tonalna (na podstawie płaskości widma - niskie wartości = bardziej tonalne)
     metrics.tonal_strength = 1.0f - metrics.spectral_flatness;
+    
+    // === NOWE PARAMETRY - DODATKOWE OBLICZENIA (18 parametrów) ===
+    
+    // Współczynnik szczytu (Crest Factor) - detekcja impulsów
+    if (metrics.rms_amplitude > 0.0001f) {
+        metrics.crest_factor = metrics.peak_amplitude / metrics.rms_amplitude;
+    }
+    
+    // Szacowanie formantów (uproszczone - piki w widmie)
+    int formantCount = 0;
+    float prevSlope = 0.0f;
+    for (int i = 2; i < AUDIO_BUFFER_SIZE / 4 && formantCount < 2; i++) {
+        float slope = audioSpectrum[i] - audioSpectrum[i-1];
+        if (prevSlope > 0 && slope < 0 && audioSpectrum[i] > 0.1f * maxPower) {
+            // Wykryto pik - potencjalny formant
+            float freq = (float)i * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            if (formantCount == 0) {
+                metrics.formant_freq_1 = freq;
+                // Szerokość pasma - odległość między punktami -3dB
+                int leftBin = i, rightBin = i;
+                float threshold = audioSpectrum[i] * 0.707f;  // -3dB
+                while (leftBin > 0 && audioSpectrum[leftBin] > threshold) leftBin--;
+                while (rightBin < AUDIO_BUFFER_SIZE / 4 && audioSpectrum[rightBin] > threshold) rightBin++;
+                metrics.formant_bandwidth_1 = (float)(rightBin - leftBin) * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            } else if (formantCount == 1 && freq > metrics.formant_freq_1 + 50.0f) {
+                metrics.formant_freq_2 = freq;
+                int leftBin = i, rightBin = i;
+                float threshold = audioSpectrum[i] * 0.707f;
+                while (leftBin > 0 && audioSpectrum[leftBin] > threshold) leftBin--;
+                while (rightBin < AUDIO_BUFFER_SIZE / 4 && audioSpectrum[rightBin] > threshold) rightBin++;
+                metrics.formant_bandwidth_2 = (float)(rightBin - leftBin) * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+            }
+            formantCount++;
+        }
+        prevSlope = slope;
+    }
+    
+    // Częstotliwość podstawowa (F0) - użycie dominant frequency z korektą
+    metrics.fundamental_frequency = metrics.dominant_frequency;
+    
+    // Siła wysokości dźwięku (pitch strength) - na podstawie ostrości piku widmowego
+    float pitchSharpness = 0.0f;
+    if (maxBin > 0 && maxBin < AUDIO_BUFFER_SIZE / 2 - 1) {
+        float neighborAvg = (audioSpectrum[maxBin - 1] + audioSpectrum[maxBin + 1]) / 2.0f;
+        if (neighborAvg > 0.0001f) {
+            pitchSharpness = (maxPower - neighborAvg) / neighborAvg;
+        }
+    }
+    metrics.pitch_strength = constrain(pitchSharpness / 10.0f, 0.0f, 1.0f);
+    
+    // Nieharmoniczność - miara odchylenia od harmonicznych
+    float inharmonicSum = 0.0f;
+    if (metrics.fundamental_frequency > 50.0f) {
+        for (int h = 2; h <= 6; h++) {
+            float harmonicFreq = metrics.fundamental_frequency * h;
+            int bin = (int)(harmonicFreq * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+            if (bin >= 0 && bin < AUDIO_BUFFER_SIZE / 2) {
+                // Sprawdź odchylenie od idealnej harmonicznej
+                float actualFreq = (float)bin * AUDIO_SAMPLE_RATE / AUDIO_BUFFER_SIZE;
+                float deviation = abs(actualFreq - harmonicFreq) / metrics.fundamental_frequency;
+                inharmonicSum += deviation;
+            }
+        }
+        metrics.inharmonicity = constrain(inharmonicSum / 5.0f, 0.0f, 1.0f);
+    }
+    
+    // Shimmer i Jitter - fluktuacje amplitudy i częstotliwości (uproszczone)
+    // Wymagałyby analizy wielu ramek czasowych - tutaj wartości bazowe
+    float amplitudeVariance = 0.0f;
+    float periodVariance = 0.0f;
+    int periodCount = 0;
+    
+    // Detekcja okresów dla jitter
+    int zeroCrossPeriods[10];
+    int lastZeroCross = -1;
+    int periodIdx = 0;
+    for (int i = 1; i < AUDIO_BUFFER_SIZE && periodIdx < 10; i++) {
+        if ((float)audioBuffer[i-1] < 0 && (float)audioBuffer[i] >= 0) {
+            if (lastZeroCross >= 0) {
+                zeroCrossPeriods[periodIdx++] = i - lastZeroCross;
+            }
+            lastZeroCross = i;
+        }
+    }
+    
+    if (periodIdx >= 2) {
+        float meanPeriod = 0.0f;
+        for (int i = 0; i < periodIdx; i++) meanPeriod += zeroCrossPeriods[i];
+        meanPeriod /= periodIdx;
+        
+        for (int i = 0; i < periodIdx; i++) {
+            periodVariance += abs(zeroCrossPeriods[i] - meanPeriod) / meanPeriod;
+        }
+        metrics.jitter = constrain(periodVariance / periodIdx * 100.0f, 0.0f, 100.0f);
+    }
+    
+    // Shimmer - fluktuacja amplitudy między okresami
+    float peakAmps[10];
+    int peakCount = 0;
+    for (int i = 1; i < AUDIO_BUFFER_SIZE - 1 && peakCount < 10; i++) {
+        if (abs(audioBuffer[i]) > abs(audioBuffer[i-1]) && abs(audioBuffer[i]) > abs(audioBuffer[i+1])) {
+            if (abs(audioBuffer[i]) > 100) {  // Próg szumu
+                peakAmps[peakCount++] = abs(audioBuffer[i]);
+            }
+        }
+    }
+    
+    if (peakCount >= 2) {
+        float meanPeak = 0.0f;
+        for (int i = 0; i < peakCount; i++) meanPeak += peakAmps[i];
+        meanPeak /= peakCount;
+        
+        for (int i = 0; i < peakCount - 1; i++) {
+            amplitudeVariance += abs(peakAmps[i+1] - peakAmps[i]) / meanPeak;
+        }
+        metrics.shimmer = constrain(amplitudeVariance / (peakCount - 1) * 100.0f, 0.0f, 100.0f);
+    }
+    
+    // Noise-to-Harmonic Ratio (NHR) i Harmonic-to-Noise Ratio (HNR)
+    float harmonicEnergy = 0.0f;
+    float noiseEnergy = 0.0f;
+    if (metrics.fundamental_frequency > 50.0f) {
+        int fundBin = (int)(metrics.fundamental_frequency * AUDIO_BUFFER_SIZE / AUDIO_SAMPLE_RATE);
+        int bandwidth = max(2, (int)(fundBin * 0.1f));  // 10% szerokości pasma
+        
+        for (int i = 0; i < AUDIO_BUFFER_SIZE / 2; i++) {
+            bool isHarmonic = false;
+            for (int h = 1; h <= 8; h++) {
+                int harmBin = fundBin * h;
+                if (abs(i - harmBin) <= bandwidth) {
+                    isHarmonic = true;
+                    break;
+                }
+            }
+            if (isHarmonic) {
+                harmonicEnergy += audioSpectrum[i];
+            } else {
+                noiseEnergy += audioSpectrum[i];
+            }
+        }
+    }
+    
+    if (harmonicEnergy > 0.0001f) {
+        metrics.noise_to_harmonic_ratio = noiseEnergy / harmonicEnergy;
+    }
+    if (noiseEnergy > 0.0001f) {
+        metrics.harmonic_to_noise_ratio = harmonicEnergy / noiseEnergy;
+    }
+    
+    // Autokorelacja - miara periodyczności
+    float maxAutocorr = 0.0f;
+    int bestLag = 0;
+    for (int lag = 5; lag < AUDIO_BUFFER_SIZE / 2; lag++) {
+        float autocorr = 0.0f;
+        for (int i = 0; i < AUDIO_BUFFER_SIZE - lag; i++) {
+            autocorr += (float)audioBuffer[i] * (float)audioBuffer[i + lag];
+        }
+        autocorr /= (AUDIO_BUFFER_SIZE - lag);
+        if (autocorr > maxAutocorr) {
+            maxAutocorr = autocorr;
+            bestLag = lag;
+        }
+    }
+    if (maxAutocorr > 0.0f) {
+        float normAutocorr = maxAutocorr / sumSq;  // Normalizacja do energii sygnału
+        metrics.autocorrelation_peak = constrain(normAutocorr, 0.0f, 1.0f);
+    }
+    
+    // Parametry obwiedni (attack, decay, sustain)
+    int attackEnd = 0;
+    float maxAmpTime = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float sample = abs((float)audioBuffer[i]);
+        if (sample > maxAmpTime) {
+            maxAmpTime = sample;
+            attackEnd = i;
+        }
+    }
+    metrics.attack_time = (float)attackEnd * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    
+    // Decay time - czas spadku do 50% po szczycie
+    int decayEnd = attackEnd;
+    float threshold50 = maxAmpTime * 0.5f;
+    for (int i = attackEnd; i < AUDIO_BUFFER_SIZE; i++) {
+        if (abs((float)audioBuffer[i]) < threshold50) {
+            decayEnd = i;
+            break;
+        }
+    }
+    metrics.decay_time = (float)(decayEnd - attackEnd) * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    
+    // Sustain level - średni poziom po zaniku
+    float sustainSum = 0.0f;
+    int sustainCount = 0;
+    for (int i = decayEnd; i < AUDIO_BUFFER_SIZE; i++) {
+        sustainSum += abs((float)audioBuffer[i]);
+        sustainCount++;
+    }
+    if (sustainCount > 0 && maxAmpTime > 0.0001f) {
+        metrics.sustain_level = constrain((sustainSum / sustainCount) / maxAmpTime, 0.0f, 1.0f);
+    }
+    
+    // Temporal centroid - centrum czasowe sygnału
+    float temporalMoment = 0.0f;
+    float totalAbsAmp = 0.0f;
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        float absAmp = abs((float)audioBuffer[i]);
+        temporalMoment += i * absAmp;
+        totalAbsAmp += absAmp;
+    }
+    if (totalAbsAmp > 0.0001f) {
+        metrics.temporal_centroid = (temporalMoment / totalAbsAmp) * 1000.0f / AUDIO_SAMPLE_RATE;  // [ms]
+    }
+    
+    // Głośność psychoakustyczna (uproszczony model Zwicker'a)
+    // Uproszczenie: głośność zależy od RMS i rozkładu częstotliwościowego
+    float loudnessFactor = 1.0f;
+    if (metrics.spectral_centroid > 2000.0f) {
+        loudnessFactor = 1.2f;  // Wyższe częstotliwości są głośniejsze perceptualnie
+    } else if (metrics.spectral_centroid < 200.0f) {
+        loudnessFactor = 0.8f;  // Niskie częstotliwości cichsze
+    }
+    metrics.loudness_zwicker = metrics.rms_amplitude * loudnessFactor * 10.0f;  // [sones], przeskalowane
+    
+    // === NOWE WSKAŹNIKI KLASYFIKACJI ===
+    
+    // Efektywność zbierania nektaru (foraging efficiency)
+    // Na podstawie aktywności w paśmie pszczół i regularności sygnału
+    float activityScore = metrics.bee_activity_index / 100.0f;
+    float regularityScore = metrics.autocorrelation_peak;
+    float lowStressBonus = (1.0f - metrics.stress_indicator) * 0.3f;
+    metrics.foraging_efficiency = constrain((activityScore * 0.5f + regularityScore * 0.2f + lowStressBonus) * 100.0f, 0.0f, 100.0f);
+    
+    // Spójność kolonii (colony coherence)
+    // Na podstawie synchronizacji sygnałów (niski shimmer/jitter = wysoka spójność)
+    float shimmerScore = 1.0f - constrain(metrics.shimmer / 20.0f, 0.0f, 1.0f);
+    float jitterScore = 1.0f - constrain(metrics.jitter / 20.0f, 0.0f, 1.0f);
+    float spectralStability = 1.0f - metrics.spectral_entropy;  // Niska entropia = stabilne widmo
+    metrics.colony_coherence = constrain((shimmerScore * 0.4f + jitterScore * 0.4f + spectralStability * 0.2f), 0.0f, 1.0f);
 }
 
 // Klasyfikacja zdarzeń akustycznych
@@ -1801,13 +2062,41 @@ void loop() {
         lastAudioProcess = now;
         processAudioSignal();
         
-        // Debug output dla moduu0142u audio
-        Serial.printf("[AUDIO] RMS:%.3f DominantFreq:%.1fHz BeeActivity:%.1f%% SwarmProb:%.2f Health:%.1f%%\n",
+        // Debug output dla moduu0142u audio - rozszerzony o nowe parametry
+        Serial.printf("[AUDIO] RMS:%.3f DomFreq:%.1fHz BeeAct:%.1f%% SwarmProb:%.2f Health:%.1f%%\n",
                       currentAudioMetrics.rms_amplitude,
                       currentAudioMetrics.dominant_frequency,
                       currentAudioMetrics.bee_activity_index,
                       currentAudioMetrics.swarm_probability,
                       currentAudioMetrics.hive_health_audio);
+        
+        // Dodatkowe nowe parametry audio
+        Serial.printf("[AUDIO_NEW] CrestFactor:%.2f Formant1:%.1fHz F0:%.1fHz PitchStr:%.2f Inharm:%.2f\n",
+                      currentAudioMetrics.crest_factor,
+                      currentAudioMetrics.formant_freq_1,
+                      currentAudioMetrics.fundamental_frequency,
+                      currentAudioMetrics.pitch_strength,
+                      currentAudioMetrics.inharmonicity);
+        
+        Serial.printf("[AUDIO_NEW2] Shimmer:%.1f%% Jitter:%.1f%% NHR:%.2f HNR:%.2f AutoCorr:%.2f\n",
+                      currentAudioMetrics.shimmer,
+                      currentAudioMetrics.jitter,
+                      currentAudioMetrics.noise_to_harmonic_ratio,
+                      currentAudioMetrics.harmonic_to_noise_ratio,
+                      currentAudioMetrics.autocorrelation_peak);
+        
+        Serial.printf("[AUDIO_ENV] Attack:%.1fms Decay:%.1fms Sustain:%.2f TempCent:%.1fms Loudness:%.2f\n",
+                      currentAudioMetrics.attack_time,
+                      currentAudioMetrics.decay_time,
+                      currentAudioMetrics.sustain_level,
+                      currentAudioMetrics.temporal_centroid,
+                      currentAudioMetrics.loudness_zwicker);
+        
+        Serial.printf("[AUDIO_CLASS] ForagingEff:%.1f%% ColonyCoh:%.2f SpectEnt:%.3f Tonality:%.2f\n",
+                      currentAudioMetrics.foraging_efficiency,
+                      currentAudioMetrics.colony_coherence,
+                      currentAudioMetrics.spectral_entropy,
+                      currentAudioMetrics.tonal_strength);
         
         // Informacja o zdarzeniach audio
         if(lastAudioEvent.type != AudioEvent::EVENT_NONE) {

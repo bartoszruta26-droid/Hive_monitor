@@ -1,17 +1,17 @@
 ```
-# Build artifacts
+# Compiled and build artifacts
 *.o
 *.obj
 *.hex
-*.elf
 *.bin
-*.map
-*.lst
+*.elf
+*.out
 
 # Dependencies
 .pio/
 .platformio/
 lib/
+src/lib/
 
 # Logs and temp files
 *.log
@@ -29,7 +29,15 @@ lib/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Build outputs
+build/
+dist/
+release/
+debug/
+.firmware/
+
+# Arduino/Pico specific
+*.pio/
+.pioenvs/
+.piolibdeps/
 ```
