@@ -707,6 +707,233 @@ struct RadarMetrics {
 
 RadarMetrics currentMetrics;
 
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW TEMPERATURY I WILGOTNOŚCI (DHT22/AM2302)
+// ============================================================================
+
+#define TEMP_HUM_BUFFER_SIZE 288  // 24 godziny przy odczycie co 5 minut
+
+struct TempHumidityMetrics {
+    // Podstawowe parametry temperatury
+    float temp_mean;              // Średnia temperatura [°C]
+    float temp_std;               // Odchylenie standardowe temperatury [°C]
+    float temp_min;               // Minimalna temperatura [°C]
+    float temp_max;               // Maksymalna temperatura [°C]
+    float temp_range;             // Zakres temperatury (max-min) [°C]
+    
+    // Podstawowe parametry wilgotności
+    float hum_mean;               // Średnia wilgotność [%RH]
+    float hum_std;                // Odchylenie standardowe wilgotności [%RH]
+    float hum_min;                // Minimalna wilgotność [%RH]
+    float hum_max;                // Maksymalna wilgotność [%RH]
+    float hum_range;              // Zakres wilgotności (max-min) [%RH]
+    
+    // Parametry komfortu termicznego
+    float heat_index;             // Indeks ciepła (odczuwalna temperatura) [°C]
+    float dew_point;              // Punkt rosy [°C]
+    float vapor_pressure_deficit; // Deficyt ciśnienia pary wodnej [kPa]
+    float comfort_index;          // Indeks komfortu (0-100%)
+    
+    // Stabilność środowiska
+    float temp_stability;         // Stabilność temperatury (0-100%)
+    float hum_stability;          // Stabilność wilgotności (0-100%)
+    float env_variance;           // Wariancja środowiska (temp+hum)
+    
+    // Trendy
+    float temp_trend_1h;          // Trend temperatury 1h [°C/h]
+    float hum_trend_1h;           // Trend wilgotności 1h [%RH/h]
+    float temp_hum_correlation;   // Korelacja temp-wilgotność [-1 do 1]
+    
+    // Alarmy
+    float overheating_risk;       // Ryzyko przegrzania (0-1)
+    float condensation_risk;      // Ryzyko kondensacji (0-1)
+    float mold_risk;              // Ryzyko pleśni (0-1)
+    float brood_stress_index;     // Indeks stresu czerwiu (0-100%)
+};
+
+TempHumidityMetrics currentTempHumMetrics;
+
+// Deklaracje funkcji modułu temp/wilg
+void calculateTempHumidityMetrics(TempHumidityMetrics& metrics);
+float calculateHeatIndex(float temp, float humidity);
+float calculateDewPoint(float temp, float humidity);
+float calculateVPD(float temp, float humidity);
+
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW JAKOŚCI POWIETRZA (SGP41/BME688)
+// ============================================================================
+
+#define AIR_QUALITY_BUFFER_SIZE 144  // 24 godziny przy odczycie co 10 minut
+
+struct AirQualityMetrics {
+    // Podstawowe parametry gazów
+    uint16_t co2_equivalent;      // Równoważne CO2 [ppm]
+    uint16_t voc_index;           // Indeks VOC (0-500)
+    uint16_t nox_equivalent;      // Równoważne NOx [ppb]
+    
+    // Statystyki CO2
+    float co2_mean;               // Średnie CO2 [ppm]
+    float co2_std;                // Odchylenie CO2 [ppm]
+    float co2_min;                // Minimalne CO2 [ppm]
+    float co2_max;                // Maksymalne CO2 [ppm]
+    
+    // Statystyki VOC
+    float voc_mean;               // Średnie VOC
+    float voc_std;                // Odchylenie VOC
+    float voc_min;                // Minimalne VOC
+    float voc_max;                // Maksymalne VOC
+    
+    // Indeksy jakości powietrza
+    float iaq_index;              // Indoor Air Quality Index (0-500)
+    float air_quality_level;      // Poziom jakości (1-5: Excellent-Poor)
+    float ventilation_need;       // Zapotrzebowanie na wentylację (0-100%)
+    
+    // Zdrowie ula
+    float hive_comfort_index;     // Indeks komfortu ula (0-100%)
+    float stress_from_air;        // Stres od jakości powietrza (0-1)
+    float contamination_risk;     // Ryzyko zanieczyszczenia (0-1)
+    
+    // Trendy
+    float co2_trend_1h;           // Trend CO2 1h [ppm/h]
+    float voc_trend_1h;           // Trend VOC 1h [index/h]
+    float air_quality_trend;      // Trend jakości (-1 do 1)
+    
+    // Alerty
+    float poor_ventilation_alert; // Alert słabej wentylacji (0-1)
+    float high_co2_warning;       // Ostrzeżenie wysokiego CO2 (0-1)
+    float voc_alert_level;        // Poziom alertu VOC (0-1)
+    float combined_risk_score;    // Łączny wynik ryzyka (0-100%)
+};
+
+AirQualityMetrics currentAirQualityMetrics;
+
+// Deklaracje funkcji modułu jakości powietrza
+void calculateAirQualityMetrics(AirQualityMetrics& metrics);
+uint8_t mapIAQLevel(float iaq_index);
+float calculateVentilationNeed(uint16_t co2, uint16_t voc);
+
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW WIBRACJI (PIEZO SENSOR)
+// ============================================================================
+
+#define PIEZO_BUFFER_SIZE 120  // 2 minuty przy odczycie co 1 sekundzie
+
+struct PiezoVibrationMetrics {
+    // Podstawowe parametry amplitudy
+    float vibration_rms;          // Wartość RMS wibracji [mV]
+    float vibration_peak;         // Amplituda szczytowa [mV]
+    float vibration_peak_to_peak; // Amplituda międzyszczytowa [mV]
+    float vibration_mean;         // Średnia wibracji [mV]
+    
+    // Statystyki wibracji
+    float vibration_std;          // Odchylenie standardowe [mV]
+    float vibration_cv;           // Współczynnik zmienności
+    float vibration_energy;       // Energia wibracji [mV²]
+    
+    // Parametry częstotliwościowe
+    float dominant_vib_freq;      // Dominująca częstotliwość [Hz]
+    float vibration_activity_idx; // Indeks aktywności wibracyjnej (0-100%)
+    
+    // Detekcja zdarzeń
+    float impact_count;           // Liczba uderzeń/impulsów
+    float continuous_vib_ratio;   // Stosunek wibracji ciągłych (0-1)
+    float intermittent_vib_ratio; // Stosunek wibracji przerywanych (0-1)
+    
+    // Klasyfikacja źródła
+    float bee_traffic_score;      // Wynik ruchu pszczół (0-100%)
+    float predator_vib_score;     // Wynik drapieżnika (0-100%)
+    float environmental_vib_score;// Wynik środowiska (wiatr) (0-100%)
+    
+    // Trendy
+    float vibration_trend_1min;   // Trend wibracji 1min [mV/min]
+    float activity_change_rate;   // Szybkość zmiany aktywności [%/min]
+    
+    // Alerty
+    float intrusion_probability;  // Prawdopodobieństwo intruza (0-1)
+    float swarm_vibration_flag;   // Flaga wibracji rojowej (0-1)
+    float anomaly_vibration_score;// Wynik anomalii wibracji (0-1)
+};
+
+PiezoVibrationMetrics currentPiezoMetrics;
+
+// Deklaracje funkcji modułu piezo
+void calculatePiezoMetrics(PiezoVibrationMetrics& metrics);
+float detectDominantFrequency(const float* data, uint16_t count, float sampleRate);
+
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW CIŚNIENIA ATMOSFERYCZNEGO (BMP280)
+// ============================================================================
+
+struct BarometricMetrics {
+    // Podstawowe parametry ciśnienia
+    float pressure_mean;          // Średnie ciśnienie [hPa]
+    float pressure_std;           // Odchylenie ciśnienia [hPa]
+    float pressure_min;           // Minimalne ciśnienie [hPa]
+    float pressure_max;           // Maksymalne ciśnienie [hPa]
+    float pressure_trend_1h;      // Trend ciśnienia 1h [hPa/h]
+    float pressure_trend_3h;      // Trend ciśnienia 3h [hPa/h]
+    
+    // Prognoza pogody
+    float weather_trend;          // Trend pogodowy (-1 do 1: ухудшение-do poprawy)
+    float storm_probability;      // Prawdopodobieństwo burzy (0-100%)
+    float pressure_sea_level;     // Ciśnienie na poziomie morza [hPa]
+    
+    // Wpływ na pszczoły
+    float foraging_conditions;    // Warunki do wylotów (0-100%)
+    float swarm_weather_index;    // Indeks pogody dla rojenia (0-100%)
+    float barometric_stress;      // Stres barometryczny (0-1)
+    
+    // Altitude compensation
+    float altitude_compensated;   // Skompensowana wysokość [m]
+    float pressure_altitude;      // Wysokość barometryczna [m]
+};
+
+BarometricMetrics currentBaroMetrics;
+
+// Deklaracje funkcji modułu barometrycznego
+void calculateBarometricMetrics(BarometricMetrics& metrics);
+float calculateSeaLevelPressure(float pressure, float altitude);
+int predictWeatherTrend(const float* pressures, uint8_t count);
+
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW NATĘŻENIA ŚWIATŁA (BH1750)
+// ============================================================================
+
+struct LightMetrics {
+    // Podstawowe parametry światła
+    uint32_t lux_current;         // Aktualne natężenie [lux]
+    float lux_mean;               // Średnie natężenie [lux]
+    float lux_std;                // Odchylenie natężenia [lux]
+    uint32_t lux_min;             // Minimalne natężenie [lux]
+    uint32_t lux_max;             // Maksymalne natężenie [lux]
+    
+    // Cykl dobowy
+    float daylight_duration;      // Czas trwania dnia [godziny]
+    float night_duration;         // Czas trwania nocy [godziny]
+    float dawn_dusk_detected;     // Wykrycie świtu/zmierzchu (0-1)
+    
+    // Wpływ na pszczoły
+    float foraging_light_index;   // Indeks światła do wylotów (0-100%)
+    float circadian_sync;         // Synchronizacja cyrkadiana (0-1)
+    float hive_open_detection;    // Detekcja otwarcia ula (0-1)
+    
+    // Sezonowość
+    float seasonal_light_change;  // Sezonowa zmiana światła [-1 do 1]
+    float light_stability;        // Stabilność oświetlenia (0-100%)
+    
+    // Alerty
+    float abnormal_light_flag;    // Flaga nieprawidłowego światła (0-1)
+    float intrusion_light_event;  // Zdarzenie intruza (światło w nocy) (0-1)
+};
+
+LightMetrics currentLightMetrics;
+
+// Deklaracje funkcji modułu światła
+void calculateLightMetrics(LightMetrics& metrics);
+bool detectHiveOpening(uint32_t lux, uint32_t prev_lux, bool is_night);
+
+RadarMetrics currentMetrics;
+
 // Deklaracje funkcji modułu metryk
 void calculateRadarMetrics(RadarMetrics& metrics, const uint8_t window_size);
 float calculateEntropy(const float* data, uint8_t count);
