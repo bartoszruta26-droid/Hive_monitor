@@ -1,45 +1,43 @@
-# ApiaryGuard Pro: Zaawansowany System Monitoringu i Zarządzania Pasieką
+# 🐝 ApiaryGuard Pro: Enterprise Multi-Apiary Monitoring & Management System
 
-## 📋 Spis Treści
+![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%202%20%7C%20Arduino%20Nano-orange.svg)
+![Connectivity](https://img.shields.io/badge/connectivity-LTE%20(Aero2)%20%7C%20Ethernet%20PoE-red.svg)
+![AI Core](https://img.shields.io/badge/AI-Qwen%20Agent%20Integrated-purple.svg)
+![No Python](https://img.shields.io/badge/code-C%23%20%7C%20C%2B%2B%20%7C%20Bash-yellow.svg)
 
-1. [Wstęp i Opis Projektu](#wstęp-i-opis-projektu)
-2. [Architektura Systemu](#architektura-systemu)
-3. [Specyfikacja Sprzętowa](#specyfikacja-sprzętowa)
-4. [Struktura Katalogów i Plików](#struktura-katalogów-i-plików)
-5. [Opis Modułów Programowych](#opis-modułów-programowych)
-6. [Funkcjonalności Sensorów i Efektorów](#funkcjonalności-sensorów-i-efektorów)
-7. [Zaawansowane Funkcje Oprogramowania](#zaawansowane-funkcje-oprogramowania)
-   - [8. 🤖 Qwen Agent AI Integration](#8-qwen-agent-ai-integration)
-8. [Instalacja i Konfiguracja](#instalacja-i-konfiguracja)
-9. [API i Integracje](#api-i-integracje)
-10. [Bezpieczeństwo i Niezawodność](#bezpieczeństwo-i-niezawodność)
-11. [Konserwacja i Rozwiązywanie Problemów](#konserwacja-i-rozwiązywanie-problemów)
-12. [Rozszerzenia Przyszłościowe](#rozszerzenia-przyszłościowe)
-13. [Licencja i Współpraca](#licencja-i-współpraca)
+## 📖 Spis Treści
+
+1. [Wstęp i Opis Projektu](#1-wstęp-i-opis-projektu)
+2. [Architektura Systemu Multi-Unit](#2-architektura-systemu-multi-unit)
+3. [Specyfikacja Sprzętowa (Hardware Bill of Materials)](#3-specyfikacja-sprzętowa-hardware-bill-of-materials)
+4. [Hierarchia Plików i Katalogów](#4-hierarchia-plików-i-katalogów)
+5. [Szczegółowy Opis Modułów Sprzętowych](#5-szczegółowy-opis-modułów-sprzętowych)
+6. [Oprogramowanie Układowe (Firmware C++)](#6-oprogramowanie-układowe-firmware-c)
+7. [Backend Serwerowy (C# .NET + Apache2)](#7-backend-serwerowy-c-net--apache2)
+8. [Skrypty Automatyzujące (Bash)](#8-skrypty-automatyzujące-bash)
+9. [Integracja Sztucznej Inteligencji: Qwen Agent](#9-integracja-sztucznej-inteligencji-qwen-agent)
+10. [Moduł Wizyjny: Kamera PoE i Analiza Obrazu](#10-moduł-wizyjny-kamera-poe-i-analiza-obrazu)
+11. [Bezpieczeństwo i Niezawodność](#11-bezpieczeństwo-i-niezawodność)
+12. [Instalacja i Konfiguracja](#12-instalacja-i-konfiguracja)
+13. [API i Integracje](#13-api-i-integracje)
+14. [Harmonogram Konserwacji i Troubleshooting](#14-harmonogram-konserwacji-i-troubleshooting)
+15. [Roadmap Rozwoju](#15-roadmap-rozwoju)
 
 ---
 
-## 🍯 Wstęp i Opis Projektu
+## 1. Wstęp i Opis Projektu
 
-**ApiaryGuard Pro** to kompleksowy, przemysłowy system monitoringu uli, rójek i całych pasiek, zaprojektowany z myślą o nowoczesnym pszczelarstwie precyzyjnym. Projekt łączy w sobie najnowocześniejsze technologie IoT, zaawansowaną analitykę danych oraz solidną konstrukcję mechaniczną, zapewniając pszczelarzom bezprecedensową kontrolę nad zdrowiem i produktywnością ich rodzin pszczelich.
+**ApiaryGuard Pro** to zaawansowany, skalowalny system monitoringu i zarządzania pasieką klasy enterprise, zaprojektowany do pracy w trudnych warunkach terenowych. System pozwala na centralną obsługę **wielu uli** (multi-hive) za pośrednictwem jednego serwera Apache2 hostowanego na Raspberry Pi 2, który komunikuje się z rozproszonymi jednostkami końcowymi opartymi o mikrokontrolery Arduino Nano.
 
-### Cele Projektu
-
-- **Ciągły monitoring** parametrów życiowych rodziny pszczelej 24/7/365
-- **Wczesne wykrywanie** anomalii, chorób, rojenia i zagrożeń
-- **Automatyzacja interwencji** terapeutycznych i klimatycznych
-- **Zdalne zarządzanie** pasieką poprzez połączenie LTE
-- **Skalowalność** od pojedynczego ula do tysięcy rodzin
-- **Niezależność energetyczna** dzięki zasilaniu PoE i optymalizacji zużycia
-- **Otwarta architektura** umożliwiająca rozwój i integracje
-
-### Kluczowe Innowacje
-
-1. **Hybrydowa Architektura**: Połączenie Raspberry Pi 2 jako jednostki centralnej z Arduino Nano jako mikrokontrolerem peryferyjnym
-2. **Łączność Bezprzewodowa**: Wykorzystanie darmowej sieci Aero2 LTE dla transmisji danych
-3. **Wielosensorowa Analiza**: Fuzja danych z wag, mikrofonów, czujników środowiskowych i piezo
-4. **Aktywna Terapia**: Automatyczne dozowanie leków, olejków eterycznych i kontrola klimatu
-5. **Przemysłowa Konstrukcja**: Mechaniczne rozwiązania odporne na warunki atmosferyczne
+### Kluczowe Założenia Projektowe:
+*   **Multi-Tenancy:** Jeden serwer zbiera dane z dziesiątek uli, identyfikując każdą jednostkę po unikalnym ID sprzętowym.
+*   **Connectivity:** Hybrydowa łączność wykorzystująca darmową sieć LTE **Aero2** (SIM free) jako główny kanał transmisji danych zdalnych oraz Ethernet PoE dla lokalnej komunikacji wysokiej przepustowości (kamery, aktualizacje).
+*   **Stack Technologiczny:** Ścisłe przestrzeganie zakazu używania Pythona. Cały stack oparty jest o wydajne języki kompilowane: **C++** (firmware Arduino), **C#** (.NET Core backend logic), **Bash** (skrypty systemowe Linux) oraz **SQL** (bazy danych).
+*   **Zaawansowana Diagnostyka:** Pełny zestaw sensorów biometrycznych ula (waga, dźwięk, wibracje, temperatura, wilgotność) wsparty aktywnymi efektorami (grzanie, wentylacja, podawanie leków).
+*   **Monitoring Wizyjny:** Zintegrowana kamera PoE wykonująca zdjęcia co 60 sekund w celu analizy aktywności wylotowej i wykrywania intruzów.
+*   **AI-Driven:** Rdzeń decyzyjny oparty o agenta **Qwen AI**, zapewniający predykcję rójki, diagnozę chorób i autonomiczne reakcje.
 
 ---
 
