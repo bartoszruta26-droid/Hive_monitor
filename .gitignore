@@ -1,50 +1,34 @@
 ```
-# Compiled and build artifacts
-*.o
-*.obj
-*.out
+# Arduino/Pico build artifacts
 *.hex
-*.elf
 *.bin
+*.elf
 *.map
-*.lst
-*.sym
-
-# Dependencies
+build/
+.sconsign.dblite
 .pio/
 .platformio/
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+# Dependencies
+lib/
+libraries/
 
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Build outputs
-build/
-dist/
-output/
-.release/
+# Temp files
+*.tmp
+*.log
 
-# OS specific
+# Environment
+.env
+.env.local
+*.env.*
+
+# OS files
 .DS_Store
 Thumbs.db
 ```
