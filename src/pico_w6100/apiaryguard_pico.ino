@@ -184,7 +184,7 @@ void initHX711() {
 // Odczyt HX711 z timeoutem
 long readHX711() {
   unsigned long timeout = millis();
-  const unsigned long TIMEOUT_MS = 100;
+  const unsigned long TIMEOUT_MS = 500;  // Zwiększony timeout dla HX711 (konwersja ~100ms + margines)
   
   // Czekaj na gotowość z timeoutem
   while (digitalRead(HX711_DT) && (millis() - timeout < TIMEOUT_MS)) {
