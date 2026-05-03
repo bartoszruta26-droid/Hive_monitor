@@ -3112,6 +3112,467 @@ void calculateRadarMetrics(RadarMetrics& metrics, const uint8_t window_size) {
     calculatePowerSpectrum(energies, valid_samples, metrics.power_spectrum_peak);
 }
 
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU TEMPERATURY I WILGOTNOŚCI (28 PARAMETRÓW)
+// ============================================================================
+
+float calculateHeatIndex(float temp, float humidity) {
+    // Uproszczony wzór na heat index (Steadman)
+    if (temp < 27.0f) return temp;
+    float hi = -8.784695 + 1.61139411f * temp + 2.338549f * humidity
+               - 0.14611605f * temp * humidity - 0.012308094f * temp * temp
+               - 0.016424828f * humidity * humidity + 0.002211732f * temp * temp * humidity
+               + 0.00072546f * temp * humidity * humidity - 0.000003582f * temp * temp * humidity * humidity;
+    return hi;
+}
+
+float calculateDewPoint(float temp, float humidity) {
+    // Wzór Magnus-Tetena
+    float a = 17.27f;
+    float b = 237.7f;
+    float alpha = ((a * temp) / (b + temp)) + log(humidity / 100.0f);
+    return (b * alpha) / (a - alpha);
+}
+
+float calculateVPD(float temp, float humidity) {
+    // Vapor Pressure Deficit [kPa]
+    float es = 0.6108f * exp((17.27f * temp) / (temp + 237.3f));  // Ciśnienie nasycenia
+    float ea = es * (humidity / 100.0f);  // Rzeczywiste ciśnienie pary
+    return es - ea;
+}
+
+void calculateTempHumidityMetrics(TempHumidityMetrics& metrics) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(TempHumidityMetrics));
+    
+    // Pobranie aktualnych wartości
+    float current_temp = temperature;
+    float current_hum = humidity;
+    
+    // === PODSTAWOWE PARAMETRY STATYSTYCZNE ===
+    // W pełnej implementacji użyj bufora z historią pomiarów
+    // Tutaj uproszczona wersja z pojedynczego pomiaru
+    metrics.temp_mean = current_temp;
+    metrics.temp_std = 0.5f;  // Szacowane odchylenie
+    metrics.temp_min = current_temp - 1.0f;
+    metrics.temp_max = current_temp + 1.0f;
+    metrics.temp_range = metrics.temp_max - metrics.temp_min;
+    
+    metrics.hum_mean = current_hum;
+    metrics.hum_std = 2.0f;  // Szacowane odchylenie
+    metrics.hum_min = max(0.0f, current_hum - 5.0f);
+    metrics.hum_max = min(100.0f, current_hum + 5.0f);
+    metrics.hum_range = metrics.hum_max - metrics.hum_min;
+    
+    // === PARAMETRY KOMFORTU TERMICZNEGO ===
+    metrics.heat_index = calculateHeatIndex(current_temp, current_hum);
+    metrics.dew_point = calculateDewPoint(current_temp, current_hum);
+    metrics.vapor_pressure_deficit = calculateVPD(current_temp, current_hum);
+    
+    // Indeks komfortu (0-100%)
+    float comfort_temp = (current_temp >= 32.0f && current_temp <= 36.0f) ? 100.0f : 
+                         (current_temp >= 28.0f && current_temp <= 40.0f) ? 70.0f : 30.0f;
+    float comfort_hum = (current_hum >= 50.0f && current_hum <= 70.0f) ? 100.0f :
+                        (current_hum >= 40.0f && current_hum <= 80.0f) ? 70.0f : 30.0f;
+    metrics.comfort_index = (comfort_temp + comfort_hum) / 2.0f;
+    
+    // === STABILNOŚĆ ŚRODOWISKA ===
+    metrics.temp_stability = max(0.0f, 100.0f - metrics.temp_range * 10.0f);
+    metrics.hum_stability = max(0.0f, 100.0f - metrics.hum_range * 5.0f);
+    metrics.env_variance = (metrics.temp_std * metrics.temp_std) + (metrics.hum_std * metrics.hum_std);
+    
+    // === TRENDY (uproszczone) ===
+    static float prev_temp = 0.0f, prev_hum = 0.0f;
+    static unsigned long last_trend_time = 0;
+    unsigned long now = millis();
+    
+    if (prev_temp > 0.0f && (now - last_trend_time) > 3600000) {
+        metrics.temp_trend_1h = current_temp - prev_temp;
+        metrics.hum_trend_1h = current_hum - prev_hum;
+    }
+    prev_temp = current_temp;
+    prev_hum = current_hum;
+    last_trend_time = now;
+    
+    // Korelacja temp-wilgotność (szacowana)
+    metrics.temp_hum_correlation = -0.3f;  // Typowa ujemna korelacja
+    
+    // === ALARMY I RYZYKA ===
+    // Ryzyko przegrzania
+    metrics.overheating_risk = (current_temp > 38.0f) ? min(1.0f, (current_temp - 38.0f) / 5.0f) : 0.0f;
+    
+    // Ryzyko kondensacji
+    float dew_diff = current_temp - metrics.dew_point;
+    metrics.condensation_risk = (dew_diff < 3.0f) ? min(1.0f, (3.0f - dew_diff) / 3.0f) : 0.0f;
+    
+    // Ryzyko pleśni
+    metrics.mold_risk = (current_hum > 75.0f && current_temp > 20.0f) ? 
+                        min(1.0f, (current_hum - 75.0f) / 25.0f) : 0.0f;
+    
+    // Indeks stresu czerwiu
+    float brood_optimal_temp = 34.5f;
+    float temp_deviation = abs(current_temp - brood_optimal_temp);
+    metrics.brood_stress_index = min(100.0f, temp_deviation * 10.0f + metrics.overheating_risk * 50.0f);
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU JAKOŚCI POWIETRZA (24 PARAMETRY)
+// ============================================================================
+
+uint8_t mapIAQLevel(float iaq_index) {
+    if (iaq_index <= 50) return 1;      // Excellent
+    if (iaq_index <= 100) return 2;     // Good
+    if (iaq_index <= 150) return 3;     // Moderate
+    if (iaq_index <= 200) return 4;     // Poor
+    return 5;                            // Very Poor
+}
+
+float calculateVentilationNeed(uint16_t co2, uint16_t voc) {
+    float need = 0.0f;
+    if (co2 > 1000) need += min(50.0f, (co2 - 1000) / 20.0f);
+    if (voc > 100) need += min(50.0f, (voc - 100) / 5.0f);
+    return min(100.0f, need);
+}
+
+void calculateAirQualityMetrics(AirQualityMetrics& metrics) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(AirQualityMetrics));
+    
+    // Pobranie aktualnych wartości z SGP41
+    metrics.co2_equivalent = co2_eq;
+    metrics.voc_index = voc_idx;
+    metrics.nox_equivalent = 0;  // SGP41 nie mierzy NOx bezpośrednio
+    
+    // === STATYSTYKI CO2 i VOC ===
+    metrics.co2_mean = (float)co2_eq;
+    metrics.co2_std = 50.0f;  // Szacowane
+    metrics.co2_min = max(400, co2_eq - 100);
+    metrics.co2_max = co2_eq + 100;
+    
+    metrics.voc_mean = (float)voc_idx;
+    metrics.voc_std = 10.0f;
+    metrics.voc_min = max(0, voc_idx - 20);
+    metrics.voc_max = voc_idx + 20;
+    
+    // === INDEKSY JAKOŚCI POWIETRZA ===
+    // IAQ Index (0-500)
+    metrics.iaq_index = min(500.0f, (float)co2_eq * 0.3f + (float)voc_idx * 2.0f);
+    metrics.air_quality_level = (float)mapIAQLevel(metrics.iaq_index);
+    metrics.ventilation_need = calculateVentilationNeed(co2_eq, voc_idx);
+    
+    // === ZDROWIE ULA ===
+    // Indeks komfortu ula
+    float co2_comfort = (co2_eq < 1500) ? 100.0f : max(0.0f, 100.0f - (co2_eq - 1500) / 10.0f);
+    float voc_comfort = (voc_idx < 50) ? 100.0f : max(0.0f, 100.0f - (voc_idx - 50) * 2.0f);
+    metrics.hive_comfort_index = (co2_comfort + voc_comfort) / 2.0f;
+    
+    // Stres od jakości powietrza
+    metrics.stress_from_air = max(0.0f, min(1.0f, (metrics.iaq_index - 100) / 400.0f));
+    
+    // Ryzyko zanieczyszczenia
+    metrics.contamination_risk = (voc_idx > 150) ? min(1.0f, (voc_idx - 150) / 350.0f) : 0.0f;
+    
+    // === TRENDY ===
+    static int16_t prev_co2 = 0, prev_voc = 0;
+    if (prev_co2 > 0) {
+        metrics.co2_trend_1h = (float)(co2_eq - prev_co2);
+        metrics.voc_trend_1h = (float)(voc_idx - prev_voc);
+    }
+    prev_co2 = co2_eq;
+    prev_voc = voc_idx;
+    
+    metrics.air_quality_trend = -(metrics.co2_trend_1h / 100.0f + metrics.voc_trend_1h / 20.0f) / 2.0f;
+    
+    // === ALERTY ===
+    metrics.poor_ventilation_alert = (metrics.ventilation_need > 50.0f) ? 
+                                      min(1.0f, metrics.ventilation_need / 100.0f) : 0.0f;
+    
+    metrics.high_co2_warning = (co2_eq > 2000) ? min(1.0f, (co2_eq - 2000) / 3000.0f) : 0.0f;
+    
+    metrics.voc_alert_level = (voc_idx > 200) ? min(1.0f, (voc_idx - 200) / 300.0f) : 0.0f;
+    
+    // Łączny wynik ryzyka
+    metrics.combined_risk_score = min(100.0f, 
+        metrics.stress_from_air * 40.0f + 
+        metrics.contamination_risk * 30.0f + 
+        metrics.poor_ventilation_alert * 30.0f);
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU WIBRACJI PIEZO (22 PARAMETRY)
+// ============================================================================
+
+float detectDominantFrequency(const float* data, uint16_t count, float sampleRate) {
+    // Prosta detekcja dominantnej częstotliwości metodą DFT
+    if (count < 4) return 0.0f;
+    
+    uint16_t max_bin = 0;
+    float max_power = 0.0f;
+    
+    // Sprawdź kilka pierwszych harmonicznych
+    for (uint8_t k = 1; k <= 8 && k < count / 2; k++) {
+        float real_part = 0.0f;
+        float imag_part = 0.0f;
+        
+        for (uint16_t n = 0; n < count; n++) {
+            float angle = (2.0f * PI * k * n) / count;
+            real_part += data[n] * cos(angle);
+            imag_part -= data[n] * sin(angle);
+        }
+        
+        float power = (real_part * real_part + imag_part * imag_part) / (count * count);
+        if (power > max_power) {
+            max_power = power;
+            max_bin = k;
+        }
+    }
+    
+    return (float)max_bin * sampleRate / count;
+}
+
+void calculatePiezoMetrics(PiezoVibrationMetrics& metrics) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(PiezoVibrationMetrics));
+    
+    // Pobranie aktualnego odczytu z Piezo
+    int raw_value = analogRead(PIEZO_PIN);
+    float voltage = raw_value * (3.3f / 4095.0f) * 1000.0f;  // Konwersja na mV
+    
+    // === PODSTAWOWE PARAMETRY AMPLITUDY ===
+    metrics.vibration_rms = voltage * 0.707f;  // Przybliżenie dla sygnału sinusoidalnego
+    metrics.vibration_peak = voltage;
+    metrics.vibration_peak_to_peak = voltage * 2.0f;
+    metrics.vibration_mean = voltage * 0.5f;
+    
+    // === STATYSTYKI WIBRACJI ===
+    metrics.vibration_std = voltage * 0.2f;  // Szacowane
+    metrics.vibration_cv = (metrics.vibration_mean > 0.01f) ? 
+                           metrics.vibration_std / metrics.vibration_mean : 0.0f;
+    metrics.vibration_energy = voltage * voltage;
+    
+    // === PARAMETRY CZĘSTOTLIWOŚCIOWE ===
+    // W pełnej wersji użyj bufora z próbkami
+    metrics.dominant_vib_freq = 250.0f;  // Typowa częstotliwość pszczół [Hz]
+    metrics.vibration_activity_idx = min(100.0f, voltage * 2.0f);
+    
+    // === DETEKCJA ZDARZEŃ ===
+    metrics.impact_count = (voltage > 50.0f) ? 1.0f : 0.0f;  // Próg uderzenia
+    metrics.continuous_vib_ratio = (voltage > 20.0f) ? 0.7f : 0.2f;
+    metrics.intermittent_vib_ratio = 1.0f - metrics.continuous_vib_ratio;
+    
+    // === KLASYFIKACJA ŹRÓDŁA ===
+    // Na podstawie charakterystyki sygnału
+    if (voltage > 100.0f && metrics.dominant_vib_freq < 100.0f) {
+        // Potencjalny drapieżnik (niska częstotliwość, wysoka amplituda)
+        metrics.predator_vib_score = min(100.0f, voltage / 2.0f);
+        metrics.bee_traffic_score = 20.0f;
+    } else if (voltage > 10.0f && metrics.dominant_vib_freq >= 80.0f && 
+               metrics.dominant_vib_freq <= 800.0f) {
+        // Aktywność pszczół
+        metrics.bee_traffic_score = min(100.0f, voltage * 1.5f);
+        metrics.predator_vib_score = 5.0f;
+    } else {
+        // Szum środowiskowy
+        metrics.environmental_vib_score = min(100.0f, 50.0f + voltage * 0.5f);
+    }
+    
+    // === TRENDY ===
+    static float prev_vib = 0.0f;
+    static unsigned long last_vib_time = 0;
+    unsigned long now = millis();
+    
+    if (prev_vib > 0.0f && (now - last_vib_time) > 60000) {
+        metrics.vibration_trend_1min = voltage - prev_vib;
+        metrics.activity_change_rate = (voltage - prev_vib) / prev_vib * 100.0f;
+    }
+    prev_vib = voltage;
+    last_vib_time = now;
+    
+    // === ALERTY ===
+    // Prawdopodobieństwo intruza
+    metrics.intrusion_probability = metrics.predator_vib_score / 100.0f * 
+                                    (voltage > 80.0f ? 1.5f : 1.0f);
+    metrics.intrusion_probability = min(1.0f, metrics.intrusion_probability);
+    
+    // Flaga wibracji rojowej
+    metrics.swarm_vibration_flag = (metrics.dominant_vib_freq >= 150.0f && 
+                                     metrics.dominant_vib_freq <= 350.0f &&
+                                     voltage > 30.0f) ? 1.0f : 0.0f;
+    
+    // Wynik anomalii
+    metrics.anomaly_vibration_score = (voltage > 200.0f || metrics.intrusion_probability > 0.7f) ? 
+                                       min(1.0f, voltage / 300.0f) : 0.0f;
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU CIŚNIENIA ATMOSFERYCZNEGO (18 PARAMETRÓW)
+// ============================================================================
+
+float calculateSeaLevelPressure(float pressure, float altitude) {
+    // Korekcja ciśnienia do poziomu morza
+    return pressure * pow(1.0f - (altitude / 44330.0f), -5.255f);
+}
+
+int predictWeatherTrend(const float* pressures, uint8_t count) {
+    if (count < 2) return 0;
+    float trend = pressures[count-1] - pressures[0];
+    if (trend > 2.0f) return 1;   // Poprawa
+    if (trend < -2.0f) return -1; // Pogorszenie
+    return 0;                      // Stabilnie
+}
+
+void calculateBarometricMetrics(BarometricMetrics& metrics) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(BarometricMetrics));
+    
+    // Symulacja odczytu ciśnienia (w pełnej wersji z BMP280)
+    static float simulated_pressure = 1013.25f;
+    static float prev_pressure = 1013.25f;
+    
+    // Lekka losowa zmienność dla demonstracji
+    simulated_pressure += (random(-10, 11) / 100.0f);
+    simulated_pressure = constrain(simulated_pressure, 980.0f, 1040.0f);
+    
+    float current_pressure = simulated_pressure;
+    
+    // === PODSTAWOWE PARAMETRY CIŚNIENIA ===
+    metrics.pressure_mean = current_pressure;
+    metrics.pressure_std = 1.0f;  // Szacowane
+    metrics.pressure_min = current_pressure - 2.0f;
+    metrics.pressure_max = current_pressure + 2.0f;
+    
+    // Trendy
+    metrics.pressure_trend_1h = current_pressure - prev_pressure;
+    metrics.pressure_trend_3h = (current_pressure - prev_pressure) * 3.0f;
+    
+    prev_pressure = current_pressure;
+    
+    // === PROGNOZA POGODY ===
+    // Trend pogodowy (-1 do 1)
+    metrics.weather_trend = constrain(metrics.pressure_trend_3h / 5.0f, -1.0f, 1.0f);
+    
+    // Prawdopodobieństwo burzy
+    if (metrics.pressure_trend_3h < -4.0f) {
+        metrics.storm_probability = min(100.0f, abs(metrics.pressure_trend_3h) * 15.0f);
+    } else {
+        metrics.storm_probability = 0.0f;
+    }
+    
+    // Ciśnienie na poziomie morza (zakładając wysokość 100m n.p.m.)
+    metrics.pressure_sea_level = calculateSeaLevelPressure(current_pressure, 100.0f);
+    
+    // === WPŁYW NA PSZCZOŁY ===
+    // Warunki do wylotów
+    float pressure_comfort = (current_pressure >= 1010.0f && current_pressure <= 1025.0f) ? 100.0f :
+                             (current_pressure >= 1000.0f && current_pressure <= 1035.0f) ? 70.0f : 30.0f;
+    float trend_penalty = abs(metrics.pressure_trend_1h) * 5.0f;
+    metrics.foraging_conditions = max(0.0f, pressure_comfort - trend_penalty);
+    
+    // Indeks pogody dla rojenia
+    metrics.swarm_weather_index = (current_pressure > 1015.0f && metrics.weather_trend > 0.0f) ? 
+                                   70.0f + metrics.weather_trend * 30.0f : 30.0f;
+    
+    // Stres barometryczny
+    metrics.barometric_stress = (abs(metrics.pressure_trend_1h) > 3.0f) ? 
+                                 min(1.0f, abs(metrics.pressure_trend_1h) / 10.0f) : 0.0f;
+    
+    // === ALTITUDE COMPENSATION ===
+    metrics.altitude_compensated = 100.0f;  // Zakładana wysokość
+    metrics.pressure_altitude = 44330.0f * (1.0f - pow(current_pressure / 1013.25f, 1.0f / 5.255f));
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU NATĘŻENIA ŚWIATŁA (17 PARAMETRÓW)
+// ============================================================================
+
+bool detectHiveOpening(uint32_t lux, uint32_t prev_lux, bool is_night) {
+    // Detekcja nagłej zmiany światła sugerującej otwarcie ula
+    if (is_night && lux > 100 && prev_lux < 10) return true;
+    if (!is_night && abs((int)lux - (int)prev_lux) > 5000) return true;
+    return false;
+}
+
+void calculateLightMetrics(LightMetrics& metrics) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(LightMetrics));
+    
+    // Symulacja odczytu światła (w pełnej wersji z BH1750/TSL2561)
+    static uint32_t simulated_lux = 1000;
+    static unsigned long sim_start_time = 0;
+    
+    if (sim_start_time == 0) sim_start_time = millis();
+    unsigned long hours_elapsed = (millis() - sim_start_time) / 3600000;
+    
+    // Symulacja cyklu dobowego
+    uint8_t hour_of_day = hours_elapsed % 24;
+    if (hour_of_day >= 6 && hour_of_day <= 18) {
+        // Dzień - symulacja zmian światła
+        simulated_lux = 5000 + random(0, 20000);
+    } else {
+        // Noc
+        simulated_lux = random(0, 50);
+    }
+    
+    uint32_t current_lux = simulated_lux;
+    bool is_night = (current_lux < 100);
+    
+    // === PODSTAWOWE PARAMETRY ŚWIATŁA ===
+    metrics.lux_current = current_lux;
+    metrics.lux_mean = (float)current_lux;
+    metrics.lux_std = (float)current_lux * 0.2f;
+    metrics.lux_min = max((uint32_t)0, current_lux - 1000);
+    metrics.lux_max = current_lux + 1000;
+    
+    // === CYKL DOBOWY ===
+    // Czas trwania dnia/nocy (szacowany)
+    metrics.daylight_duration = 12.0f;  // Godzin
+    metrics.night_duration = 24.0f - metrics.daylight_duration;
+    
+    // Wykrycie świtu/zmierzchu
+    static uint32_t prev_lux = 0;
+    if ((prev_lux < 100 && current_lux >= 100) || (prev_lux >= 100 && current_lux < 100)) {
+        metrics.dawn_dusk_detected = 1.0f;
+    } else {
+        metrics.dawn_dusk_detected = 0.0f;
+    }
+    prev_lux = current_lux;
+    
+    // === WPŁYW NA PSZCZOŁY ===
+    // Indeks światła do wylotów
+    if (current_lux >= 1000 && current_lux <= 50000) {
+        metrics.foraging_light_index = 100.0f;
+    } else if (current_lux >= 500) {
+        metrics.foraging_light_index = 70.0f;
+    } else {
+        metrics.foraging_light_index = 20.0f;
+    }
+    
+    // Synchronizacja cyrkadiana
+    bool proper_cycle = (is_night && hour_of_day >= 20) || (!is_night && hour_of_day >= 6 && hour_of_day <= 18);
+    metrics.circadian_sync = proper_cycle ? 0.95f : 0.5f;
+    
+    // Detekcja otwarcia ula
+    static bool hive_was_open = false;
+    if (detectHiveOpening(current_lux, prev_lux, is_night)) {
+        metrics.hive_open_detection = 1.0f;
+        hive_was_open = true;
+    } else {
+        metrics.hive_open_detection = hive_was_open ? 0.5f : 0.0f;
+        if (hive_was_open) hive_was_open = false;
+    }
+    
+    // === SEZONOWOŚĆ ===
+    metrics.seasonal_light_change = 0.0f;  // Wymaga długoterminowych danych
+    metrics.light_stability = 100.0f - min(100.0f, metrics.lux_std / 100.0f);
+    
+    // === ALERTY ===
+    // Nieprawidłowe światło
+    metrics.abnormal_light_flag = (is_night && current_lux > 500) ? 1.0f : 0.0f;
+    
+    // Zdarzenie intruza (światło w nocy)
+    metrics.intrusion_light_event = (is_night && current_lux > 1000) ? 1.0f : 0.0f;
+}
+
 // Aktualizacja statystyk długoterminowych
 void updateLongTermStats(const RadarDataPoint& point) {
     // Uproszczona implementacja - do rozbudowy

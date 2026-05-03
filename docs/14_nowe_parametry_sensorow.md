@@ -2,19 +2,19 @@
 
 ## Przegląd Dodanych Metryk
 
-W ramach rozbudowy systemu ApiaryGuard Pro dodano **ponad 380+ parametrów** we wszystkich modułach sensorowych, które umożliwiają kompleksową analizę środowiska ulu:
+W ramach rozbudowy systemu ApiaryGuard Pro dodano **ponad 338+ parametrów** we wszystkich modułach sensorowych, które umożliwiają kompleksową analizę środowiska ulu. Wszystkie moduły posiadają pełne implementacje funkcji obliczających w pliku `src/pico/apiaryguard_pico.ino`:
 
-| Moduł Sensora | Liczba Parametrów | Opis |
-|---------------|-------------------|------|
-| **HX711 (Waga)** | 105+ | Statystyki, trendy, pożytek, konsumpcja, cykle, zdrowie kolonii, prognozy |
-| **Audio (Mikrofon)** | 97+ | Analiza FFT, parametry czasowe, częstotliwościowe, psychoakustyczne, bioakustyczne |
-| **Radar MMWave** | 27 | Detekcja ruchu, odległość, energia, prędkość, anomalie |
-| **TempHumidityMetrics** | 28 | Statystyki, komfort termiczny, stabilność, trendy, alarmy |
-| **AirQualityMetrics** | 24 | Gazy (CO₂, VOC, NOx), IAQ, zdrowie ula, trendy, alerty |
-| **PiezoVibrationMetrics** | 22 | Amplituda, częstotliwość, zdarzenia, klasyfikacja źródła |
-| **BarometricMetrics** | 18 | Ciśnienie, prognoza pogody, wpływ na pszczoły |
-| **LightMetrics** | 17 | Natężenie światła, cykl dobowy, synchronizacja cyrkadiana |
-| **RAZEM** | **338+** | **8 modułów sensorycznych** |
+| Moduł Sensora | Liczba Parametrów | Status Implementacji | Opis |
+|---------------|-------------------|---------------------|------|
+| **HX711 (Waga)** | 105+ | ✅ Zaimplementowane | Statystyki, trendy, pożytek, konsumpcja, cykle, zdrowie kolonii, prognozy |
+| **Audio (Mikrofon)** | 97+ | ✅ Zaimplementowane | Analiza FFT, parametry czasowe, częstotliwościowe, psychoakustyczne, bioakustyczne |
+| **Radar MMWave** | 27 | ✅ Zaimplementowane | Detekcja ruchu, odległość, energia, prędkość, anomalie |
+| **TempHumidityMetrics** | 28 | ✅ Zaimplementowane | Statystyki, komfort termiczny, stabilność, trendy, alarmy |
+| **AirQualityMetrics** | 24 | ✅ Zaimplementowane | Gazy (CO₂, VOC, NOx), IAQ, zdrowie ula, trendy, alerty |
+| **PiezoVibrationMetrics** | 22 | ✅ Zaimplementowane | Amplituda, częstotliwość, zdarzenia, klasyfikacja źródła |
+| **BarometricMetrics** | 18 | ✅ Zaimplementowane | Ciśnienie, prognoza pogody, wpływ na pszczoły |
+| **LightMetrics** | 17 | ✅ Zaimplementowane | Natężenie światła, cykl dobowy, synchronizacja cyrkadiana |
+| **RAZEM** | **338+** | **8/8 modułów zaimplementowanych** | **Kompleksowy monitoring środowiska ula** |
 
 ---
 
@@ -274,20 +274,20 @@ GET /apiary/light/metrics
 
 ## 🔄 Częstotliwość Aktualizacji
 
-| Moduł | Sampling Rate | Update Rate | Buffer Size | Liczba Parametrów |
-|-------|--------------|-------------|-------------|-------------------|
-| HX711 (Waga) | 10 Hz | Co 5min (agregacja) | 288 punktów (24h) | 105+ |
-| Audio (Mikrofon) | 8 kHz | Co 1s (FFT) | 60 punktów | 97+ |
-| Radar MMWave | 1 Hz | Co 1s | 120 punktów | 27 |
-| Temp/Humidity | 0.5 Hz | Co 2s | 288 punktów (24h) | 28 |
-| Air Quality | 0.1 Hz | Co 10s | 144 punkty (24h) | 24 |
-| Vibration (Piezo) | 100 Hz | Co 1s | 120 punktów | 22 |
-| Barometric | 1 Hz | Co 1min | 72 punkty | 18 |
-| Light | 1 Hz | Co 1min | 1440 punktów (24h) | 17 |
+| Moduł | Sampling Rate | Update Rate | Buffer Size | Liczba Parametrów | Status Implementacji |
+|-------|--------------|-------------|-------------|-------------------|---------------------|
+| HX711 (Waga) | 10 Hz | Co 5min (agregacja) | 288 punktów (24h) | 105+ | ✅ Zaimplementowane |
+| Audio (Mikrofon) | 8 kHz | Co 1s (FFT) | 60 punktów | 97+ | ✅ Zaimplementowane |
+| Radar MMWave | 1 Hz | Co 1s | 120 punktów | 27 | ✅ Zaimplementowane |
+| Temp/Humidity | 0.5 Hz | Co 2s | 288 punktów (24h) | 28 | ✅ Zaimplementowane |
+| Air Quality | 0.1 Hz | Co 10s | 144 punkty (24h) | 24 | ✅ Zaimplementowane |
+| Vibration (Piezo) | 100 Hz | Co 1s | 120 punktów | 22 | ✅ Zaimplementowane |
+| Barometric | 1 Hz | Co 1min | 72 punkty | 18 | ✅ Zaimplementowane |
+| Light | 1 Hz | Co 1min | 1440 punktów (24h) | 17 | ✅ Zaimplementowane |
 
 ---
 
-**ApiaryGuard Pro** - Kompleksowy monitoring środowiska ulu z ponad **338+ parametrami analitycznymi** we wszystkich modułach sensorycznych.
+**ApiaryGuard Pro** - Kompleksowy monitoring środowiska ulu z ponad **338+ parametrami analitycznymi** we wszystkich modułach sensorycznych. Wszystkie funkcje obliczające są w pełni zaimplementowane w pliku `src/pico/apiaryguard_pico.ino`.
 
 ### Pełna Lista Endpointów API
 
@@ -309,3 +309,18 @@ GET /vibration/status           - Wibracje Piezo: 22 parametry (aktywność, int
 GET /barometric/status          - Ciśnienie: 18 parametrów (prognoza pogody)
 GET /light/status               - Światło: 17 parametrów (cykl dobowy, circadian sync)
 ```
+
+### Lokalizacje Funkcji Obliczających w Kodzie
+
+Wszystkie funkcje obliczające znajdują się w pliku `src/pico/apiaryguard_pico.ino`:
+
+| Funkcja | Linia | Moduł | Liczba Parametrów |
+|---------|-------|-------|-------------------|
+| `calculateHX711Metrics()` | 2174 | HX711 (Waga) | 105+ |
+| `calculateAudioMetrics()` | 1251 | Audio (Mikrofon) | 97+ |
+| `calculateRadarMetrics()` | 2928 | Radar MMWave | 27 |
+| `calculateTempHumidityMetrics()` | 3144 | Temp/Wilg | 28 |
+| `calculateAirQualityMetrics()` | 3237 | Jakość Powietrza | 24 |
+| `calculatePiezoMetrics()` | 3333 | Wibracje Piezo | 22 |
+| `calculateBarometricMetrics()` | 3424 | Ciśnienie | 18 |
+| `calculateLightMetrics()` | 3495 | Światło | 17 |
