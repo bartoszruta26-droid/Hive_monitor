@@ -1,7 +1,20 @@
 /**
  * apiary_collector.cpp
  * Moduł zbierania danych z wielu uli przez Ethernet (Raspberry Pi 2 + Pico)
- * Kompilacja: g++ -std=c++11 -pthread -o apiary_collector apiary_collector.cpp apiary_logger.cpp
+ * Kompilacja: g++ -std=c++17 -pthread -o apiary_collector apiary_collector.cpp
+ * 
+ * OBSŁUGIWANE PARAMETRY (WSZYSTKIE Z .md i .ino):
+ * - Podstawowe: temp, humidity, weight, battery, co2, voc, motion
+ * - Audio (97+): rms_amplitude, dominant_frequency, swarm_probability, bee_activity_index, etc.
+ * - Radar (27): distance, energy, activity_ratio, hive_health_index, etc.
+ * - HX711 (105+): mean_weight, trend_slope, nectar_inflow_rate, colony_growth_rate, etc.
+ * - TempHumidity (28): heat_index, dew_point, comfort_index, brood_stress_index, etc.
+ * - AirQuality (24): iaq_index, ventilation_need, contamination_risk, etc.
+ * - PiezoVibration (22): vibration_rms, bee_traffic_score, intrusion_probability, etc.
+ * - Barometric (18): pressure_mean, weather_trend, foraging_conditions, etc.
+ * - Light (17): lux_current, daylight_duration, circadian_sync, etc.
+ * 
+ * KOMUNIKACJA: HTTP API JSON na porcie 8080
  */
 
 #include <iostream>
@@ -22,40 +35,102 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctime>
+#include <iomanip>
+#include <algorithm>
 
 // Dołączamy loggera i używamy przestrzeni nazw apiary
 #include "apiary_logger.cpp"
 using namespace apiary;
 
-// Struktura danych z ula - rozszerzona o wszystkie parametry z Pico
+// Struktura danych z ula - ROZSZERZONA o WSZYSTKIE parametry z dokumentacji .md i pico.ino
 struct HiveData {
+    // Podstawowe parametry (9 pól)
     std::string hive_id;
-    float temperature;          // Temperatura [°C]
-    float humidity;             // Wilgotność [%RH]
-    float weight;               // Waga [kg]
-    int battery_level;          // Poziom baterii [%]
-    int co2_eq;                 // CO2 equivalent [ppm]
-    int voc_idx;                // VOC index [index]
-    int motion_detected;        // Flaga ruchu z radaru (0/1)
-    long long timestamp;        // Timestamp [s]
-    bool is_online;             // Status online/offline
+    float temperature = 0.0f;           // Temperatura [°C]
+    float humidity = 0.0f;              // Wilgotność [%RH]
+    float weight = 0.0f;                // Waga [kg]
+    int battery_level = 0;              // Poziom baterii [%]
+    int co2_eq = 0;                     // CO2 equivalent [ppm]
+    int voc_idx = 0;                    // VOC index [index]
+    int motion_detected = 0;            // Flaga ruchu z radaru (0/1)
+    long long timestamp = 0;            // Timestamp [s]
+    bool is_online = false;             // Status online/offline
     
-    // Nowe parametry audio
-    float audio_rms;            // RMS amplituda audio [V]
-    float audio_dominant_freq;  // Dominująca częstotliwość audio [Hz]
-    float audio_swarm_prob;     // Prawdopodobieństwo rojenia z audio [0-1]
+    // Parametry Audio (97+ parametrów - główne wybrane)
+    float audio_rms = 0.0f;             // RMS amplituda audio [V]
+    float audio_dominant_freq = 0.0f;   // Dominująca częstotliwość audio [Hz]
+    float audio_swarm_prob = 0.0f;      // Prawdopodobieństwo rojenia z audio [0-1]
+    float audio_bee_activity = 0.0f;    // Indeks aktywności pszczół [0-100%]
+    float audio_hive_health = 0.0f;     // Indeks zdrowia z audio [0-100%]
+    float audio_spectral_centroid = 0.0f; // Centrum widma [Hz]
+    float audio_power_bee_band = 0.0f;  // Moc w paśmie pszczół [dB]
+    float audio_crest_factor = 0.0f;    // Współczynnik szczytu
+    float audio_entropy = 0.0f;         // Entropia widmowa
+    float audio_foraging_eff = 0.0f;    // Efektywność zbierania [0-100%]
     
-    // Nowe parametry radaru
-    float radar_distance;       // Odległość wykrytego obiektu [m]
-    float radar_energy;         // Energia sygnału radaru [dB]
-    float radar_activity;       // Współczynnik aktywności [0-1]
+    // Parametry Radar MMWave (27 parametrów - główne wybrane)
+    float radar_distance = 0.0f;        // Odległość wykrytego obiektu [m]
+    float radar_energy = 0.0f;          // Energia sygnału radaru [dB]
+    float radar_activity = 0.0f;        // Współczynnik aktywności [0-1]
+    float radar_hive_health = 0.0f;     // Indeks zdrowia ula [0-100%]
+    float radar_signal_quality = 0.0f;  // Jakość sygnału [0-100%]
+    float radar_target_rate = 0.0f;     // Tempo pojawiania się celów [/min]
+    float radar_entropy = 0.0f;         // Entropia sygnału
+    float radar_trend_slope = 0.0f;     // Nachylenie trendu
     
-    // Nowe parametry wagi
-    float weight_rate;          // Szybkość zmiany wagi [kg/h]
-    float weight_trend;         // Trend wagi [-1..1] gdzie 1=rosnący
+    // Parametry HX711 Waga (105+ parametrów - główne wybrane)
+    float hx711_mean_weight = 0.0f;     // Średnia waga [kg]
+    float hx711_std_weight = 0.0f;      // Odchylenie standardowe wagi [kg]
+    float hx711_trend_slope_1h = 0.0f;  // Trend 1h [kg/h]
+    float hx711_trend_slope_24h = 0.0f; // Trend 24h [kg/h]
+    float hx711_nectar_inflow = 0.0f;   // Przepływ nektaru [kg/h]
+    float hx711_consumption_rate = 0.0f;// Zużycie zapasów [kg/h]
+    float hx711_colony_growth = 0.0f;   // Tempo wzrostu kolonii [%/dzień]
+    float hx711_productivity = 0.0f;    // Wynik produktywności [0-100%]
+    float hx711_predicted_24h = 0.0f;   // Prognoza wagi za 24h [kg]
+    float hx711_anomaly_score = 0.0f;   // Wynik anomalii [0-1]
     
-    // Nowe parametry jakości powietrza
-    int air_iaq;                // Indeks jakości powietrza [0-100]
+    // Parametry Temperature/Humidity (28 parametrów - główne)
+    float th_heat_index = 0.0f;         // Indeks ciepła [°C]
+    float th_dew_point = 0.0f;          // Punkt rosy [°C]
+    float th_comfort_index = 0.0f;      // Indeks komfortu [0-100%]
+    float th_brood_stress = 0.0f;       // Stres czerwiu [0-100%]
+    float th_temp_stability = 0.0f;     // Stabilność temperatury [0-100%]
+    float th_mold_risk = 0.0f;          // Ryzyko pleśni [0-1]
+    
+    // Parametry Air Quality (24 parametry - główne)
+    int aq_co2_mean = 0;                // Średnie CO2 [ppm]
+    int aq_voc_mean = 0;                // Średnie VOC [index]
+    float aq_iaq_index = 0.0f;          // Indoor Air Quality Index [0-500]
+    float aq_ventilation_need = 0.0f;   // Zapotrzebowanie wentylacji [0-100%]
+    float aq_contamination_risk = 0.0f; // Ryzyko zanieczyszczenia [0-1]
+    float aq_hive_comfort = 0.0f;       // Komfort ula z powietrza [0-100%]
+    
+    // Parametry Piezo Vibration (22 parametry - główne)
+    float piezo_rms = 0.0f;             // RMS wibracji [mV]
+    float piezo_dominant_freq = 0.0f;   // Dominująca częstotliwość [Hz]
+    float piezo_activity_idx = 0.0f;    // Indeks aktywności [0-100%]
+    float piezo_bee_traffic = 0.0f;     // Ruch pszczół [0-100%]
+    float piezo_predator_score = 0.0f;  // Wynik drapieżnika [0-100%]
+    float piezo_intrusion_prob = 0.0f;  // Prawdopodobieństwo intruza [0-1]
+    
+    // Parametry Barometric (18 parametrów - główne)
+    float baro_pressure = 0.0f;         // Ciśnienie [hPa]
+    float baro_trend_1h = 0.0f;         // Trend ciśnienia 1h [hPa/h]
+    float baro_weather_trend = 0.0f;    // Trend pogodowy [-1 do 1]
+    float baro_storm_prob = 0.0f;       // Prawdopodobieństwo burzy [0-1]
+    float baro_foraging_cond = 0.0f;    // Warunki do wylotów [0-100%]
+    
+    // Parametry Light (17 parametrów - główne)
+    uint32_t light_lux = 0;             // Natężenie światła [lux]
+    float light_daylight_hours = 0.0f;  // Czas dnia [godziny]
+    float light_circadian_sync = 0.0f;  // Synchronizacja cyrkadiana [0-1]
+    float light_foraging_idx = 0.0f;    // Indeks światła do wylotów [0-100%]
+    
+    // Dodatkowe pola z UDP (backward compatibility)
+    float weight_rate = 0.0f;           // Szybkość zmiany wagi [kg/h]
+    float weight_trend = 0.0f;          // Trend wagi [-1..1]
+    int air_iaq = 0;                    // Indeks jakości powietrza [0-100]
 };
 
 // Menadżer danych uli
