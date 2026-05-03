@@ -423,19 +423,23 @@ TrendAnalysis calculateTrend(const uint8_t window_size) {
                          : (RADAR_BUFFER_SIZE - (actual_count - radarBufferIndex));
     
     float sum_dist = 0.0f, sum_energy = 0.0f;
+    uint8_t valid_count = 0;  // Licznik ważnych próbek
     
     for (uint8_t i = 0; i < actual_count; i++) {
         uint16_t idx = (start_idx + i) % RADAR_BUFFER_SIZE;
         if (!radarBuffer[idx].is_valid) continue;
         
-        distances[i] = radarBuffer[idx].distance;
-        energies[i] = radarBuffer[idx].energy;
-        time_indices[i] = (float)i;
+        // Używamy valid_count jako indeksu dla pakowania ważnych danych
+        distances[valid_count] = radarBuffer[idx].distance;
+        energies[valid_count] = radarBuffer[idx].energy;
+        time_indices[valid_count] = (float)valid_count;
         
-        sum_dist += distances[i];
-        sum_energy += energies[i];
-        result.sample_count++;
+        sum_dist += distances[valid_count];
+        sum_energy += energies[valid_count];
+        valid_count++;
     }
+    
+    result.sample_count = valid_count;
     
     if (result.sample_count < 2) return result;
     
@@ -917,10 +921,17 @@ void processRadar() {
   while(radarSerial.available()) {
     uint8_t b = radarSerial.read();
     
-    // Detekcja nagłówka ramki LD2410B: 0xF4 0xF3 0x01
+    // Detekcja nagłówka ramki LD2410B: 0xF4 0xF3 0xF2 0xF1 (4 bajty)
     if(idx == 0 && b != 0xF4) continue;
     if(idx == 1 && b != 0xF3) { idx = 0; continue; }
-    if(idx == 2 && b != 0x01) { idx = 0; continue; }
+    if(idx == 2 && b != 0xF2) { idx = 0; continue; }
+    if(idx == 3 && b != 0xF1) { idx = 0; continue; }
+    
+    // Bounds check przed zapisem do bufora
+    if(idx >= 255) {
+      idx = 0;
+      continue;
+    }
     
     buffer[idx++] = b;
     
