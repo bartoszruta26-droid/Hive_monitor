@@ -586,6 +586,40 @@ unsigned long lastMillis = 0;
 unsigned long networkHeartbeat = 0;
 
 // ============================================================================
+// MODUŁ DYNAMICZNEGO WYKRYWANIA SENSORÓW
+// ============================================================================
+
+struct SensorFlags {
+    bool detected = false;   // Czy hardware został wykryty
+    bool active = false;     // Czy moduł jest włączony do przetwarzania
+    int errorCode = 0;       // Kod błędu inicjalizacji
+    unsigned long lastRead = 0;
+};
+
+struct SystemSensors {
+    SensorFlags hx711;       // Waga (HX711)
+    SensorFlags audio;       // Mikrofon (MEMS)
+    SensorFlags radar;       // Radar MMWave (LD2410B)
+    SensorFlags tempHum;     // Temp/Wilg (DHT22/SHT40/BME280)
+    SensorFlags airQual;     // Jakość powietrza (SGP41)
+    SensorFlags piezo;       // Wibracje (Piezo)
+    SensorFlags baro;        // Ciśnienie (BME280)
+    SensorFlags light;       // Światło (BH1750/Analog)
+} sensors;
+
+// Deklaracje funkcji wykrywania
+void detectAllSensors();
+void printSensorStatus();
+bool checkHX711();
+bool checkAudio();
+bool checkRadar();
+bool checkTempHumidity();
+bool checkAirQuality();
+bool checkPiezo();
+bool checkBarometric();
+bool checkLight();
+
+// ============================================================================
 // MODUŁ ANALIZY DANYCH RADARU MMWAVE - WYKRYWANIE NIEPRAWIDŁOWOŚCI I ZMIAN
 // ============================================================================
 
@@ -3708,7 +3742,7 @@ void setup() {
   Serial.begin(115200);
   while(!Serial && (millis() < 3000)); // Czekaj na USB CDC
   
-  Serial.println("=== ApiaryGuard Pico Start ===");
+  Serial.println("=== ApiaryGuard Pico v2.0 Start ===");
   
   // Inicjalizacja I2C
   Wire.setSDA(I2C_SDA);
@@ -3718,13 +3752,24 @@ void setup() {
   // Inicjalizacja UART dla Radaru
   radarSerial.begin(115200, SERIAL_8N1, RADAR_RX, RADAR_TX);
   
-  // Inicjalizacja Sensorów
-  dht.begin();
+  // ================================================================
+  // DYNAMICZNE WYKRYWANIE SENSORÓW
+  // ================================================================
+  Serial.println(">> Skanowanie i wykrywanie sensorów...");
+  detectAllSensors();
+  printSensorStatus();
   
-  if (!sgp.begin_I2C(0x59, &Wire)) { // Domyślny adres SGP41
-    Serial.println("Nie znaleziono SGP41!");
-  } else {
-    sgp.measureBaseline();
+  // Inicjalizacja Sensorów (tylko jeśli wykryte)
+  if (sensors.tempHum.detected) {
+    dht.begin();
+    Serial.println(">> DHT22/SHT40 zainicjalizowany");
+  }
+  
+  if (sensors.airQual.detected) {
+    if (sgp.begin_I2C(0x59, &Wire)) {
+      sgp.measureBaseline();
+      Serial.println(">> SGP41 zainicjalizowany");
+    }
   }
   
   // Inicjalizacja PWM
@@ -3761,38 +3806,47 @@ void setup() {
   // Start Ethernet W6100
   initW6100();
   
-  Serial.println("System gotowy.");
+  Serial.println(">> System gotowy.");
 }
 
 void loop() {
   unsigned long now = millis();
   
-  // 1. Odczyt Sensorów (co 2 sekundy)
+  // ================================================================
+  // WARUNKOWY ODCZYT SENSORÓW - tylko dla wykrytych modułów
+  // ================================================================
+  
   if(now - lastMillis > 2000) {
     lastMillis = now;
     
-    // DHT22
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-    if(!isnan(h)) humidity = h;
-    if(!isnan(t)) temperature = t;
+    // DHT22/SHT40 - tylko jeśli wykryty
+    if (sensors.tempHum.active) {
+      float h = dht.readHumidity();
+      float t = dht.readTemperature();
+      if(!isnan(h)) humidity = h;
+      if(!isnan(t)) temperature = t;
+    }
     
-    // HX711
-    long raw = readHX711();
-    hx711_value = (raw - hx711_offset) / hx711_scale;
+    // HX711 - tylko jeśli wykryty
+    if (sensors.hx711.active) {
+      long raw = readHX711();
+      hx711_value = (raw - hx711_offset) / hx711_scale;
+    }
     
-    // SGP41 (CO2/VOC)
-    sgp.measureGas();
-    co2_eq = sgp.CO2eq;
-    voc_idx = sgp.VOCindex;
+    // SGP41 (CO2/VOC) - tylko jeśli wykryty
+    if (sensors.airQual.active) {
+      sgp.measureGas();
+      co2_eq = sgp.CO2eq;
+      voc_idx = sgp.VOCindex;
+    }
     
-    // Audio - profesjonalna analiza z FFT (co 5 sekund)
+    // Audio - profesjonalna analiza z FFT (co 5 sekund) - tylko jeśli wykryty
     static unsigned long lastAudioProcess = 0;
-    if (now - lastAudioProcess > 5000) {
+    if (sensors.audio.active && (now - lastAudioProcess > 5000)) {
         lastAudioProcess = now;
         processAudioSignal();
         
-        // Debug output dla moduu0142u audio - rozszerzony o nowe parametry
+        // Debug output dla modułu audio
         Serial.printf("[AUDIO] RMS:%.3f DomFreq:%.1fHz BeeAct:%.1f%% SwarmProb:%.2f Health:%.1f%%\n",
                       currentAudioMetrics.rms_amplitude,
                       currentAudioMetrics.dominant_frequency,
@@ -3837,14 +3891,20 @@ void loop() {
         }
     }
     
-    // Audio RMS (prosta wersja - zachowana dla kompatybilnou015bci)
-    audio_rms = calculateAudioRMS();
+    // Audio RMS (prosta wersja) - tylko jeśli wykryty
+    if (sensors.audio.active) {
+      audio_rms = calculateAudioRMS();
+    }
     
-    // Wibracje (Piezo)
-    vibration_level = analogRead(PIEZO_PIN);
+    // Wibracje (Piezo) - tylko jeśli wykryty
+    if (sensors.piezo.active) {
+      vibration_level = analogRead(PIEZO_PIN);
+    }
     
-    // Radar
-    processRadar();
+    // Radar - tylko jeśli wykryty
+    if (sensors.radar.active) {
+      processRadar();
+    }
     
     // HX711 - profesjonalna analiza wagi (co 5 minut)
     static unsigned long lastHX711Process = 0;
@@ -4099,4 +4159,186 @@ void loop() {
   } else {
     digitalWrite(VALVE_1, LOW);
   }
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI WYKRYWANIA SENSORÓW (DODANE NA KOŃCU PLIKU)
+// ============================================================================
+
+void detectAllSensors() {
+  Serial.println(">> Wykrywanie sensorów...");
+  
+  // 1. HX711 - Sprawdzenie sygnału na pinie DT
+  sensors.hx711.detected = checkHX711();
+  sensors.hx711.active = sensors.hx711.detected;
+  
+  // 2. Audio (MEMS Mic) - Sprawdzenie obecności sygnału na ADC
+  sensors.audio.detected = checkAudio();
+  sensors.audio.active = sensors.audio.detected;
+  
+  // 3. Radar MMWave - Sprawdzenie komunikacji UART
+  sensors.radar.detected = checkRadar();
+  sensors.radar.active = sensors.radar.detected;
+  
+  // 4. Temp/Humidity (DHT22/SHT40/BME280)
+  sensors.tempHum.detected = checkTempHumidity();
+  sensors.tempHum.active = sensors.tempHum.detected;
+  
+  // 5. Air Quality (SGP41)
+  sensors.airQual.detected = checkAirQuality();
+  sensors.airQual.active = sensors.airQual.detected;
+  
+  // 6. Piezo Vibration - Sprawdzenie pinu Analogowego
+  sensors.piezo.detected = checkPiezo();
+  sensors.piezo.active = sensors.piezo.detected;
+  
+  // 7. Barometric (BME280) - Często ten sam chip co temp, ale sprawdzamy osobno
+  sensors.baro.detected = checkBarometric();
+  sensors.baro.active = sensors.baro.detected;
+  
+  // 8. Light Sensor (BH1750 lub analogowy)
+  sensors.light.detected = checkLight();
+  sensors.light.active = sensors.light.detected;
+}
+
+void printSensorStatus() {
+  Serial.println("");
+  Serial.println("=== STATUS SENSORÓW ===");
+  
+  #define PRINT_STATUS(name, displayName) \
+    Serial.print(displayName); \
+    Serial.print(": "); \
+    if (sensors.name.detected) { \
+      Serial.println("OK [AKTYWNY]"); \
+    } else { \
+      Serial.println("NIEWYKRYTY [WYŁĄCZONY]"); \
+    }
+  
+  PRINT_STATUS(hx711, "HX711 (Waga)         ");
+  PRINT_STATUS(audio, "Audio (MEMS Mic)     ");
+  PRINT_STATUS(radar, "Radar MMWave LD2410B ");
+  PRINT_STATUS(tempHum, "Temp/Humidity        ");
+  PRINT_STATUS(airQual, "Air Quality (SGP41)  ");
+  PRINT_STATUS(piezo, "Piezo Vibration      ");
+  PRINT_STATUS(baro, "Barometric (BME280)  ");
+  PRINT_STATUS(light, "Light Sensor         ");
+  
+  Serial.println("=======================");
+  Serial.println("");
+}
+
+bool checkHX711() {
+  pinMode(HX711_DT, INPUT);
+  pinMode(HX711_SCK, OUTPUT);
+  digitalWrite(HX711_SCK, LOW);
+  delayMicroseconds(10);
+  
+  int val = digitalRead(HX711_DT);
+  delayMicroseconds(10);
+  int val2 = digitalRead(HX711_DT);
+  
+  return (val != val2) || (val >= 0);
+}
+
+bool checkAudio() {
+  int readings[10];
+  int minVal = 4096, maxVal = 0;
+  
+  for(int i=0; i<10; i++) {
+    readings[i] = analogRead(MIC_PIN);
+    if(readings[i] < minVal) minVal = readings[i];
+    if(readings[i] > maxVal) maxVal = readings[i];
+    delay(2);
+  }
+  
+  int range = maxVal - minVal;
+  return (range > 50);
+}
+
+bool checkRadar() {
+  radarSerial.setTimeout(100);
+  
+  uint8_t cmdEnterConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x01, 0x00, 0x01, 0x00};
+  radarSerial.write(cmdEnterConfig, 8);
+  delay(100);
+  
+  if(radarSerial.available() > 0) {
+    while(radarSerial.available()) radarSerial.read();
+    
+    uint8_t cmdExitConfig[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0x02, 0x00};
+    radarSerial.write(cmdExitConfig, 8);
+    return true;
+  }
+  
+  return false;
+}
+
+bool checkTempHumidity() {
+  pinMode(DHT_PIN, INPUT_PULLUP);
+  dht.begin();
+  delay(100);
+  
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  
+  if(!isnan(h) && !isnan(t)) {
+    return true;
+  }
+  
+  Wire.beginTransmission(0x44);
+  if(Wire.endTransmission() == 0) return true;
+  
+  Wire.beginTransmission(0x76);
+  if(Wire.endTransmission() == 0) return true;
+  
+  Wire.beginTransmission(0x77);
+  if(Wire.endTransmission() == 0) return true;
+  
+  return false;
+}
+
+bool checkAirQuality() {
+  Wire.beginTransmission(0x59);
+  if(Wire.endTransmission() == 0) return true;
+  
+  Wire.beginTransmission(0x58);
+  if(Wire.endTransmission() == 0) return true;
+  
+  return false;
+}
+
+bool checkPiezo() {
+  int readings[20];
+  int minVal = 4096, maxVal = 0;
+  
+  for(int i=0; i<20; i++) {
+    readings[i] = analogRead(PIEZO_PIN);
+    if(readings[i] < minVal) minVal = readings[i];
+    if(readings[i] > maxVal) maxVal = readings[i];
+    delay(5);
+  }
+  
+  int range = maxVal - minVal;
+  return (range > 100) || (minVal > 10 && maxVal < 4000);
+}
+
+bool checkBarometric() {
+  Wire.beginTransmission(0x76);
+  if(Wire.endTransmission() == 0) return true;
+  
+  Wire.beginTransmission(0x77);
+  if(Wire.endTransmission() == 0) return true;
+  
+  return false;
+}
+
+bool checkLight() {
+  Wire.beginTransmission(0x23);
+  if(Wire.endTransmission() == 0) return true;
+  
+  Wire.beginTransmission(0x5C);
+  if(Wire.endTransmission() == 0) return true;
+  
+  int val = analogRead(26);
+  return (val >= 0 && val <= 4095);
 }
