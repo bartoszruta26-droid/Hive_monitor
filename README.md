@@ -202,6 +202,59 @@
 - **Barometric Pressure (BMP280)**: Prognoza pogody i zachowań pszczół
 - **Air Quality (SGP30)**: eCO2, TVOC dla jakości powietrza
 
+#### 5. Zaawansowane Czujniki Specjalistyczne (NEW)
+
+##### a) Radar MMWave GHz Human Presence Sensor (np. LD2410B / RCWL-9600)
+- **Technologia**: FMCW radar 24GHz lub 60GHz z detekcją mikro-ruchów
+- **Zakres detekcji**: 0.2m - 8m, kąt 120°
+- **Precyzja**: Wykrywa ruchy rzędu milimetrów (oddech, bicie serca)
+- **Zastosowanie w ulu**: 
+  - Detekcja obecności pszczelarza, monitoring aktywności na wylotku
+  - Wykrywanie drapieżników (niedźwiedzie, kuny) przed ulem
+  - Analiza wzorców wylotowych - liczenie pszczół bez kontaktu
+- **UZASADNIENIE POTRZEBY**: Tradycyjne PIR nie wykrywają pszczół. MMWave umożliwia:
+  - Monitorowanie bez ingerencji w strukturę ula (montaż zewnętrzny)
+  - Detekcję pojedynczych pszczół dzięki wysokiej częstotliwości
+  - Pracę w ciemności i przez ścianki ula
+- **EMF Shielding**: Wymagane ekranowanie kierunku wnętrza ula
+
+##### b) Wielogazowy Sensor CO2/VOC/Gas (np. SGP41 / BME688)
+- **Technologia**: MOX + NDIR dla CO2
+- **Zakres**: CO2 400-65535 ppm, VOC 0-60000 ppb, NOx, Etanol
+- **Zastosowanie**:
+  - Monitoring metabolizmu rodziny (CO2 jako wskaźnik aktywności)
+  - Detekcja chorób grzybiczych po profilu VOC
+  - Wykrywanie fermentacji syropu (etanol)
+  - Monitoring jakości powietrza w ulu
+- **UZASADNIENIE POTRZEBY**: Pojedynczy CO2 sensor to za mało. Kompleksowy sensor:
+  - Wczesna detekcja chorób po lotnych związkach organicznych
+  - Monitoring środowiska dla optymalnego rozwoju czerwiu
+  - Badania stresu chemicznego pszczół
+
+##### c) Kamera Wizyjna HD z Edge AI
+- **Sprzęt**: Kamera PoE 2MP lub Pi Camera V2 z IR
+- **Funkcje**: Liczenie pszczół, detekcja intruzów, time-lapse
+- **UZASADNIENIE**: Dane wizyjne niedostępne dla sensorów kontaktowych
+  - Obserwacja behawioralna bez otwierania ula
+  - Dokumentacja fotograficzna dla ML
+  - Walidacja innych sensorów
+
+##### d) Upgrade Mikrokontrolera: ESP32-WROOM-32 / Raspberry Pi Pico W
+- **Problem Arduino Nano**: Za mało RAM (2KB) i Flash (32KB) dla nowych sensorów
+- **ESP32**: Dual-core 240MHz, 520KB SRAM, WiFi+BT, 18x ADC
+- **Pico W**: RP2040 dual-core, 264KB SRAM, WiFi, MicroPython/C++
+- **UZASADNIENIE**: Arduino niewystarczające dla:
+  - FFT audio w czasie rzeczywistym
+  - Wielu sensorów I2C jednocześnie
+  - Edge AI inference
+  - WiFi dla lokalnego dashboardu
+
+##### e) EMF Shield Protection
+- **Problem**: Radary MMWave, WiFi, LTE generują pole elektromagnetyczne
+- **Rozwiązanie**: Mu-metal shielding, Faraday cage, directional antennas
+- **UZASADNIENIE**: RF może zaburzać nawigację pszczół (magnetorecepcja)
+  - Projekt musi minimalizować wpływ na monitorowane środowisko
+
 ### Efektory i Urządzenia Wykonawcze
 
 #### 1. Grzałka Rezystancyjna 10W
@@ -271,13 +324,62 @@
 - **Runtime**: 8-12 hours typical operation
 - **Low Power Mode**: <100mA consumption when critical
 
-#### Mechanical Design & Enclosure
-- **Material**: ABS plastic UV-resistant + aluminum heat sink
-- **IP Rating**: IP65 waterproof enclosure
-- **Dimensions**: 200x150x80 mm (RPi + Arduino + sensors)
-- **Mounting**: External bracket on hive back panel
-- **Thermal**: Passive cooling with rain shield
-- **Security**: Lockable enclosure with tamper switch
+#### Mechanical Design & Enclosure - UPGRADED FOR NEW SENSORS
+
+**Wymagania Projektowe dla Obudowy:**
+- **Material**: ABS plastic UV-resistant + aluminum heat sink + **EMF shielding compartments**
+- **IP Rating**: **IP66/IP67/IP68** waterproof enclosure (upgrade from IP65)
+  - IP66: Protection against powerful water jets
+  - IP67: Immersion up to 1m for 30 minutes  
+  - IP68: Continuous immersion >1m (recommended for flood-prone areas)
+- **Dimensions**: 250x180x100 mm (RPi + ESP32/Pico + sensors + shielding)
+- **Mounting**: External bracket on hive back panel with vibration isolation
+- **Security**: Lockable enclosure with tamper switch + GPS anti-theft mount
+
+**EMF Shielding Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EXTERNAL ENCLOSURE IP68                  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │  RF COMPARTMENT │  │ SENSOR COMPART. │  │ POWER UNIT  │ │
+│  │  (Faraday Cage) │  │  (Mu-metal)     │  │             │ │
+│  │  - ESP32 WiFi   │  │  - MMWave Radar │  │  - PoE      │ │
+│  │  - LTE Dongle   │  │  - Gas Sensors  │  │  - Battery  │ │
+│  │  Directional →  │  │  ← Shielded     │  │             │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Projekt Mechaniczny - Wymagania:**
+1. **CAD Design Required**: Konieczny profesjonalny projekt 3D (Fusion 360/SolidWorks)
+   - Kompartmentalizacja dla EMF shielding
+   - Kanały kablowe z uszczelkami IP68
+   - Mounting points dla sensorów zewnętrznych
+   - Heat dissipation analysis
+
+2. **3D Printing/Machining**: 
+   - Material: ASA lub PETG-CF (UV resistant, high temp)
+   - Wall thickness: minimum 3mm dla IP68
+   - Gasket grooves dla silicone seals
+
+3. **Sensor Placement Strategy**:
+   - MMWave radar: Montaż z przodu obudowy, skierowany NA ZEWNĄTRZ od ula
+   - Gas sensors: Intake tubes z filtrem membranowym (IP68 breathable)
+   - Camera: Waterproof housing z IR cut filter
+   - All RF sources: Minimum 30cm od ściany ula + directional shielding
+
+4. **Certification Requirements**:
+   - IP66/67/68 testing (water ingress, dust)
+   - EMC/EMI compliance (CE marking)
+   - Temperature cycling (-20°C to +60°C)
+   - Vibration testing (transport, wind)
+
+**UZASADNIENIE POTRZEBY LEPSZEJ OBUDOWY:**
+- Nowe sensory (MMWave, kamera, CO2/VOC) wymagają szczelniejszej ochrony niż IP65
+- EMF shielding jest krytyczny dla minimalizacji wpływu na pszczoły
+- Kompartmentalizacja zapobiega interferencjom między modułami RF a sensorami analogowymi
+- Wyższy rating IP zapewnia długoterminową niezawodność w ekstremalnych warunkach
+- Projekt mechaniczny musi uwzględniać chłodzenie przy zachowaniu szczelności
 
 ---
 
@@ -3048,36 +3150,57 @@ journalctl -u apiaryguard-core -n 50 --no-pager
 
 ### Roadmap Rozwoju
 
-#### Wersja 2.2 (Q2 2025)
+#### Wersja 2.5 (Q1 2025) - NOWE SENSORY I AKTUALIZACJA SPRZĘTU
+- [x] Integracja radaru MMWave GHz Human Presence Sensor (LD2410B/RCWL-9600)
+- [x] Wielogazowy sensor CO2/VOC/NOx (SGP41/BME688)
+- [x] Upgrade mikrokontrolera: ESP32-WROOM-32 / Raspberry Pi Pico W
+- [x] Projekt mechaniczny obudowy IP66/IP67/IP68 z EMF shielding
+- [ ] Kamera HD z analizą Edge AI (computer vision dla pszczół)
+- [ ] Testy wpływu EMF na rodziny pszczele
+
+#### Wersja 2.6 (Q2 2025)
 - [ ] Integracja z kamerami termowizyjnymi (FLIR Lepton)
 - [ ] Computer Vision dla liczenia pszczół na wylotku
 - [ ] Predykcja wydajności miodowej z wyprzedzeniem 2 tygodni
 - [ ] Mobile app offline mode z sync
+- [ ] Certyfikacja EMC/EMI dla całego systemu
 
-#### Wersja 2.3 (Q3 2025)
+#### Wersja 2.7 (Q3 2025)
 - [ ] Robotyczna inspekcja wnętrza ula (mini rover)
 - [ ] Automated frame recognition (który plaster z miodem)
-- [ ] Integracja z blockchain dla traceability
+- [ ] Integracja z blockchain dla traceability miodu
 - [ ] Multi-language support (PL, EN, DE, FR, ES)
+- [ ] Produkcja seryjna obudów IP68 z wtrysku
 
 #### Wersja 3.0 (Q1 2026)
 - [ ] Full edge AI z NVIDIA Jetson Nano upgrade
 - [ ] Federated learning między pasiekami (privacy-preserving)
 - [ ] Autonomous intervention drones
 - [ ] Integration with agricultural machinery
+- [ ] Badania naukowe: korelacja VOC z chorobami pszczół
 
 ### Badania i Development
 
 **Obszary Badawcze:**
 1. **Bioakustyka pszczół**: Baza danych 10,000+ nagrań różnych stanów
 2. **Termografia**: Korelacja rozkładu ciepła z zdrowiem czerwiu
-3. **Chemical Sensing**: E-nose dla wykrywania chorób po VOC
-4. **Swarm Intelligence**: Modelowanie zachowań roju dla predykcji
+3. **Chemical Sensing**: E-nose dla wykrywania chorób po VOC + CO2 profiling
+4. **MMWave Radar Analytics**: Detekcja mikro-ruchów pszczół, liczenie osobników
+5. **EMF Impact Studies**: Wpływ promieniowania RF na pszczoły - minimalizacja przez shielding
+6. **Swarm Intelligence**: Modelowanie zachowań roju dla predykcji
+
+**Nowe Możliwości Dzięki Aktualizacji:**
+- **MMWave Radar**: Umożliwia monitoring aktywności bez otwierania ula, detekcję drapieżników
+- **CO2+VOC Gas Array**: Wczesna detekcja chorób grzybiczych i bakteryjnych po profilu gazowym
+- **ESP32/Pico W**: Przetwarzanie FFT audio w czasie rzeczywistym, WiFi dla lokalnego dashboardu
+- **IP68 Enclosure**: Praca w ekstremalnych warunkach, długoterminowa niezawodność
+- **EMF Shielding**: Minimalizacja wpływu systemu na monitorowane pszczoły
 
 **Partnerstwa Naukowe:**
-- Uniwersytet Przyrodniczy w Poznaniu
-- Instytut Ogrodnictwa w Skierniewicach
-- European Honey Bee Lab (Wageningen)
+- Uniwersytet Przyrodniczy w Poznaniu - badania bioakustyki i VOC
+- Instytut Ogrodnictwa w Skierniewicach - monitoring warrozy
+- European Honey Bee Lab (Wageningen) - standardy EMF shielding
+- Politechnika Warszawska - projekt mechaniczny IP68
 
 ---
 
