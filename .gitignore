@@ -5,30 +5,32 @@
 *.elf
 *.map
 build/
-.sconsign.dblite
-.pio/
-.platformio/
+*.cpp.o
+*.S.o
+*.d
+*.cache
 
 # Dependencies
+.pio/
+.platformio/
 lib/
-libraries/
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Temp files
-*.tmp
-*.log
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# OS files
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+
+# OS
 .DS_Store
 Thumbs.db
 ```
