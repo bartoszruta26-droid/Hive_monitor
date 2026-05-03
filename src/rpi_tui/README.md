@@ -8,10 +8,11 @@ Aplikacja terminalowa (TUI) do monitoringu i zarządzania ulami podłączonymi p
 
 ```
 src/rpi_tui/
-├── apiary_tui.sh        # Główny skrypt Bash TUI
-├── apiary_logger.cpp    # Moduł logowania C++
-├── Makefile             # Plik budowania dla C++
-└── README.md            # Ta dokumentacja
+├── apiary_tui.sh         # Główny skrypt Bash TUI
+├── apiary_logger.cpp     # Moduł logowania C++
+├── apiary_collector.cpp  # Kolektor danych z wielu uli (UDP Server + Symulator)
+├── Makefile              # Plik budowania dla C++
+└── README.md             # Ta dokumentacja
 ```
 
 ## Wymagania
@@ -54,11 +55,17 @@ chmod +x apiary_tui.sh
 ```bash
 cd /workspace/src/rpi_tui
 
-# Kompilacja
-g++ -std=c++17 -pthread -DSTANDALONE_TEST -o apiary_logger apiary_logger.cpp
+# Budowanie wszystkiego (logger + kolektor)
+make
 
-# Uruchomienie testowe
-./apiary_logger
+# Lub ręczna kompilacja samego kolektora
+g++ -std=c++17 -pthread -o apiary_collector apiary_collector.cpp apiary_logger.cpp
+
+# Uruchomienie kolektora w trybie symulacji (test bez fizycznych uli)
+./apiary_collector --sim
+
+# Uruchomienie kolektora w trybie sieciowym (odbiera dane z Pico przez UDP port 5005)
+./apiary_collector
 ```
 
 ## Funkcje TUI
@@ -75,6 +82,60 @@ g++ -std=c++17 -pthread -DSTANDALONE_TEST -o apiary_logger apiary_logger.cpp
 - `r` - Ręczne odświeżenie
 - `a` - Włącz/wyłącz auto-odświeżanie
 - `q` - Wyjście z aplikacji
+
+## Kolektor Danych z Uli (C++)
+
+### Architektura:
+- **Tryb sieciowy**: Serwer UDP nasłuchujący na porcie 5005, odbiera dane z mikrokontrolerów Pico
+- **Tryb symulacji**: Generuje losowe dane testowe dla demonstration
+- **Thread-safe**: Współdzielone dane między wątkami z mutexami
+- **Logger**: Zintegrowany system logowania z rotacją plików
+
+### Format danych z Pico:
+Mikrokontrolery wysyłają dane w formacie CSV przez UDP:
+```
+ID,HUM,TEMP,WEIGHT,BAT
+```
+Przykład: `UL-1,65.5,24.3,45.2,98`
+
+Gdzie:
+- `ID` - identyfikator ula (np. UL-1, UL-2)
+- `HUM` - wilgotność [%]
+- `TEMP` - temperatura [°C]
+- `WEIGHT` - waga [kg]
+- `BAT` - poziom baterii [%]
+
+### Przykładowe użycie:
+
+```cpp
+#include "apiary_logger.cpp"
+using namespace apiary;
+
+int main() {
+    ApiaryCollector collector;
+    
+    // Konfiguracja listy uli (IP adresy)
+    std::vector<std::string> hives = {"192.168.1.101", "192.168.1.102"};
+    collector.configureHives(hives);
+    
+    // Start w trybie sieciowym
+    collector.start(false);
+    
+    // Pobierz aktualny stan jako JSON
+    std::string json = collector.getStatusJSON();
+    std::cout << json << std::endl;
+    
+    // Pobierz stan jako CSV (dla Bash/TUI)
+    std::string csv = collector.getStatusCSV();
+    std::cout << csv << std::endl;
+    
+    return 0;
+}
+```
+
+### Eksport danych:
+- **JSON**: Dla integracji z serwerem online/API
+- **CSV**: Dla skryptów Bash i TUI
 
 ## System Logowania C++
 
@@ -144,6 +205,14 @@ extern "C" {
 2024-01-15 10:30:45.300 [DEBUG] [MQTT] Próba połączenia z brokerem...
 ```
 
+### Logi kolektora (`/var/log/apiary/collector.log`):
+```
+2024-01-15 10:31:00.000 [INFO] Skonfigurowano 3 uli do monitorowania
+2024-01-15 10:31:00.100 [INFO] Serwer nasłuchujący uruchomiony na porcie UDP 5005
+2024-01-15 10:31:05.500 [DEBUG] Zaktualizowano dane dla UL-1 [T:24.3 H:65.5]
+2024-01-15 10:31:10.200 [INFO] Wykryto nowy ul: UL-4 z IP 192.168.1.104
+```
+
 ## Rotacja logów
 
 System automatycznie rotuje pliki logów gdy osiągną rozmiar 10MB:
@@ -153,17 +222,17 @@ System automatycznie rotuje pliki logów gdy osiągną rozmiar 10MB:
 
 ### Usługa systemd (opcjonalnie):
 
-Utwórz plik `/etc/systemd/system/apiary-tui.service`:
+Utwórz plik `/etc/systemd/system/apiary-collector.service`:
 
 ```ini
 [Unit]
-Description=APIARY Guard TUI Service
+Description=APIARY Guard Data Collector
 After=network.target
 
 [Service]
 Type=simple
 User=pi
-ExecStart=/workspace/src/rpi_tui/apiary_tui.sh
+ExecStart=/usr/local/bin/apiary-collector
 Restart=always
 
 [Install]
@@ -171,19 +240,33 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable apiary-tui
-sudo systemctl start apiary-tui
+sudo systemctl enable apiary-collector
+sudo systemctl start apiary-collector
+```
+
+## Makefile - Cele
+
+```bash
+make              # Buduj wszystko (logger + kolektor)
+make clean        # Wyczyść pliki tymczasowe
+make test         # Testuj logger
+make test-collector # Testuj kolektor w trybie symulacji
+sudo make install # Instaluj w systemie
+make uninstall    # Odinstaluj
+make debug        # Build z symbolami debugowania
 ```
 
 ## Rozszerzenia (przyszłe)
 
 Planowane funkcje w kolejnych wersjach:
-- Komunikacja MQTT z ulami (Pico + W5100/W6100)
+- ~~Komunikacja UDP z ulami (Pico + W5100/W6100)~~ ✓
+- ~~Symulacja danych dla testów~~ ✓
+- ~~Eksport JSON/CSV~~ ✓
 - Serwer HTTP/API dostępny online
+- Wysyłka danych do chmury (MQTT/HTTP)
 - Powiadomienia email/SMS
-- Wykresy i statystyki
+- Wykresy i statystyki w TUI
 - Konfiguracja przez Web UI
-- Obsługa wielu Raspberry Pi jako klastra
 
 ## Licencja
 
@@ -192,3 +275,4 @@ Projekt na licencji MIT - zobacz plik LICENSE w głównym katalogu.
 ## Autor
 
 APIARY Guard Team © 2024
+

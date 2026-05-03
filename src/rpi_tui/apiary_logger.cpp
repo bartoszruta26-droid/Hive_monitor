@@ -427,6 +427,8 @@ int main() {
 #endif
 
 // Eksportowane funkcje C-style dla integracji z innymi językami
+// Tylko w trybie standalone - nie gdy includowane w innym pliku cpp
+#ifndef COLLECTOR_BUILD
 extern "C" {
     void apiary_log_init(const char* log_file, const char* debug_file) {
         apiary::LoggerConfig config;
@@ -456,3 +458,4 @@ extern "C" {
         apiary::Logger::getInstance().logHiveEvent(hive_id, event, temp, humidity);
     }
 }
+#endif

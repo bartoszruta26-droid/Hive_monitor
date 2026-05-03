@@ -3,14 +3,21 @@
 *.o
 *.obj
 *.out
-apiary_logger_test
+build/
+dist/
 
 # Dependencies
-build/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
 # Environment
 .env
@@ -20,4 +27,23 @@ build/
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# Gradle
+.gradle/
+
+# Target (Rust, etc.)
+target/
 ```
