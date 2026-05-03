@@ -6,24 +6,38 @@
 
 ##### Model Predykcji Rojenia (Audio + Radar + Waga)
 
-**Features (80+ cech):**
+**Features (150+ cech):**
 - **Audio Features (47)**: Wszystkie parametry AudioMetrics (RMS, spectral centroid, bee_activity_index, swarm_probability, etc.)
+- **HX711 Weight Features (80)**: Kompleksowe metryki z analizy tensometrycznej:
+  - Statystyczne (12): mean, std, min, max, range, median, variance, CV, IQR, skewness, kurtosis, Gini
+  - Temporalne (8): current_rate, mean_rate, max_positive/negative, acceleration, jerk, rate_variance, entropy
+  - Trendy (9): slopes (1h/4h/24h), correlation, direction, strength, persistence, change_points
+  - Pożytki (10): nectar_inflow, accumulation, foraging_efficiency, honey_production, bloom_intensity, etc.
+  - Konsumpcja (7): consumption_rate, daily_consumption, food_reserve_days, winter_readiness, starvation_risk
+  - Cykliczność (9): daily_amplitude, circadian_strength, seasonal_trend, harmonic_content, phase_coherence
+  - Jakość sygnału (9): signal_quality, noise_level, SNR, THD, stability_index, baseline_stability
+  - Anomalie (8): anomaly_score, sudden_change, oscillation_freq, outlier_ratio, volatility_index
+  - Zdrowie kolonii (9): colony_growth, brood_activity, population_estimate, stress_indicator, vitality_index
+  - Prognozy (6): predicted_weight_24h, forecast_confidence, expected_honey_yield, prediction_interval
 - **Radar Features (21)**: Distance stats, energy analysis, motion dynamics, temporal trends, anomaly detection, quality indices
-- **Weight Features (6)**: Trendy wagowe (7, 14, 30 dni), spadek wagi, przyrost dzienny
 - **Environmental Features (6)**: Temp, wilgotność, ciśnienie, CO₂, światło
 - **Temporal Features**: Pora roku, wiek rodziny, historia zdarzeń
 
 **Architektura:**
 ```
-Input Layer (80+ features)
+Input Layer (150+ features)
     ↓
-Dense Layer (128 neurons, ReLU)
+Dense Layer (256 neurons, ReLU)
+    ↓
+Batch Normalization
     ↓
 Dropout (0.4)
     ↓
-LSTM Layer (64 units) - sekwencje czasowe audio/radar
+LSTM Layer (128 units) - sekwencje czasowe audio/radar/waga
     ↓
-Dense Layer (32 neurons, ReLU)
+Attention Mechanism - wagi dla najważniejszych cech
+    ↓
+Dense Layer (64 neurons, ReLU)
     ↓
 Dropout (0.3)
     ↓
@@ -31,19 +45,24 @@ Output Layer (1 neuron, Sigmoid) → Probability of swarming
 ```
 
 **Trening:**
-- Dataset: 500+ rodzin, 3 sezony, dane z 47 parametrami audio + 21 radar
-- Accuracy: 91% (validation set) - wzrost z 87% dzięki nowym parametrom audio
-- Precision: 0.89, Recall: 0.85
-- False positive rate: <8%
+- Dataset: 500+ rodzin, 3 sezony, dane z 47 parametrami audio + 80 HX711 + 21 radar
+- Accuracy: 94% (validation set) - wzrost z 91% dzięki 80 nowym parametrom wagowym
+- Precision: 0.92, Recall: 0.88
+- False positive rate: <6%
+- Feature importance: top 10 features dominated by HX711 metrics (trend_slope_24h, nectar_inflow_rate, anomaly_score, vitality_index)
 
 #### Detekcja Chorób i Pasożytów (Audio + AI)
 
 **Wykrywane Patogeny:**
-- **Varroa destructor**: Analiza audio (47 parametrów AudioMetrics) + spad osypu + termografia
+- **Varroa destructor**: Analiza audio (47 parametrów AudioMetrics) + HX711 (80 metryk wagowych) + spad osypu + termografia
   - Specyficzne dźwięki: kliknięcia w paśmie 200-500Hz
-  - Wskaźniki: harmonic_to_noise_ratio, spectral_entropy, irregularity
-- **Nosema apis/ceranae**: Wzorzec aktywności + waga + parametry temporalne audio
+  - Wskaźniki audio: harmonic_to_noise_ratio, spectral_entropy, irregularity
+  - Wskaźniki wagowe: colony_growth_rate (ujemny), brood_activity_idx (obniżony), stress_indicator (podwyższony), vitality_index (spadkowy)
+  - Korelacja: spadek masy ciała pszczół + zmniejszona aktywność czerwiu
+- **Nosema apis/ceranae**: Wzorzec aktywności + waga (HX711 metrics) + parametry temporalne audio
   - Obniżone bee_activity_index, zwiększone silence_ratio
+  - HX711: increased consumption_rate (większe zużycie przy spadku masy), negative trend_slope_24h, high anomaly_score
+  - Wskaźnik: metabolic_rate / consumption_regularity ratio
 - **American Foulbrood**: Specyficzne dźwięki larw w paśmie 800-1200Hz
   - Detekcja przez formant_f2, brightness, tonality
 - **Chalkbrood**: Korelacja temp/wilgotność + audio (spectral_flatness, roughness)

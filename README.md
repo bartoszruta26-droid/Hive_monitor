@@ -165,6 +165,17 @@
 - **Precyzja**: ±5 gramów przy pełnym zakresie 200 kg
 - **Sample Rate**: 10/80 Hz selectable
 - **Kalibracja**: Automatyczna z kompensacją temperatury
+- **Parametry HX711Metrics (80 metryk)**:
+  - Statystyczne: mean, std, min, max, range, median, variance, CV, IQR, skewness, kurtosis, Gini
+  - Temporalne: current_rate, acceleration, jerk, rate_entropy
+  - Trendy: slopes (1h/4h/24h), correlation, direction, strength, persistence
+  - Pożytki: nectar_inflow_rate, foraging_efficiency, honey_production_idx, bloom_intensity
+  - Konsumpcja: consumption_rate, daily_consumption, food_reserve_days, starvation_risk
+  - Cykliczność: daily_amplitude, circadian_strength, seasonal_trend, phase_coherence
+  - Jakość sygnału: signal_quality, SNR, THD, stability_index, baseline_stability
+  - Anomalie: anomaly_score, volatility_index, outlier_ratio, change_point_prob
+  - Zdrowie kolonii: colony_growth_rate, brood_activity_idx, stress_indicator, vitality_index
+  - Prognozy: predicted_weight_24h, forecast_confidence, expected_honey_yield
 
 #### 2. Mikrofon MEMS (Analiza Brzmienia Rodziny)
 - **Typ**: Electret condenser microphone module
