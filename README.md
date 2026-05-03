@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%202%20%7C%20Raspberry%20Pi%20Pico-orange.svg)
 ![Connectivity](https://img.shields.io/badge/connectivity-LTE%20(Aero2)%20%7C%20Ethernet%20PoE-red.svg)
-![No Python](https://img.shields.io/badge/code-C%2B%2B%20%7C%20Bash-yellow.svg)
+![Code](https://img.shields.io/badge/code-C%2B%2B%20%7C%20Bash-yellow.svg)
 
 ## 📖 Spis Treści
 
@@ -36,6 +36,7 @@
 *   **Zaawansowana Diagnostyka:** Pełny zestaw sensorów biometrycznych ula (waga, dźwięk, wibracje, temperatura, wilgotność) wsparty aktywnymi efektorami (grzanie, wentylacja, podawanie leków).
 *   **Monitoring Wizyjny:** Zintegrowana kamera PoE wykonująca zdjęcia co 60 sekund w celu analizy aktywności wylotowej i wykrywania intruzów.
 *   **Architektura:** Raspberry Pi 2 posiada GUI/TUI i komunikuje się przez HTTP API z Raspberry Pi Pico w każdym ulu.
+*   **AI-Driven (Przyszłość):** Planowana integracja z agentem AI (np. Qwen) dla predykcji rójki, diagnozy chorób i autonomicznych reakcji.
 
 ---
 
@@ -248,14 +249,16 @@
   - Dokumentacja fotograficzna dla ML
   - Walidacja innych sensorów
 
-##### d) Upgrade Mikrokontrolera: Raspberry Pi Pico / Pico W
+##### d) Mikrokontroler: Raspberry Pi Pico / Pico W
 - **Wybrany mikrokontroler**: Raspberry Pi Pico (RP2040) - dual-core 133MHz, 264KB SRAM, 2MB Flash
 - **Pico W**: Dodatkowy moduł WiFi dla lokalnej komunikacji bezprzewodowej
-- **UZASADNIENIE**: Arduino Nano było niewystarczające dla:
-  - FFT audio w czasie rzeczywistym
-  - Wielu sensorów I2C jednocześnie
-  - Większej pamięci na buffering danych sensorycznych
-  - WiFi dla lokalnego dashboardu (w modelu Pico W)
+- **UZASADNIENIE WYBORU**: Raspberry Pi Pico został wybrany jako główny mikrokontroler dzięki:
+  - Wydajnemu procesorowi RP2040 z dwoma rdzeniami ARM Cortex-M0+
+  - Dużej pamięci SRAM (264KB) dla przetwarzania FFT audio w czasie rzeczywistym
+  - Obsłudze wielu sensorów I2C jednocześnie
+  - Możliwości rozbudowy o WiFi (model Pico W) dla lokalnego dashboardu
+  - Łatwemu programowaniu w C++ z MicroPython support
+  - Niskiemu kosztowi i szerokiej dostępności
 
 ##### e) EMF Shield Protection
 - **Problem**: Radary MMWave, WiFi, LTE generują pole elektromagnetyczne
@@ -749,26 +752,27 @@
 
 ## 💻 Opis Modułów Programowych
 
-### Moduł Arduino Nano (C++)
+### Moduł Raspberry Pi Pico (C++)
 
 #### Architektura Firmware
 
-Firmware Arduino Nano został napisany w C++ z wykorzystaniem frameworka Arduino, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację.
+Firmware Raspberry Pi Pico został napisany w C++ z wykorzystaniem Raspberry Pi Pico SDK, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację HTTP API.
 
 ```cpp
-// Przykład: main.cpp - Główna pętla Arduino
-#include <Wire.h>
+// Przykład: main.cpp - Główna pętla Raspberry Pi Pico
+#include "pico/stdlib.h"
+#include "hardware/i2c.h"
 #include "config/pin_definitions.h"
 #include "sensors/hx711_driver.h"
 #include "sensors/microphone_adc.h"
 #include "actuators/heater_control.h"
-#include "communication/i2c_slave.h"
+#include "communication/http_server.h"
 
 void setup() {
-    Serial.begin(115200);
-    Wire.begin(I2C_SLAVE_ADDRESS);
-    Wire.onRequest(requestEvent);
-    Wire.onReceive(receiveEvent);
+    stdio_init_all();
+    i2c_init(i2c0, 400 * 1000);
+    gpio_set_function(PIN_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(PIN_SCL, GPIO_FUNC_I2C);
     
     // Inicjalizacja sensorów
     HX711_init();
@@ -776,16 +780,19 @@ void setup() {
     DHT22_begin();
     
     // Kalibracja
-    if (EEPROM_read(CALIBRATION_FLAG) == 0) {
+    if (!load_calibration_from_flash()) {
         perform_auto_calibration();
     }
     
     // Konfiguracja watchdog
-    watchdog_enable(WDTO_2S);
+    watchdog_enable(2000, true);
+    
+    // Inicjalizacja HTTP server
+    http_server_init();
 }
 
 void loop() {
-    watchdog_reset();
+    watchdog_update();
     
     // Akwizycja danych (non-blocking)
     uint32_t weight = HX711_read_average(10);
@@ -793,25 +800,23 @@ void loop() {
     float humidity = DHT22_readHumidity();
     uint16_t audio_level = MICROPHONE_get_rms();
     
-    // Pakietowanie danych
-    SensorPacket packet;
-    packet.weight = weight;
-    packet.temperature = temp;
-    packet.humidity = humidity;
-    packet.audio_rms = audio_level;
-    packet.timestamp = millis();
+    // Pakietowanie danych do JSON
+    char json_buffer[512];
+    snprintf(json_buffer, sizeof(json_buffer),
+        "{\"weight\":%lu,\"temp\":%.2f,\"humidity\":%.2f,\"audio\":%u}",
+        weight, temp, humidity, audio_level);
     
-    // Wysyłka do RPi przez I2C
-    i2c_send_packet(&packet);
+    // HTTP server obsługuje żądania
+    http_server_process_requests(json_buffer);
     
-    // Obsługa komend z RPi
+    // Obsługa komend z Raspberry Pi 2 przez HTTP API
     process_actuator_commands();
     
-    delay(100); // 10Hz sampling rate
+    sleep_ms(100); // 10Hz sampling rate
 }
 ```
 
-#### Kluczowe Komponenty Arduino
+#### Kluczowe Komponenty Firmware Pico
 
 1. **HX711 Driver**: 
    - 24-bitowa konwersja ADC
@@ -822,7 +827,7 @@ void loop() {
 2. **Audio Processing**:
    - Sampling 8kHz/16-bit
    - RMS calculation w czasie rzeczywistym
-   - FFT preprocessing (opcjonalnie)
+   - FFT preprocessing na rdzeniu 1
    - Buffer ringowy dla efektywności
 
 3. **PID Controller**:
@@ -831,15 +836,17 @@ void loop() {
    - Anti-windup protection
    - Output limiting
 
-4. **I2C Protocol**:
-   - Custom binary protocol
-   - Checksum validation
-   - Retry mechanism
-   - Multi-message support
+4. **HTTP API Server**:
+   - Lekki serwer HTTP na Pico
+   - REST endpoints dla sensorów
+   - JSON format danych
+   - Komunikacja z Raspberry Pi 2
 
-### Moduł Raspberry Pi (C# .NET Core)
+### Moduł Raspberry Pi 2 (Bash + C++)
 
 #### Architektura Aplikacji
+
+Aplikacja na Raspberry Pi 2 wykorzystuje Bash do skryptów systemowych i TUI/GUI oraz C++ do wydajnego przetwarzania danych. Komunikacja z Pico odbywa się przez HTTP API.
 
 Aplikacja C# wykorzystuje .NET Core 6.0+ z architekturą Clean Architecture, zapewniając separację concernów, testowalność i łatwość utrzymania.
 
@@ -1833,9 +1840,11 @@ Organization (Pszczelarz/Firma)
 - Unity 3D engine
 - Object detection (YOLO/TensorFlow Lite)
 
-### 8. 🤖 Qwen Agent AI Integration
+### 8. 🤖 Qwen Agent AI Integration (Przyszłość)
 
-**Qwen-Agent** to zaawansowany asystent AI oparty na modelu Qwen (Alibaba Cloud), zintegrowany z ApiaryGuard Pro w celu zapewnienia autonomicznej analizy danych, predykcji, rekomendacji i automatyzacji decyzji w czasie rzeczywistym.
+**Qwen-Agent** to zaawansowany asystent AI oparty na modelu Qwen (Alibaba Cloud), planowany do integracji z ApiaryGuard Pro w celu zapewnienia autonomicznej analizy danych, predykcji, rekomendacji i automatyzacji decyzji w czasie rzeczywistym.
+
+**Uwaga:** Ta funkcjonalność jest obecnie w fazie planowania i nie jest jeszcze zaimplementowana. Poniższy opis przedstawia planowane możliwości systemu.
 
 #### Architektura Qwen Agent
 
