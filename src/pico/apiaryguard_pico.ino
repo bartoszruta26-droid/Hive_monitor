@@ -1045,21 +1045,26 @@ void initW6100() {
 
 // Wysyłanie danych sensorów przez UDP do Raspberry Pi
 void sendUdpDataToRpi() {
-  // Format: HIVE_ID,TEMP,HUM,WEIGHT,BAT,TIMESTAMP
-  // Przykład: "UL-1,24.5,65.2,45.3,98,1234567890"
+  // Format: HIVE_ID,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIMESTAMP
+  // Przykład: "UL-1,24.5,65.2,45.300,98,450,35,1,1234567890"
+  // Wszystkie parametry: ID, temperatura, wilgotność, waga(kg), bateria(%), CO2(ppm), VOC(index), ruch(0/1), timestamp
   
-  char packetBuffer[128];
+  char packetBuffer[256];
   long timestamp = millis() / 1000;
   
   // Oblicz wagę w kg (przybliżenie)
   float weight_kg = (float)hx711_value / 1000.0f;
   
-  // Zakładamy stały poziom baterii (można rozszerzyć o monitoring napięcia)
+  // Poziom baterii - można rozszerzyć o monitoring napięcia ADC
   int battery_level = 95;
   
+  // Flaga ruchu z radaru MMWave
+  int motion_flag = motion_detected ? 1 : 0;
+  
   snprintf(packetBuffer, sizeof(packetBuffer), 
-           "UL-1,%.1f,%.1f,%.3f,%d,%ld",
-           temperature, humidity, weight_kg, battery_level, timestamp);
+           "UL-1,%.1f,%.1f,%.3f,%d,%d,%d,%d,%ld",
+           temperature, humidity, weight_kg, battery_level, 
+           co2_eq, voc_idx, motion_flag, timestamp);
   
   Serial.print("[UDP] Wysyłanie: ");
   Serial.println(packetBuffer);

@@ -27,15 +27,18 @@
 #include "apiary_logger.cpp"
 using namespace apiary;
 
-// Struktura danych z ula
+// Struktura danych z ula - rozszerzona o wszystkie parametry z Pico
 struct HiveData {
     std::string hive_id;
-    float temperature;
-    float humidity;
-    float weight;
-    int battery_level;
-    long long timestamp;
-    bool is_online;
+    float temperature;          // Temperatura [°C]
+    float humidity;             // Wilgotność [%RH]
+    float weight;               // Waga [kg]
+    int battery_level;          // Poziom baterii [%]
+    int co2_eq;                 // CO2 equivalent [ppm]
+    int voc_idx;                // VOC index [index]
+    int motion_detected;        // Flaga ruchu z radaru (0/1)
+    long long timestamp;        // Timestamp [s]
+    bool is_online;             // Status online/offline
 };
 
 // Menadżer danych uli
@@ -68,11 +71,11 @@ public:
         hive_ips = ips;
         Logger::getInstance().info( "Skonfigurowano " + std::to_string(ips.size()) + " uli do monitorowania.");
         
-        // Inicjalizacja struktury danych
+        // Inicjalizacja struktury danych - wszystkie pola na zero/false
         std::lock_guard<std::mutex> lock(data_mutex);
         for (size_t i = 0; i < ips.size(); ++i) {
             std::string id = "UL-" + std::to_string(i + 1);
-            hives_data[id] = {id, 0.0, 0.0, 0.0, 0, 0, false};
+            hives_data[id] = {id, 0.0f, 0.0f, 0.0f, 0, 0, 0, 0, 0, false};
             Logger::getInstance().debug( "Dodano ul: " + id + " (IP: " + ips[i] + ")");
         }
     }
@@ -130,9 +133,9 @@ public:
 
     // Parsowanie i przetwarzanie danych
     void processData(const std::string& raw_data, const std::string& source_ip) {
-        // Format oczekiwany od Pico: ID,TEMP,HUM,WEIGHT,BAT,TIMESTAMP
-        // Przykład: "UL-1,24.5,65.2,45.3,98,1234567890"
-        // UWAGA: Kolejność TEMP,HUM została zmieniona aby pasowała do Pico
+        // Format oczekiwany od Pico: ID,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIMESTAMP
+        // Przykład: "UL-1,24.5,65.2,45.300,98,450,35,1,1234567890"
+        // Wszystkie parametry: ID, temperatura, wilgotność, waga(kg), bateria(%), CO2(ppm), VOC(index), ruch(0/1), timestamp
         
         std::stringstream ss(raw_data);
         std::string segment;
@@ -142,36 +145,46 @@ public:
             parts.push_back(segment);
         }
 
-        if (parts.size() < 5) {
+        if (parts.size() < 8) {
             Logger::getInstance().warning( "Niepoprawny format danych z " + source_ip + ": " + raw_data);
             return;
         }
 
         try {
             std::string hive_id = parts[0];
-            float temp = std::stof(parts[1]);      // TEMP - zmiana kolejności
-            float humidity = std::stof(parts[2]);  // HUM - zmiana kolejności
-            float weight = std::stof(parts[3]);
-            int battery = std::stoi(parts[4]);
-            long long now = std::time(nullptr);
+            float temp = std::stof(parts[1]);         // TEMP - temperatura [°C]
+            float humidity = std::stof(parts[2]);     // HUM - wilgotność [%RH]
+            float weight = std::stof(parts[3]);       // WEIGHT - waga [kg]
+            int battery = std::stoi(parts[4]);        // BAT - bateria [%]
+            int co2 = std::stoi(parts[5]);            // CO2 - CO2 equivalent [ppm]
+            int voc = std::stoi(parts[6]);            // VOC - VOC index [index]
+            int motion = std::stoi(parts[7]);         // MOTION - flaga ruchu (0/1)
+            long long now = std::time(nullptr);       // Aktualny timestamp systemu
 
             // Aktualizacja danych w pamięci współdzielonej
             {
                 std::lock_guard<std::mutex> lock(data_mutex);
                 if (hives_data.find(hive_id) != hives_data.end()) {
-                    hives_data[hive_id].humidity = humidity;
                     hives_data[hive_id].temperature = temp;
+                    hives_data[hive_id].humidity = humidity;
                     hives_data[hive_id].weight = weight;
                     hives_data[hive_id].battery_level = battery;
+                    hives_data[hive_id].co2_eq = co2;
+                    hives_data[hive_id].voc_idx = voc;
+                    hives_data[hive_id].motion_detected = motion;
                     hives_data[hive_id].timestamp = now;
                     hives_data[hive_id].is_online = true;
                     
                     Logger::getInstance().debug( "Zaktualizowano dane dla " + hive_id + 
-                               " [T:" + std::to_string(temp) + " H:" + std::to_string(humidity) + "]");
+                               " [T:" + std::to_string(temp) + 
+                               " H:" + std::to_string(humidity) + 
+                               " CO2:" + std::to_string(co2) + 
+                               " VOC:" + std::to_string(voc) + 
+                               " Motion:" + std::to_string(motion) + "]");
                 } else {
                     // Nowy ul dynamicznie wykryty
                     Logger::getInstance().info( "Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
-                    HiveData new_hive = {hive_id, temp, humidity, weight, battery, now, true};
+                    HiveData new_hive = {hive_id, temp, humidity, weight, battery, co2, voc, motion, now, true};
                     hives_data[hive_id] = new_hive;
                 }
             }
@@ -246,17 +259,20 @@ public:
                  << "\"hum\":" << d.humidity << ","
                  << "\"weight\":" << d.weight << ","
                  << "\"bat\":" << d.battery_level << ","
+                 << "\"co2\":" << d.co2_eq << ","
+                 << "\"voc\":" << d.voc_idx << ","
+                 << "\"motion\":" << d.motion_detected << ","
                  << "\"online\":" << (d.is_online ? "true" : "false") << "}";
         }
         json << "}";
         return json.str();
     }
     
-    // Prostszy format dla Bash (CSV)
+    // Prostszy format dla Bash (CSV) - wszystkie parametry
     std::string getStatusCSV() {
         std::lock_guard<std::mutex> lock(data_mutex);
         std::stringstream csv;
-        csv << "ID,STATUS,TEMP,HUM,WIGHT,BAT,TIME\n";
+        csv << "ID,STATUS,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIME\n";
         for (const auto& pair : hives_data) {
             const auto& d = pair.second;
             std::string status = d.is_online ? "ONLINE" : "OFFLINE";
@@ -268,6 +284,9 @@ public:
                 << d.humidity << "," 
                 << d.weight << "," 
                 << d.battery_level << ","
+                << d.co2_eq << ","
+                << d.voc_idx << ","
+                << d.motion_detected << ","
                 << d.timestamp << "\n";
         }
         return csv.str();
