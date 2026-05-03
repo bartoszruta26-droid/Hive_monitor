@@ -1,0 +1,12 @@
+# Konfiguracja uli - ApiaryGuard HTTP Collector
+# Format: hive_id,ip_address,port,poll_interval_seconds
+# 
+# Przykładowa konfiguracja dla pasieki z 3 ulami:
+
+Ul-Matka,192.168.1.177,8080,5
+Ul-1,192.168.1.178,8080,5
+Ul-2,192.168.1.179,8080,5
+Ul-3,192.168.1.180,8080,10
+
+# Można też użyć uproszczonego formatu (tylko ID i IP):
+# Ul-4,192.168.1.181
