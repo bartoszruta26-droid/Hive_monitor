@@ -1,28 +1,28 @@
-# Documentation and temporary files
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
 
-# Logs
+# Dependencies
+.pio/
+.platformio/
+lib/
+
+# Logs and temp files
 *.log
+*.tmp
 
-# Environment files
+# Environment
 .env
 .env.local
 *.env.*
 
-# Backup files
-*~
-*.bak
-*.backup
+# Editors
+.vscode/
+.idea/
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-Thumbs.db:encryptable
+# Build outputs
+build/
+dist/
+```
