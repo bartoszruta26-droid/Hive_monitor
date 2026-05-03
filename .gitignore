@@ -11,7 +11,7 @@
 .pio/
 .platformio/
 lib/
-.Python_env/
+.Python/
 
 # Logs and temp files
 *.log
@@ -21,27 +21,15 @@ lib/
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
 .idea/
-*.suo
-*.ncb
-*.fdb_lock
-*.bak
-*~
+*.swp
+*.swo
 
 # Build outputs
 build/
 dist/
-output/
-.BUILD/
-.staging/
-
-# OS generated files
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Icon?
 ```

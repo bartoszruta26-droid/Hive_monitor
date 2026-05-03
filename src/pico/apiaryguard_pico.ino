@@ -52,6 +52,14 @@
  * - Klasyfikacja zdarzeń: rojenie, drapieżniki, blokada wlotu
  * - Rozróżnianie zmian pozytywnych i negatywnych dla pożytku ulu
  * - API HTTP: /radar/status, /radar/anomalies
+ * - MODUŁ WYLICZANIA 27 PARAMETRÓW RADARU MMWAVE:
+ *   * Statystyczne: mean/std/min/max/range (odległość, energia, prędkość)
+ *   * Energy variance, coefficient of variation (CV)
+ *   * Temporalne: activity_ratio, idle_time_percent, motion_intensity
+ *   * Częstotliwościowe: target_rate, max_target_count, target_density
+ *   * Trend: slope, correlation, acceleration_rate
+ *   * Jakościowe: signal_quality, anomaly_score, hive_health_index
+ *   * Dodatkowe: power_spectrum_peak, zero_crossing_rate, entropy
  * ---------------------------------------------------------
  */
 
@@ -197,6 +205,63 @@ struct LongTermStats {
     float weekly_average;         // Średnia tygodniowa
     uint8_t valid_days;           // Liczba dni z ważnymi danymi
 } longTermStats;
+
+// ============================================================================
+// MODUŁ WYLICZANIA PARAMETRÓW Z DANYCH RADARU MMWAVE - 15+ PARAMETRÓW
+// ============================================================================
+
+struct RadarMetrics {
+    // Podstawowe parametry statystyczne
+    float mean_distance;          // Średnia odległość obiektów [m]
+    float std_distance;           // Odchylenie standardowe odległości [m]
+    float min_distance;           // Minimalna odległość [m]
+    float max_distance;           // Maksymalna odległość [m]
+    float range_distance;         // Zakres odległości (max-min) [m]
+    
+    float mean_energy;            // Średnia energia sygnału [AU]
+    float std_energy;             // Odchylenie standardowe energii [AU]
+    float min_energy;             // Minimalna energia [AU]
+    float max_energy;             // Maksymalna energia [AU]
+    float energy_variance;        // Wariancja energii [AU²]
+    float energy_cv;              // Współczynnik zmienności energii (CV = std/mean)
+    
+    float mean_speed;             // Średnia prędkość radialna [m/s]
+    float std_speed;              // Odchylenie standardowe prędkości [m/s]
+    float max_speed_abs;          // Maksymalna wartość bezwzględna prędkości [m/s]
+    
+    // Parametry temporalne
+    float activity_ratio;         // Stosunek czasu aktywności do całkowitego [%]
+    float idle_time_percent;      // Procent czasu bezczynności [%]
+    float motion_intensity;       // Intensywność ruchu (średnia energia * liczba celów)
+    
+    // Parametry częstotliwościowe
+    float target_rate;            // Średnia liczba celów na pomiar
+    float max_target_count;       // Maksymalna liczba wykrytych celów
+    float target_density;         // Gęstość celów (cele/jednostka odległości)
+    
+    // Parametry trendu
+    float trend_slope;            // Nachylenie trendu energii [AU/s]
+    float trend_correlation;      // Współczynnik korelacji trendu [-1 do 1]
+    float acceleration_rate;      // Tempo zmiany aktywności (pochodna slope)
+    
+    // Parametry jakościowe
+    float signal_quality;         // Jakość sygnału (0-100%)
+    float anomaly_score;          // Ogólny wynik anomalii (0-1)
+    float hive_health_index;      // Indeks zdrowia ula (0-100%)
+    
+    // Dodatkowe metryki
+    float power_spectrum_peak;    // Dominująca częstotliwość w spektrum mocy
+    float zero_crossing_rate;     // Częstotliwość przejść przez zero (aktywność)
+    float entropy;                // Entropia sygnału (miara losowości)
+};
+
+RadarMetrics currentMetrics;
+
+// Deklaracje funkcji modułu metryk
+void calculateRadarMetrics(RadarMetrics& metrics, const uint8_t window_size);
+float calculateEntropy(const float* data, uint8_t count);
+float calculateZeroCrossingRate(const float* data, uint8_t count);
+void calculatePowerSpectrum(const float* data, uint8_t count, float& peak_freq);
 
 // Konfiguracja progów detekcji
 struct DetectionThresholds {
@@ -557,6 +622,280 @@ const char* changeDirectionToString(AnomalyEvent::ChangeDirection dir) {
     }
 }
 
+// ============================================================================
+// IMPLEMENTACJA MODUŁU WYLICZANIA PARAMETRÓW RADARU MMWAVE
+// ============================================================================
+
+// Obliczanie entropii sygnału (Shannon entropy)
+float calculateEntropy(const float* data, uint8_t count) {
+    if (count < 2) return 0.0f;
+    
+    // Normalizacja danych do rozkładu prawdopodobieństwa
+    float sum = 0.0f;
+    for (uint8_t i = 0; i < count; i++) {
+        if (data[i] > 0) sum += data[i];
+    }
+    
+    if (sum < 0.0001f) return 0.0f;
+    
+    float entropy = 0.0f;
+    for (uint8_t i = 0; i < count; i++) {
+        if (data[i] > 0) {
+            float p = data[i] / sum;
+            if (p > 0.0001f) {
+                entropy -= p * log(p);
+            }
+        }
+    }
+    
+    // Normalizacja entropii do zakresu 0-1
+    float max_entropy = log(count);
+    if (max_entropy > 0) {
+        return entropy / max_entropy;
+    }
+    return 0.0f;
+}
+
+// Obliczanie częstotliwości przejść przez zero (Zero Crossing Rate)
+float calculateZeroCrossingRate(const float* data, uint8_t count) {
+    if (count < 2) return 0.0f;
+    
+    uint16_t zero_crossings = 0;
+    float mean = 0.0f;
+    
+    // Oblicz średnią
+    for (uint8_t i = 0; i < count; i++) {
+        mean += data[i];
+    }
+    mean /= count;
+    
+    // Licz przejścia przez średnią
+    for (uint8_t i = 1; i < count; i++) {
+        if ((data[i-1] - mean) * (data[i] - mean) < 0) {
+            zero_crossings++;
+        }
+    }
+    
+    return (float)zero_crossings / (count - 1);
+}
+
+// Uproszczone obliczanie spektrum mocy (DFT dla dominującej częstotliwości)
+void calculatePowerSpectrum(const float* data, uint8_t count, float& peak_freq) {
+    if (count < 4) {
+        peak_freq = 0.0f;
+        return;
+    }
+    
+    float max_power = 0.0f;
+    uint16_t peak_bin = 0;
+    
+    // Oblicz DFT dla kilku pierwszych harmonicznych
+    uint8_t max_harmonic = min((uint8_t)8, (uint8_t)(count / 2));
+    
+    for (uint8_t k = 1; k <= max_harmonic; k++) {
+        float real_part = 0.0f;
+        float imag_part = 0.0f;
+        
+        for (uint8_t n = 0; n < count; n++) {
+            float angle = (2.0f * PI * k * n) / count;
+            real_part += data[n] * cos(angle);
+            imag_part -= data[n] * sin(angle);
+        }
+        
+        float power = (real_part * real_part + imag_part * imag_part) / (count * count);
+        
+        if (power > max_power) {
+            max_power = power;
+            peak_bin = k;
+        }
+    }
+    
+    // Konwersja binu na częstotliwość (zakładając próbkowanie co 1s)
+    peak_freq = (float)peak_bin / count;
+}
+
+// Główna funkcja obliczająca wszystkie parametry radaru
+void calculateRadarMetrics(RadarMetrics& metrics, const uint8_t window_size) {
+    // Inicjalizacja zerami
+    memset(&metrics, 0, sizeof(RadarMetrics));
+    
+    uint8_t actual_count = min(window_size, radarDataCount);
+    if (actual_count < 2) return;
+    
+    // Pobranie danych z bufora
+    float distances[TREND_WINDOW_SIZE];
+    float energies[TREND_WINDOW_SIZE];
+    float speeds[TREND_WINDOW_SIZE];
+    uint8_t target_counts[TREND_WINDOW_SIZE];
+    
+    uint16_t start_idx = (radarBufferIndex >= actual_count) 
+                         ? (radarBufferIndex - actual_count) 
+                         : (RADAR_BUFFER_SIZE - (actual_count - radarBufferIndex));
+    
+    uint8_t valid_samples = 0;
+    float sum_dist = 0.0f, sum_energy = 0.0f, sum_speed = 0.0f;
+    uint32_t active_frames = 0;
+    
+    // Ekstrakcja danych
+    for (uint8_t i = 0; i < actual_count; i++) {
+        uint16_t idx = (start_idx + i) % RADAR_BUFFER_SIZE;
+        if (!radarBuffer[idx].is_valid) continue;
+        
+        distances[valid_samples] = radarBuffer[idx].distance;
+        energies[valid_samples] = radarBuffer[idx].energy;
+        speeds[valid_samples] = radarBuffer[idx].speed;
+        target_counts[valid_samples] = radarBuffer[idx].target_count;
+        
+        sum_dist += distances[valid_samples];
+        sum_energy += energies[valid_samples];
+        sum_speed += speeds[valid_samples];
+        
+        if (radarBuffer[idx].energy > detectionThresholds.min_bee_activity) {
+            active_frames++;
+        }
+        
+        valid_samples++;
+    }
+    
+    if (valid_samples < 2) return;
+    
+    // === PARAMETRY STATYSTYCZNE - ODLEGŁOŚĆ ===
+    metrics.mean_distance = sum_dist / valid_samples;
+    metrics.min_distance = distances[0];
+    metrics.max_distance = distances[0];
+    
+    float sum_sq_diff_dist = 0.0f;
+    for (uint8_t i = 0; i < valid_samples; i++) {
+        if (distances[i] < metrics.min_distance) metrics.min_distance = distances[i];
+        if (distances[i] > metrics.max_distance) metrics.max_distance = distances[i];
+        float diff = distances[i] - metrics.mean_distance;
+        sum_sq_diff_dist += diff * diff;
+    }
+    
+    metrics.std_distance = sqrt(sum_sq_diff_dist / (valid_samples - 1));
+    metrics.range_distance = metrics.max_distance - metrics.min_distance;
+    
+    // === PARAMETRY STATYSTYCZNE - ENERGIA ===
+    metrics.mean_energy = sum_energy / valid_samples;
+    metrics.min_energy = energies[0];
+    metrics.max_energy = energies[0];
+    
+    float sum_sq_diff_energy = 0.0f;
+    for (uint8_t i = 0; i < valid_samples; i++) {
+        if (energies[i] < metrics.min_energy) metrics.min_energy = energies[i];
+        if (energies[i] > metrics.max_energy) metrics.max_energy = energies[i];
+        float diff = energies[i] - metrics.mean_energy;
+        sum_sq_diff_energy += diff * diff;
+    }
+    
+    metrics.std_energy = sqrt(sum_sq_diff_energy / (valid_samples - 1));
+    metrics.energy_variance = sum_sq_diff_energy / (valid_samples - 1);
+    
+    // Współczynnik zmienności (Coefficient of Variation)
+    if (abs(metrics.mean_energy) > 0.0001f) {
+        metrics.energy_cv = metrics.std_energy / abs(metrics.mean_energy);
+    } else {
+        metrics.energy_cv = 0.0f;
+    }
+    
+    // === PARAMETRY STATYSTYCZNE - PRĘDKOŚĆ ===
+    metrics.mean_speed = sum_speed / valid_samples;
+    metrics.max_speed_abs = abs(speeds[0]);
+    
+    float sum_sq_diff_speed = 0.0f;
+    for (uint8_t i = 0; i < valid_samples; i++) {
+        float abs_spd = abs(speeds[i]);
+        if (abs_spd > metrics.max_speed_abs) metrics.max_speed_abs = abs_spd;
+        float diff = speeds[i] - metrics.mean_speed;
+        sum_sq_diff_speed += diff * diff;
+    }
+    
+    metrics.std_speed = sqrt(sum_sq_diff_speed / (valid_samples - 1));
+    
+    // === PARAMETRY TEMPORALNE ===
+    metrics.activity_ratio = (float)active_frames / valid_samples * 100.0f;
+    metrics.idle_time_percent = 100.0f - metrics.activity_ratio;
+    metrics.motion_intensity = metrics.mean_energy * (sum_speed / valid_samples);
+    
+    // === PARAMETRY CZĘSTOTLIWOŚCIOWE ===
+    uint16_t sum_targets = 0;
+    metrics.max_target_count = target_counts[0];
+    
+    for (uint8_t i = 0; i < valid_samples; i++) {
+        sum_targets += target_counts[i];
+        if (target_counts[i] > metrics.max_target_count) {
+            metrics.max_target_count = target_counts[i];
+        }
+    }
+    
+    metrics.target_rate = (float)sum_targets / valid_samples;
+    
+    // Gęstość celów (cele na metr odległości)
+    if (metrics.range_distance > 0.01f) {
+        metrics.target_density = (float)sum_targets / metrics.range_distance;
+    } else {
+        metrics.target_density = 0.0f;
+    }
+    
+    // === PARAMETRY TRENDU ===
+    TrendAnalysis trend = calculateTrend(window_size);
+    metrics.trend_slope = trend.slope;
+    metrics.trend_correlation = trend.correlation;
+    
+    // Obliczanie przyspieszenia zmiany (druga pochodna)
+    static float previous_slope = 0.0f;
+    metrics.acceleration_rate = metrics.trend_slope - previous_slope;
+    previous_slope = metrics.trend_slope;
+    
+    // === PARAMETRY JAKOŚCIOWE ===
+    // Jakość sygnału: zależna od stosunku SNR i spójności danych
+    float snr = (metrics.std_energy > 0.001f) ? 
+                (metrics.max_energy - metrics.min_energy) / metrics.std_energy : 0.0f;
+    metrics.signal_quality = constrain(snr * 20.0f, 0.0f, 100.0f);
+    
+    // Wynik anomalii: na podstawie wykrytych anomalii i odchylenia od normy
+    if (lastAnomaly.type != AnomalyEvent::NONE) {
+        metrics.anomaly_score = lastAnomaly.severity * lastAnomaly.confidence;
+    } else {
+        metrics.anomaly_score = 0.0f;
+    }
+    
+    // Indeks zdrowia ula: złożony wskaźnik oparty o wiele parametrów
+    float health_score = 50.0f;  // Bazowy poziom
+    
+    // Bonus za normalną aktywność
+    if (metrics.activity_ratio > 30.0f && metrics.activity_ratio < 90.0f) {
+        health_score += 20.0f;
+    }
+    
+    // Kara za anomalie
+    health_score -= metrics.anomaly_score * 30.0f;
+    
+    // Bonus za stabilność (niski CV)
+    if (metrics.energy_cv < 0.5f) {
+        health_score += 15.0f;
+    } else if (metrics.energy_cv > 1.5f) {
+        health_score -= 10.0f;
+    }
+    
+    // Bonus za obecność pszczół
+    if (metrics.target_rate > 5.0f) {
+        health_score += 15.0f;
+    }
+    
+    metrics.hive_health_index = constrain(health_score, 0.0f, 100.0f);
+    
+    // === DODATKOWE METRYKI ===
+    // Entropia sygnału energii
+    metrics.entropy = calculateEntropy(energies, valid_samples);
+    
+    // Częstotliwość przejść przez zero
+    metrics.zero_crossing_rate = calculateZeroCrossingRate(energies, valid_samples);
+    
+    // Dominująca częstotliwość w spektrum mocy
+    calculatePowerSpectrum(energies, valid_samples, metrics.power_spectrum_peak);
+}
+
 // Aktualizacja statystyk długoterminowych
 void updateLongTermStats(const RadarDataPoint& point) {
     // Uproszczona implementacja - do rozbudowy
@@ -637,6 +976,9 @@ void processRadar() {
         // Detekcja anomalii
         lastAnomaly = detectAnomalies(newPoint, currentTrend);
         
+        // Obliczanie pełnych metryk radaru (15+ parametrów)
+        calculateRadarMetrics(currentMetrics, TREND_WINDOW_SIZE);
+        
         // Aktualizacja statystyk długoterminowych
         updateLongTermStats(newPoint);
         
@@ -652,6 +994,20 @@ void processRadar() {
           Serial.print(lastAnomaly.confidence, 2);
           Serial.print(" | Opis: ");
           Serial.println(lastAnomaly.description);
+        }
+        
+        // Debug: wypisz wybrane metryki co 10 pomiarów
+        static uint16_t debug_counter = 0;
+        if (++debug_counter % 10 == 0) {
+          Serial.println("--- METRYKI RADARU ---");
+          Serial.print("Health Index: "); Serial.println(currentMetrics.hive_health_index, 1);
+          Serial.print("Activity Ratio: "); Serial.print(currentMetrics.activity_ratio, 1); Serial.println("%");
+          Serial.print("Energy CV: "); Serial.println(currentMetrics.energy_cv, 3);
+          Serial.print("Target Rate: "); Serial.println(currentMetrics.target_rate, 1);
+          Serial.print("Signal Quality: "); Serial.print(currentMetrics.signal_quality, 1); Serial.println("%");
+          Serial.print("Entropy: "); Serial.println(currentMetrics.entropy, 3);
+          Serial.print("Trend Slope: "); Serial.println(currentMetrics.trend_slope, 4);
+          Serial.println("----------------------");
         }
         
         // Update global motion flag
@@ -837,7 +1193,45 @@ void loop() {
       client.print("\",\"is_positive_change\":"); client.print(isPositiveChange(lastAnomaly) ? "true" : "false");
       client.print(",\"anomaly_severity\":"); client.print(lastAnomaly.severity, 2);
       client.print(",\"anomaly_confidence\":"); client.print(lastAnomaly.confidence, 2);
-      client.println("}");
+      
+      // Dodaj pełne metryki radaru (15+ parametrów)
+      client.print(",\"metrics\":{\"mean_distance\":"); client.print(currentMetrics.mean_distance, 4);
+      client.print(",\"std_distance\":"); client.print(currentMetrics.std_distance, 4);
+      client.print(",\"min_distance\":"); client.print(currentMetrics.min_distance, 4);
+      client.print(",\"max_distance\":"); client.print(currentMetrics.max_distance, 4);
+      client.print(",\"range_distance\":"); client.print(currentMetrics.range_distance, 4);
+      
+      client.print(",\"mean_energy\":"); client.print(currentMetrics.mean_energy, 4);
+      client.print(",\"std_energy\":"); client.print(currentMetrics.std_energy, 4);
+      client.print(",\"min_energy\":"); client.print(currentMetrics.min_energy, 4);
+      client.print(",\"max_energy\":"); client.print(currentMetrics.max_energy, 4);
+      client.print(",\"energy_variance\":"); client.print(currentMetrics.energy_variance, 4);
+      client.print(",\"energy_cv\":"); client.print(currentMetrics.energy_cv, 4);
+      
+      client.print(",\"mean_speed\":"); client.print(currentMetrics.mean_speed, 4);
+      client.print(",\"std_speed\":"); client.print(currentMetrics.std_speed, 4);
+      client.print(",\"max_speed_abs\":"); client.print(currentMetrics.max_speed_abs, 4);
+      
+      client.print(",\"activity_ratio\":"); client.print(currentMetrics.activity_ratio, 2);
+      client.print(",\"idle_time_percent\":"); client.print(currentMetrics.idle_time_percent, 2);
+      client.print(",\"motion_intensity\":"); client.print(currentMetrics.motion_intensity, 4);
+      
+      client.print(",\"target_rate\":"); client.print(currentMetrics.target_rate, 2);
+      client.print(",\"max_target_count\":"); client.print(currentMetrics.max_target_count);
+      client.print(",\"target_density\":"); client.print(currentMetrics.target_density, 2);
+      
+      client.print(",\"trend_slope\":"); client.print(currentMetrics.trend_slope, 5);
+      client.print(",\"trend_correlation\":"); client.print(currentMetrics.trend_correlation, 4);
+      client.print(",\"acceleration_rate\":"); client.print(currentMetrics.acceleration_rate, 5);
+      
+      client.print(",\"signal_quality\":"); client.print(currentMetrics.signal_quality, 2);
+      client.print(",\"anomaly_score\":"); client.print(currentMetrics.anomaly_score, 3);
+      client.print(",\"hive_health_index\":"); client.print(currentMetrics.hive_health_index, 2);
+      
+      client.print(",\"power_spectrum_peak\":"); client.print(currentMetrics.power_spectrum_peak, 4);
+      client.print(",\"zero_crossing_rate\":"); client.print(currentMetrics.zero_crossing_rate, 4);
+      client.print(",\"entropy\":"); client.print(currentMetrics.entropy, 4);
+      client.println("}}");
     }
     else if (request.indexOf("/radar/anomalies") > 0) {
       client.println("HTTP/1.1 200 OK");
