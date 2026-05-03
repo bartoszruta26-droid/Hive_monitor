@@ -3,14 +3,17 @@
 *.o
 *.obj
 *.hex
-*.elf
 *.bin
+*.elf
 *.map
+*.lst
 *.sym
+*.lss
 
 # Dependencies
-lib/
-libraries/
+.pio/
+.pioenvs/
+.piolibdeps/
 
 # Logs and temp files
 *.log
@@ -30,6 +33,7 @@ libraries/
 
 # Build outputs
 build/
-output/
 dist/
+release/
+debug/
 ```
