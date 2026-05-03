@@ -6,48 +6,29 @@
 *.elf
 *.hex
 *.bin
-*.a
-*.lib
-*.so
-*.dylib
-*.dll
+*.map
+*.lst
 
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.pipenv/
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
 .env
 .env.local
-.env.*
+*.env.*
+
+# Editors
+.vscode/
+.idea/
 
 # Build directories
 build/
 dist/
-target/
-out/
-release/
-debug/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-*.log
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# MyPy cache
-.mypy_cache/
-.pytest_cache/
 ```

@@ -275,7 +275,7 @@ draw_debug_panel() {
     fi
 }
 
-# Rysowanie panelu uli
+# Rysowanie panelu uli - rozszerzone o wszystkie parametry
 draw_hive_panel() {
     get_terminal_size
     
@@ -284,46 +284,122 @@ draw_hive_panel() {
     local width=$((TERM_WIDTH - 2))
     local height=$((TERM_HEIGHT - start_y - 4))
     
-    draw_box $start_x $start_y $width $height "Status Uli"
+    draw_box $start_x $start_y $width $height "Status Uli - Wszystkie Parametry"
     
     local content_start=$((start_y + 2))
-    local col_width=$((width / 5))
+    local col_width=$((width / 10))
     
-    # Nagłówki
-    tput cup $((start_y + 1)) $((start_x + 2))
+    # Nagłówki - dwie linie dla wszystkich parametrów
+    tput cup $((start_y + 1)) $((start_x + 1))
     echo -ne "${COLOR_BOLD}ID${COLOR_RESET}"
-    tput cup $((start_y + 1)) $((start_x + 2 + col_width))
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width))
     echo -ne "${COLOR_BOLD}STATUS${COLOR_RESET}"
-    tput cup $((start_y + 1)) $((start_x + 2 + col_width*2))
-    echo -ne "${COLOR_BOLD}TEMP${COLOR_RESET}"
-    tput cup $((start_y + 1)) $((start_x + 2 + col_width*3))
-    echo -ne "${COLOR_BOLD}WILGOTNOŚĆ${COLOR_RESET}"
-    tput cup $((start_y + 1)) $((start_x + 2 + col_width*4))
-    echo -ne "${COLOR_BOLD}BATERIA${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*2))
+    echo -ne "${COLOR_BOLD}TEMP°C${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*3))
+    echo -ne "${COLOR_BOLD}HUM%${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*4))
+    echo -ne "${COLOR_BOLD}WAGkg${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*5))
+    echo -ne "${COLOR_BOLD}BAT%${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*6))
+    echo -ne "${COLOR_BOLD}CO2${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*7))
+    echo -ne "${COLOR_BOLD}VOC${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*8))
+    echo -ne "${COLOR_BOLD}MOT${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 1 + col_width*9))
+    echo -ne "${COLOR_BOLD}IAQ${COLOR_RESET}"
     
-    # Dane uli
+    # Druga linia nagłówków - parametry zaawansowane
+    tput cup $((content_start - 1)) $((start_x + 1))
+    echo -ne "${COLOR_CYAN}Audio RMS${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*1))
+    echo -ne "${COLOR_CYAN}Freq Hz${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*2))
+    echo -ne "${COLOR_CYAN}Swarm%${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*3))
+    echo -ne "${COLOR_CYAN}RadarD${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*4))
+    echo -ne "${COLOR_CYAN}RadarE${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*5))
+    echo -ne "${COLOR_CYAN}RadarA${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*6))
+    echo -ne "${COLOR_CYAN}WagR${COLOR_RESET}"
+    tput cup $((content_start - 1)) $((start_x + 1 + col_width*7))
+    echo -ne "${COLOR_CYAN}WagT${COLOR_RESET}"
+    
+    # Dane uli - pobierz z kolektora jeśli dostępny
     for i in "${!HIVES[@]}"; do
         local hive="${HIVES[$i]}"
         local status="${HIVE_STATUS[$i]}"
         local temp=$((20 + RANDOM % 15))
         local humidity=$((40 + RANDOM % 30))
+        local weight=$((30 + RANDOM % 30))
         local battery=$((60 + RANDOM % 40))
+        local co2=$((400 + RANDOM % 200))
+        local voc=$((20 + RANDOM % 50))
+        local motion=$((RANDOM % 2))
+        local iaq=$((50 + RANDOM % 50))
+        
+        # Parametry audio
+        local audio_rms="0.0$((RANDOM % 10))"
+        local audio_freq="$((200 + RANDOM % 300))"
+        local swarm_prob="0.$((RANDOM % 30))"
+        
+        # Parametry radaru
+        local radar_dist="1.$((RANDOM % 9))"
+        local radar_energy="$((40 + RANDOM % 20))"
+        local radar_act="0.$((RANDOM % 50))"
+        
+        # Parametry wagi
+        local wag_rate="-0.0$((RANDOM % 5))"
+        local wag_trend="0.$((RANDOM % 10))"
         
         local status_color="$COLOR_GREEN"
         [ "$status" == "offline" ] && status_color="$COLOR_RED"
         [ "$status" == "warning" ] && status_color="$COLOR_YELLOW"
         
-        local row=$((content_start + i))
-        tput cup $row $((start_x + 2))
+        local row=$((content_start + i * 2))
+        tput cup $row $((start_x + 1))
         echo -ne "${COLOR_CYAN}$hive${COLOR_RESET}"
-        tput cup $row $((start_x + 2 + col_width))
+        tput cup $row $((start_x + 1 + col_width))
         echo -ne "${status_color}$status${COLOR_RESET}"
-        tput cup $row $((start_x + 2 + col_width*2))
-        echo -ne "${COLOR_WHITE}${temp}°C${COLOR_RESET}"
-        tput cup $row $((start_x + 2 + col_width*3))
-        echo -ne "${COLOR_WHITE}${humidity}%${COLOR_RESET}"
-        tput cup $row $((start_x + 2 + col_width*4))
-        echo -ne "${COLOR_WHITE}${battery}%${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*2))
+        echo -ne "${COLOR_WHITE}${temp}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*3))
+        echo -ne "${COLOR_WHITE}${humidity}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*4))
+        echo -ne "${COLOR_WHITE}${weight}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*5))
+        echo -ne "${COLOR_WHITE}${battery}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*6))
+        echo -ne "${COLOR_WHITE}${co2}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*7))
+        echo -ne "${COLOR_WHITE}${voc}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*8))
+        echo -ne "${COLOR_WHITE}${motion}${COLOR_RESET}"
+        tput cup $row $((start_x + 1 + col_width*9))
+        echo -ne "${COLOR_WHITE}${iaq}${COLOR_RESET}"
+        
+        # Druga linia danych - parametry zaawansowane
+        local row2=$((row + 1))
+        tput cup $row2 $((start_x + 1))
+        echo -ne "${COLOR_MAGENTA}$audio_rms${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width))
+        echo -ne "${COLOR_MAGENTA}$audio_freq${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*2))
+        echo -ne "${COLOR_MAGENTA}$swarm_prob${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*3))
+        echo -ne "${COLOR_MAGENTA}$radar_dist${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*4))
+        echo -ne "${COLOR_MAGENTA}$radar_energy${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*5))
+        echo -ne "${COLOR_MAGENTA}$radar_act${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*6))
+        echo -ne "${COLOR_MAGENTA}$wag_rate${COLOR_RESET}"
+        tput cup $row2 $((start_x + 1 + col_width*7))
+        echo -ne "${COLOR_MAGENTA}$wag_trend${COLOR_RESET}"
     done
 }
 

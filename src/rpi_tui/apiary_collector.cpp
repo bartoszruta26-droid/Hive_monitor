@@ -39,6 +39,23 @@ struct HiveData {
     int motion_detected;        // Flaga ruchu z radaru (0/1)
     long long timestamp;        // Timestamp [s]
     bool is_online;             // Status online/offline
+    
+    // Nowe parametry audio
+    float audio_rms;            // RMS amplituda audio [V]
+    float audio_dominant_freq;  // Dominująca częstotliwość audio [Hz]
+    float audio_swarm_prob;     // Prawdopodobieństwo rojenia z audio [0-1]
+    
+    // Nowe parametry radaru
+    float radar_distance;       // Odległość wykrytego obiektu [m]
+    float radar_energy;         // Energia sygnału radaru [dB]
+    float radar_activity;       // Współczynnik aktywności [0-1]
+    
+    // Nowe parametry wagi
+    float weight_rate;          // Szybkość zmiany wagi [kg/h]
+    float weight_trend;         // Trend wagi [-1..1] gdzie 1=rosnący
+    
+    // Nowe parametry jakości powietrza
+    int air_iaq;                // Indeks jakości powietrza [0-100]
 };
 
 // Menadżer danych uli
@@ -75,7 +92,11 @@ public:
         std::lock_guard<std::mutex> lock(data_mutex);
         for (size_t i = 0; i < ips.size(); ++i) {
             std::string id = "UL-" + std::to_string(i + 1);
-            hives_data[id] = {id, 0.0f, 0.0f, 0.0f, 0, 0, 0, 0, 0, false};
+            hives_data[id] = {id, 0.0f, 0.0f, 0.0f, 0, 0, 0, 0, 0, false, 
+                              0.0f, 0.0f, 0.0f,  // audio
+                              0.0f, 0.0f, 0.0f,  // radar
+                              0.0f, 0.0f,        // waga trend
+                              0};                // air_iaq
             Logger::getInstance().debug( "Dodano ul: " + id + " (IP: " + ips[i] + ")");
         }
     }
@@ -133,9 +154,12 @@ public:
 
     // Parsowanie i przetwarzanie danych
     void processData(const std::string& raw_data, const std::string& source_ip) {
-        // Format oczekiwany od Pico: ID,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIMESTAMP
-        // Przykład: "UL-1,24.5,65.2,45.300,98,450,35,1,1234567890"
-        // Wszystkie parametry: ID, temperatura, wilgotność, waga(kg), bateria(%), CO2(ppm), VOC(index), ruch(0/1), timestamp
+        // Format oczekiwany od Pico (rozszerzony): 
+        // ID,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIMESTAMP,AUDIO_RMS,AUDIO_DOM_FREQ,AUDIO_SWARM_PROB,RADAR_DIST,RADAR_ENERGY,RADAR_ACTIVITY,WAG_RATE,WAG_TREND,AIR_IAQ
+        // Przykład: "UL-1,24.5,65.2,45.300,98,450,35,1,1234567890,0.025,250.5,0.15,1.2,45.3,0.35,-0.02,1.0,75"
+        // Wszystkie parametry: ID, temp[C], humidity[%], weight[kg], battery[%], CO2[ppm], VOC[idx], motion[0/1], timestamp[s],
+        //                      audio_rms[V], audio_dom_freq[Hz], audio_swarm_prob[0-1], radar_dist[m], radar_energy[dB], radar_activity[0-1],
+        //                      weight_rate[kg/h], weight_trend[-1..1], air_iaq[0-100]
         
         std::stringstream ss(raw_data);
         std::string segment;
@@ -145,7 +169,8 @@ public:
             parts.push_back(segment);
         }
 
-        if (parts.size() < 8) {
+        // Wymagane minimum 9 pól dla podstawowych danych, ale obsługujemy do 18 pól dla rozszerzonych
+        if (parts.size() < 9) {
             Logger::getInstance().warning( "Niepoprawny format danych z " + source_ip + ": " + raw_data);
             return;
         }
@@ -159,7 +184,29 @@ public:
             int co2 = std::stoi(parts[5]);            // CO2 - CO2 equivalent [ppm]
             int voc = std::stoi(parts[6]);            // VOC - VOC index [index]
             int motion = std::stoi(parts[7]);         // MOTION - flaga ruchu (0/1)
+            // parts[8] to TIMESTAMP z Pico - używamy lokalnego czasu zamiast synchronizacji
             long long now = std::time(nullptr);       // Aktualny timestamp systemu
+            
+            // Parametry rozszerzone (opcjonalne, domyślne wartości jeśli brak)
+            float audio_rms = 0.0f;
+            float audio_dom_freq = 0.0f;
+            float audio_swarm_prob = 0.0f;
+            float radar_dist = 0.0f;
+            float radar_energy = 0.0f;
+            float radar_activity = 0.0f;
+            float weight_rate = 0.0f;
+            float weight_trend = 0.0f;
+            int air_iaq = 0;
+            
+            if (parts.size() > 9) audio_rms = std::stof(parts[9]);
+            if (parts.size() > 10) audio_dom_freq = std::stof(parts[10]);
+            if (parts.size() > 11) audio_swarm_prob = std::stof(parts[11]);
+            if (parts.size() > 12) radar_dist = std::stof(parts[12]);
+            if (parts.size() > 13) radar_energy = std::stof(parts[13]);
+            if (parts.size() > 14) radar_activity = std::stof(parts[14]);
+            if (parts.size() > 15) weight_rate = std::stof(parts[15]);
+            if (parts.size() > 16) weight_trend = std::stof(parts[16]);
+            if (parts.size() > 17) air_iaq = std::stoi(parts[17]);
 
             // Aktualizacja danych w pamięci współdzielonej
             {
@@ -175,16 +222,39 @@ public:
                     hives_data[hive_id].timestamp = now;
                     hives_data[hive_id].is_online = true;
                     
+                    // Nowe parametry audio
+                    hives_data[hive_id].audio_rms = audio_rms;
+                    hives_data[hive_id].audio_dominant_freq = audio_dom_freq;
+                    hives_data[hive_id].audio_swarm_prob = audio_swarm_prob;
+                    
+                    // Nowe parametry radaru
+                    hives_data[hive_id].radar_distance = radar_dist;
+                    hives_data[hive_id].radar_energy = radar_energy;
+                    hives_data[hive_id].radar_activity = radar_activity;
+                    
+                    // Nowe parametry wagi
+                    hives_data[hive_id].weight_rate = weight_rate;
+                    hives_data[hive_id].weight_trend = weight_trend;
+                    
+                    // Nowe parametry jakości powietrza
+                    hives_data[hive_id].air_iaq = air_iaq;
+                    
                     Logger::getInstance().debug( "Zaktualizowano dane dla " + hive_id + 
                                " [T:" + std::to_string(temp) + 
                                " H:" + std::to_string(humidity) + 
                                " CO2:" + std::to_string(co2) + 
                                " VOC:" + std::to_string(voc) + 
-                               " Motion:" + std::to_string(motion) + "]");
+                               " Motion:" + std::to_string(motion) +
+                               " AudioRMS:" + std::to_string(audio_rms) +
+                               " RadarAct:" + std::to_string(radar_activity) +
+                               " IAQ:" + std::to_string(air_iaq) + "]");
                 } else {
                     // Nowy ul dynamicznie wykryty
                     Logger::getInstance().info( "Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
-                    HiveData new_hive = {hive_id, temp, humidity, weight, battery, co2, voc, motion, now, true};
+                    HiveData new_hive = {hive_id, temp, humidity, weight, battery, co2, voc, motion, now, true,
+                                         audio_rms, audio_dom_freq, audio_swarm_prob,
+                                         radar_dist, radar_energy, radar_activity,
+                                         weight_rate, weight_trend, air_iaq};
                     hives_data[hive_id] = new_hive;
                 }
             }
@@ -262,7 +332,17 @@ public:
                  << "\"co2\":" << d.co2_eq << ","
                  << "\"voc\":" << d.voc_idx << ","
                  << "\"motion\":" << d.motion_detected << ","
-                 << "\"online\":" << (d.is_online ? "true" : "false") << "}";
+                 << "\"online\":" << (d.is_online ? "true" : "false") << ","
+                 << "\"audio_rms\":" << d.audio_rms << ","
+                 << "\"audio_freq\":" << d.audio_dominant_freq << ","
+                 << "\"swarm_prob\":" << d.audio_swarm_prob << ","
+                 << "\"radar_dist\":" << d.radar_distance << ","
+                 << "\"radar_energy\":" << d.radar_energy << ","
+                 << "\"radar_activity\":" << d.radar_activity << ","
+                 << "\"weight_rate\":" << d.weight_rate << ","
+                 << "\"weight_trend\":" << d.weight_trend << ","
+                 << "\"air_iaq\":" << d.air_iaq
+                 << "}";
         }
         json << "}";
         return json.str();
@@ -272,7 +352,7 @@ public:
     std::string getStatusCSV() {
         std::lock_guard<std::mutex> lock(data_mutex);
         std::stringstream csv;
-        csv << "ID,STATUS,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIME\n";
+        csv << "ID,STATUS,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,AUDIO_RMS,AUDIO_FREQ,SWARM_PROB,RADAR_DIST,RADAR_ENERGY,RADAR_ACT,WAG_RATE,WAG_TREND,AIR_IAQ,TIME\n";
         for (const auto& pair : hives_data) {
             const auto& d = pair.second;
             std::string status = d.is_online ? "ONLINE" : "OFFLINE";
@@ -287,6 +367,15 @@ public:
                 << d.co2_eq << ","
                 << d.voc_idx << ","
                 << d.motion_detected << ","
+                << d.audio_rms << ","
+                << d.audio_dominant_freq << ","
+                << d.audio_swarm_prob << ","
+                << d.radar_distance << ","
+                << d.radar_energy << ","
+                << d.radar_activity << ","
+                << d.weight_rate << ","
+                << d.weight_trend << ","
+                << d.air_iaq << ","
                 << d.timestamp << "\n";
         }
         return csv.str();
