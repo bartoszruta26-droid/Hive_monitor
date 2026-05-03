@@ -7,6 +7,7 @@
  * - Ethernet by Arduino (dla W6100)
  * - DHT sensor library by Adafruit
  * - Adafruit SGP41 Library
+ * - ArduinoJson by Benoit Blanchon
  * 
  * Połączenia GPIO:
  * W6100 (SPI1):
@@ -16,6 +17,10 @@
  *   SCK  -> GP6 (SPI1 SCK)
  *   RST  -> GP4
  *   INT  -> GP3
+ * 
+ * SGP41 (I2C):
+ *   SDA  -> GP0
+ *   SCL  -> GP1
  */
 
 #include <SPI.h>
@@ -23,6 +28,7 @@
 #include <DHT.h>
 #include <Adafruit_SGP41.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
 
 // ==================== KONFIGURACJA SIECI ====================
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
@@ -160,11 +166,23 @@ void initHX711() {
   Serial.println(weightOffset);
 }
 
-// Odczyt HX711
+// Odczyt HX711 z timeoutem
 long readHX711() {
-  long value = 0;
-  while (digitalRead(HX711_DT));
+  unsigned long timeout = millis();
+  const unsigned long TIMEOUT_MS = 100;
   
+  // Czekaj na gotowość z timeoutem
+  while (digitalRead(HX711_DT) && (millis() - timeout < TIMEOUT_MS)) {
+    yield();
+  }
+  
+  // Sprawdź timeout
+  if (digitalRead(HX711_DT)) {
+    Serial.println("HX711 timeout!");
+    return 0;
+  }
+  
+  long value = 0;
   for (int i = 0; i < 24; i++) {
     digitalWrite(HX711_SCK, HIGH);
     value = value << 1;
@@ -258,8 +276,19 @@ void readAllSensors() {
   sensors.vibrationLevel = readPiezo();
   
   // CO2 i VOC (SGP41)
-  sensors.co2 = sgp.measureCO2();
-  sensors.voc = sgp.measureVocIndex();
+  if (!sgp.measureCO2()) {
+    Serial.println("SGP41: Błąd odczytu CO2");
+    sensors.co2 = -1;
+  } else {
+    sensors.co2 = sgp.CO2;
+  }
+  
+  if (!sgp.measureVocIndex()) {
+    Serial.println("SGP41: Błąd odczytu VOC");
+    sensors.voc = -1;
+  } else {
+    sensors.voc = sgp.VOCIndex;
+  }
   
   // Radar
   sensors.motionDetected = readRadar();
@@ -268,7 +297,7 @@ void readAllSensors() {
 // Wysyłanie danych przez HTTP
 void sendData() {
   if (client.connected()) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     doc["temp"] = sensors.temperature;
     doc["hum"] = sensors.humidity;
     doc["weight"] = sensors.weight;
@@ -365,14 +394,15 @@ void setup() {
   // Inicjalizacja sensorów
   dht.begin();
   
-  // I2C dla SGP41
-  Wire.setSDA(2);  // GP2
-  Wire.setSCL(3);  // GP3
+  // I2C dla SGP41 - używamy GP0 i GP1 aby uniknąć konfliktu z W6100 INT (GP3)
+  Wire.setSDA(0);  // GP0
+  Wire.setSCL(1);  // GP1
   Wire.begin();
   
   if (!sgp.begin(&Wire)) {
     Serial.println("SGP41 nie wykryty!");
   } else {
+    Serial.println("SGP41 wykryty");
     sgp.measureCO2();
     sgp.measureVocIndex();
   }
