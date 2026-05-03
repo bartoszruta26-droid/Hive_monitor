@@ -1,52 +1,38 @@
-```
-# Compiled and build artifacts
-*.o
-*.obj
+# Arduino build artifacts
 *.hex
-*.bin
 *.elf
+*.bin
 *.map
-*.lst
 *.sym
 
-# Dependencies
-.pio/
-.platformio/
-lib/
-.Python
-venv/
-.venv/
+# Build directories
+build/
+dist/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.bak
-*.~
-*~
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# Build outputs
-build/
-dist/
-output/
-release/
-debug/
+# Logs
+*.log
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# Environment
+.env
+.env.local
+*.env.*
+
+# Cache directories
+.cache/
+__pycache__/
+.pycache/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Python specific
 __pycache__/
