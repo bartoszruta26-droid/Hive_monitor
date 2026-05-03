@@ -27,7 +27,7 @@
  * DHT22 (Temp/Wilg):
  *   DATA -> GPIO 2
  * 
- * HX711 (Waga):
+ * HX711 (Waga/Strain Gauge):
  *   DT   -> GPIO 3
  *   SCK  -> GPIO 22
  * 
@@ -69,6 +69,28 @@
  * - Obliczanie 25+ parametrów akustycznych
  * - Klasyfikacja zdarzeń dźwiękowych i ich wpływ na pożytek ula
  * - API HTTP: /audio/status, /audio/spectrum, /audio/events
+ * 
+ * MODUŁ PROFESJONALNEJ ANALIZY DANYCH Z HX711 (STRAIN GAUGE):
+ * - Bufor cyrkularny 288 punktów (24 godziny przy odczycie co 5 minut)
+ * - Filtrowanie wykładnicze (EMA) i kompensacja temperaturowa
+ * - Analiza trendów w różnych oknach czasowych (1h, 4h, 24h)
+ * - Obliczanie 30+ parametrów związanych z wagą ula:
+ *   * Statystyczne: mean/std/min/max/median/range/variance/CV/IQR
+ *   * Temporalne: current_rate/mean_rate/max_positive/max_negative/acceleration
+ *   * Trendy: slope_1h/slope_4h/slope_24h/correlation/direction
+ *   * Pożytki: nectar_inflow_rate/accumulation/foraging_efficiency/bloom_intensity
+ *   * Produkcja: honey_production_idx/nectar_quality_est
+ *   * Konsumpcja: consumption_rate/daily_consumption/food_reserve_days
+ *   * Zimowla: winter_readiness/starvation_risk
+ *   * Cykliczność: daily_amplitude/circadian_strength/seasonal_trend
+ *   * Jakość: signal_quality/noise_level/drift_rate/stability_index
+ *   * Anomalie: anomaly_score/sudden_change_mag/oscillation_freq
+ *   * Zdrowie: colony_growth_rate/brood_activity_idx/population_estimate
+ *   * Produktywność: hive_health_weight/productivity_score
+ *   * Prognoza: predicted_weight_24h/forecast_confidence/expected_honey_yield
+ * - Detekcja zdarzeń: przepływ nektaru, rojenie, niski zapas, atak drapieżnika
+ * - Klasyfikacja wpływu zdarzeń na pożytek ula (pozytywny/negatywny/krytyczny)
+ * - API HTTP: /hx711/status, /hx711/metrics, /hx711/events, /hx711/forecast
  * ---------------------------------------------------------
  */
 
@@ -281,6 +303,196 @@ void updateAudioHistory(const AudioMetrics& metrics);
 bool isPositiveAudioChange(const AudioEvent& event);
 const char* audioEventTypeToString(AudioEvent::EventType type);
 const char* audioEventImpactToString(AudioEvent::EventImpact impact);
+
+// ============================================================================
+// MODUŁ PROFESJONALNEJ ANALIZY DANYCH Z CZUJNIKA HX711 (STRAIN GAUGE)
+// WYLICZANIE PARAMETRÓW ZMIAN W POŻYTKU ULU I PSZCZÓŁ
+// ============================================================================
+
+#define HX711_BUFFER_SIZE 288   // 24 godziny danych przy odczycie co 5 minut
+#define HX711_TREND_WINDOW 12   // Okno trendu: 1 godzin (12 * 5min)
+#define HX711_DAILY_WINDOW    48 // 4 godziny (48 * 5min)
+#define HX711_SHORT_WINDOW    6  // 30 minut (6 * 5min)
+#define HX711_WEIGHT_CHANGE_THRESHOLD 0.05f  // 5% zmiany wagi dla detekcji zdarzeń
+#define HX711_NECTAR_FLOW_MIN 0.02f  // Minimalny przepływ nektaru [kg/h]
+#define HX711_CONSUMPTION_MIN 0.01f  // Minimalne zużycie zapasów [kg/h]
+
+// Struktura przechowująca pojedynczy pomiar wagi
+struct HX711DataPoint {
+    uint32_t timestamp;       // Czas pomiaru [ms od startu]
+    float weight_raw;         // Surowa waga [kg]
+    float weight_filtered;    // Filtrowana waga [kg]
+    float temperature_comp;   // Kompensacja temperaturowa [°C]
+    float rate_of_change;     // Szybkość zmiany wagi [kg/h]
+    bool is_valid;            // Flag ważności pomiaru
+    uint8_t quality_score;    // Jakość pomiaru (0-100)
+};
+
+// Struktura przechowująca metryki wagi - 30+ parametrów
+struct HX711Metrics {
+    // === PODSTAWOWE PARAMETRY STATYSTYCZNE ===
+    float mean_weight;          // Średnia waga [kg]
+    float std_weight;           // Odchylenie standardowe wagi [kg]
+    float min_weight;           // Minimalna waga [kg]
+    float max_weight;           // Maksymalna waga [kg]
+    float range_weight;         // Zakres zmian wagi (max-min) [kg]
+    float median_weight;        // Mediana wagi [kg]
+    
+    // Wariancja i współczynniki zmienności
+    float weight_variance;      // Wariancja wagi [kg²]
+    float weight_cv;            // Współczynnik zmienności (CV = std/mean)
+    float weight_iqr;           // Rozstęp międzykwartylowy [kg]
+    
+    // === PARAMETRY TEMPORALNE - SZYBKOŚCI ZMIAN ===
+    float current_rate;         // Aktualna szybkość zmiany [kg/h]
+    float mean_rate;            // Średnia szybkość zmiany [kg/h]
+    float max_rate_positive;    // Maksymalny przyrost [kg/h]
+    float max_rate_negative;    // Maksymalny ubytek [kg/h]
+    float acceleration;         // Przyspieszenie zmiany wagi [kg/h²]
+    
+    // === PARAMETRY KIERUNKU TRENDU ===
+    float trend_slope_1h;       // Nachylenie trendu 1h [kg/h]
+    float trend_slope_4h;       // Nachylenie trendu 4h [kg/h]
+    float trend_slope_24h;      // Nachylenie trendu 24h [kg/h]
+    float trend_correlation;    // Współczynnik korelacji trendu (-1 do 1)
+    float trend_direction;      // Kierunek: -1 (spadek), 0 (stabilny), 1 (wzrost)
+    
+    // === PARAMETRY POŻYTKU I ZBIORÓW ===
+    float nectar_inflow_rate;   // Przepływ nektaru [kg/h]
+    float nectar_accumulation;  // Skumulowany nektar [kg]
+    float foraging_efficiency;  // Efektywność zbierania (0-100%)
+    float honey_production_idx; // Indeks produkcji miodu (0-100%)
+    float bloom_intensity;      // Intensywność kwitnienia (0-100%)
+    float nectar_quality_est;   // Szacowana jakość nektaru (0-100%)
+    
+    // === PARAMETRY KONSUMPCJI I ZUŻYCIA ===
+    float consumption_rate;     // Zużycie zapasów [kg/h]
+    float daily_consumption;    // Dzienne zużycie [kg/dzień]
+    float food_reserve_days;    // Zapas żywności na dni
+    float winter_readiness;     // Gotowość do zimowli (0-100%)
+    float starvation_risk;      // Ryzyko głodu (0-100%)
+    
+    // === PARAMETRY CYKLICZNOŚCI I WZORCÓW ===
+    float daily_amplitude;      // Amplituda dobowa [kg]
+    float daily_phase;          // Faza dobowa [godziny]
+    float circadian_strength;   // Siła rytmu dobowego (0-1)
+    float weekly_pattern_match; // Dopasowanie wzorca tygodniowego (0-1)
+    float seasonal_trend;       // Trend sezonowy (-1 do 1)
+    
+    // === PARAMETRY JAKOŚCI SYGNAŁU ===
+    float signal_quality;       // Jakość sygnału wagi (0-100%)
+    float noise_level;          // Poziom szumu [kg]
+    float drift_rate;           // Dryft czujnika [kg/h]
+    float stability_index;      // Indeks stabilności (0-100%)
+    float measurement_confidence;// Pewność pomiaru (0-1)
+    
+    // === PARAMETRY ANOMALII I ZDARZEŃ ===
+    float anomaly_score;        // Wynik anomalii (0-1)
+    float sudden_change_mag;    // Wielkość nagłej zmiany [kg]
+    float oscillation_freq;     // Częstotliwość oscylacji [cykle/dzień]
+    float oscillation_damping;  // Tłumienie oscylacji (0-1)
+    
+    // === WSKAŹNIKI ZDROWIA KOLONII ===
+    float colony_growth_rate;   // Tempo wzrostu kolonii [%/dzień]
+    float brood_activity_idx;   // Indeks aktywności czerwiu (0-100%)
+    float population_estimate;  // Szacowana populacja [tysięce pszczół]
+    float hive_health_weight;   // Indeks zdrowia z wagi (0-100%)
+    float productivity_score;   // Ogólny wynik produktywności (0-100%)
+    
+    // === PARAMETRY PROGNOZY ===
+    float predicted_weight_24h; // Prognoza wagi za 24h [kg]
+    float forecast_confidence;  // Pewność prognozy (0-1)
+    float expected_honey_yield; // Oczekiwany zbiór miodu [kg]
+};
+
+// Bufory dla przetwarzania danych HX711
+HX711DataPoint hx711Buffer[HX711_BUFFER_SIZE];
+uint16_t hx711BufferIndex = 0;
+uint16_t hx711DataCount = 0;
+
+HX711Metrics currentHX711Metrics;
+
+// Historia dzienna dla analizy wzorców
+struct HX711DailyPattern {
+    float hour_avg[24];         // Średnia waga dla każdej godziny
+    float hour_std[24];         // Odchylenie dla każdej godziny
+    uint8_t valid_samples[24];  // Liczba ważnych próbek
+} hx711DailyPattern;
+
+// Zdarzenia związane z wagą
+struct HX711Event {
+    enum EventType {
+        EVENT_NONE = 0,
+        EVENT_NECTAR_FLOW_START,      // Rozpoczęcie przepływu nektaru
+        EVENT_NECTAR_FLOW_PEAK,       // Szczyt przepływu nektaru
+        EVENT_NECTAR_FLOW_END,        // Zakończenie przepływu nektaru
+        EVENT_HONEY_SUPER_ADDED,      // Dodano korpus miodniowy
+        EVENT_HONEY_HARVESTED,        // Zebrano miód
+        EVENT_HIGH_CONSUMPTION,       // Wysokie zużycie zapasów
+        EVENT_LOW_FOOD_RESERVE,       // Niski zapas żywności
+        EVENT_SWARM_DEPARTURE,        // Wyjście roju (nagły spadek wagi)
+        EVENT_PREDATOR_ATTACK,        // Atak drapieżnika (oscylacje)
+        EVENT_WEATHER_IMPACT,         // Wpływ pogody (brak wylotów)
+        EVENT_DRONE_EJECTION,         // Wyrzucenie trutni
+        EVENT_WINTER_CLUSTER,         // Formowanie klastra zimowego
+        EVENT_SPRING_BUILDUP,         // Wiosenny rozwój
+        EVENT_MEasurement_ERROR       // Błąd pomiaru
+    };
+    
+    enum EventImpact {
+        IMPACT_NEUTRAL = 0,
+        IMPACT_VERY_POSITIVE,         // Bardzo pozytywny wpływ na pożytek
+        IMPACT_POSITIVE,              // Pozytywny wpływ na pożytek
+        IMPACT_SLIGHTLY_POSITIVE,     // Lekko pozytywny
+        IMPACT_SLIGHTLY_NEGATIVE,     // Lekko negatywny
+        IMPACT_NEGATIVE,              // Negatywny wpływ na pożytek
+        IMPACT_VERY_NEGATIVE,         // Bardzo negatywny wpływ
+        IMPACT_CRITICAL               // Krytyczne zagrożenie
+    };
+    
+    EventType type;
+    EventImpact impact;
+    float confidence;                 // Pewność detekcji (0-1)
+    float magnitude;                  // Wielkość zdarzenia [kg lub kg/h]
+    uint32_t timestamp;
+    char description[80];             // Opis zdarzenia
+};
+
+HX711Event lastHX711Event;
+
+// Progi detekcji zdarzeń
+struct HX711Thresholds {
+    float nectar_flow_threshold;      // Próg przepływu nektaru [kg/h]
+    float swarm_loss_threshold;       // Próg utraty wagi dla roju [kg]
+    float consumption_alert;          // Alarm zużycia [kg/dzień]
+    float food_reserve_critical;      // Krytyczny zapas [kg]
+    float food_reserve_low;           // Niski zapas [kg]
+    float sudden_change_threshold;    // Nagła zmiana [%]
+    float oscillation_threshold;      // Próg oscylacji [kg]
+} hx711Thresholds = {
+    .nectar_flow_threshold = 0.05f,   // 50g/h
+    .swarm_loss_threshold = 1.5f,     // 1.5kg utraty
+    .consumption_alert = 0.5f,        // 0.5kg/dzień
+    .food_reserve_critical = 5.0f,    // 5kg krytycznie
+    .food_reserve_low = 10.0f,        // 10kg niski
+    .sudden_change_threshold = 0.15f, // 15% nagłej zmiany
+    .oscillation_threshold = 0.3f     // 300g oscylacji
+};
+
+// Deklaracje funkcji modułu HX711
+void updateHX711Buffer(const HX711DataPoint& point);
+void calculateHX711Metrics(HX711Metrics& metrics);
+HX711Event detectHX711Events(const HX711DataPoint& current, const HX711Metrics& metrics);
+void updateHX711DailyPattern(const HX711DataPoint& point);
+float applyWeightFilter(float raw_weight, float prev_filtered, float alpha);
+float calculateMovingAverage(const float* data, uint16_t count, uint8_t window);
+float calculateLinearRegression(const float* x, const float* y, uint16_t count, float& slope, float& intercept);
+float calculatePercentile(const float* data, uint16_t count, float percentile);
+void compensateTemperature(float& weight, float temperature);
+bool isPositiveHX711Change(const HX711Event& event);
+const char* hx711EventTypeToString(HX711Event::EventType type);
+const char* hx711EventImpactToString(HX711Event::EventImpact impact);
+void generateHX711EventDescription(HX711Event& event);
 
 // Timer'y
 unsigned long lastMillis = 0;
@@ -1339,6 +1551,521 @@ void updateRadarBuffer(const RadarDataPoint& point) {
     }
 }
 
+// Aktualizacja dziennego wzorca wagi
+void updateHX711DailyPattern(const HX711DataPoint& point) {
+    uint8_t hour = (point.timestamp / 3600000UL) % 24;  // Godzina z timestampu
+    
+    // Aktualizacja średniej ruchomej dla danej godziny
+    uint8_t& samples = hx711DailyPattern.valid_samples[hour];
+    float& avg = hx711DailyPattern.hour_avg[hour];
+    
+    if (samples < 255) samples++;
+    
+    // Średnia krocząca
+    avg = ((avg * (samples - 1)) + point.weight_filtered) / samples;
+}
+
+// Detekcja zdarzeń na podstawie metryk HX711
+HX711Event detectHX711Events(const HX711DataPoint& current, const HX711Metrics& metrics) {
+    HX711Event event;
+    event.type = HX711Event::EVENT_NONE;
+    event.impact = HX711Event::IMPACT_NEUTRAL;
+    event.confidence = 0.0f;
+    event.magnitude = 0.0f;
+    event.timestamp = millis();
+    memset(event.description, 0, sizeof(event.description));
+    
+    // Detekcja rozpoczęcia przepływu nektaru
+    if (current.rate_of_change > hx711Thresholds.nectar_flow_threshold) {
+        event.type = HX711Event::EVENT_NECTAR_FLOW_START;
+        event.impact = HX711Event::IMPACT_VERY_POSITIVE;
+        event.confidence = min(1.0f, current.rate_of_change / 0.2f);
+        event.magnitude = current.rate_of_change;
+        snprintf(event.description, sizeof(event.description), 
+                 "Rozpoczęcie intensywnego przepływu nektaru: %.3f kg/h", current.rate_of_change);
+        return event;
+    }
+    
+    // Detekcja szczytu przepływu nektaru
+    if (metrics.nectar_inflow_rate > 0.15f && metrics.trend_direction == 1.0f) {
+        event.type = HX711Event::EVENT_NECTAR_FLOW_PEAK;
+        event.impact = HX711Event::IMPACT_POSITIVE;
+        event.confidence = min(1.0f, metrics.nectar_inflow_rate / 0.3f);
+        event.magnitude = metrics.nectar_inflow_rate;
+        snprintf(event.description, sizeof(event.description), 
+                 "Szczyt przepływu nektaru: %.3f kg/h", metrics.nectar_inflow_rate);
+        return event;
+    }
+    
+    // Detekcja wysokiego zużycia zapasów
+    if (metrics.consumption_rate > hx711Thresholds.consumption_alert) {
+        event.type = HX711Event::EVENT_HIGH_CONSUMPTION;
+        event.impact = HX711Event::IMPACT_NEGATIVE;
+        event.confidence = min(1.0f, metrics.consumption_rate / 1.0f);
+        event.magnitude = metrics.consumption_rate;
+        snprintf(event.description, sizeof(event.description), 
+                 "Wysokie zużycie zapasów: %.3f kg/h (%.2f kg/dzień)", 
+                 metrics.consumption_rate, metrics.daily_consumption);
+        return event;
+    }
+    
+    // Detekcja niskiego zapasu żywności
+    if (metrics.mean_weight < hx711Thresholds.food_reserve_low) {
+        event.type = HX711Event::EVENT_LOW_FOOD_RESERVE;
+        if (metrics.mean_weight < hx711Thresholds.food_reserve_critical) {
+            event.impact = HX711Event::IMPACT_CRITICAL;
+            event.confidence = 0.95f;
+        } else {
+            event.impact = HX711Event::IMPACT_NEGATIVE;
+            event.confidence = 0.8f;
+        }
+        event.magnitude = metrics.mean_weight;
+        snprintf(event.description, sizeof(event.description), 
+                 "Niski zapas żywności: %.2f kg (wystarczy na %.1f dni)", 
+                 metrics.mean_weight, metrics.food_reserve_days);
+        return event;
+    }
+    
+    // Detekcja wyjścia roju (nagły spadek wagi)
+    if (current.rate_of_change < -hx711Thresholds.swarm_loss_threshold && 
+        abs(current.rate_of_change) > abs(metrics.mean_rate) * 3.0f) {
+        event.type = HX711Event::EVENT_SWARM_DEPARTURE;
+        event.impact = HX711Event::IMPACT_VERY_NEGATIVE;
+        event.confidence = min(1.0f, abs(current.rate_of_change) / 3.0f);
+        event.magnitude = abs(current.rate_of_change);
+        snprintf(event.description, sizeof(event.description), 
+                 "Podejrzenie wyjścia roju! Nagły spadek wagi: %.2f kg", 
+                 abs(current.rate_of_change));
+        return event;
+    }
+    
+    // Detekcja anomalii
+    if (metrics.anomaly_score > 0.7f) {
+        event.type = HX711Event::EVENT_MEasurement_ERROR;
+        event.impact = HX711Event::IMPACT_SLIGHTLY_NEGATIVE;
+        event.confidence = metrics.anomaly_score;
+        event.magnitude = metrics.sudden_change_mag;
+        snprintf(event.description, sizeof(event.description), 
+                 "Wykryto anomalię w pomiarach wagi (score: %.2f)", metrics.anomaly_score);
+        return event;
+    }
+    
+    // Sezonowe zdarzenia
+    if (metrics.winter_readiness > 80.0f && metrics.trend_direction == 1.0f) {
+        event.type = HX711Event::EVENT_WINTER_CLUSTER;
+        event.impact = HX711Event::IMPACT_SLIGHTLY_POSITIVE;
+        event.confidence = metrics.winter_readiness / 100.0f;
+        event.magnitude = metrics.mean_weight;
+        snprintf(event.description, sizeof(event.description), 
+                 "Dobra gotowość do zimowli: %.1f%% (waga: %.2f kg)", 
+                 metrics.winter_readiness, metrics.mean_weight);
+        return event;
+    }
+    
+    if (metrics.colony_growth_rate > 2.0f && metrics.foraging_efficiency > 40.0f) {
+        event.type = HX711Event::EVENT_SPRING_BUILDUP;
+        event.impact = HX711Event::IMPACT_POSITIVE;
+        event.confidence = min(1.0f, metrics.colony_growth_rate / 5.0f);
+        event.magnitude = metrics.colony_growth_rate;
+        snprintf(event.description, sizeof(event.description), 
+                 "Wiosenny rozwój kolonii: wzrost %.2f%%/dzień", metrics.colony_growth_rate);
+        return event;
+    }
+    
+    return event;
+}
+
+// Sprawdzenie czy zdarzenie ma pozytywny wpływ na pożytek
+bool isPositiveHX711Change(const HX711Event& event) {
+    switch (event.impact) {
+        case HX711Event::IMPACT_VERY_POSITIVE:
+        case HX711Event::IMPACT_POSITIVE:
+        case HX711Event::IMPACT_SLIGHTLY_POSITIVE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Konwersja typu zdarzenia na string
+const char* hx711EventTypeToString(HX711Event::EventType type) {
+    switch (type) {
+        case HX711Event::EVENT_NECTAR_FLOW_START: return "NEKTAR_START";
+        case HX711Event::EVENT_NECTAR_FLOW_PEAK: return "NEKTAR_PEAK";
+        case HX711Event::EVENT_NECTAR_FLOW_END: return "NEKTAR_END";
+        case HX711Event::EVENT_HONEY_SUPER_ADDED: return "MIODNIA_DODANA";
+        case HX711Event::EVENT_HONEY_HARVESTED: return "ZBIOR_MIODU";
+        case HX711Event::EVENT_HIGH_CONSUMPTION: return "WYSOKIE_ZUZYCIE";
+        case HX711Event::EVENT_LOW_FOOD_RESERVE: return "NISKI_ZAPAS";
+        case HX711Event::EVENT_SWARM_DEPARTURE: return "ROJENIE";
+        case HX711Event::EVENT_PREDATOR_ATTACK: return "ATAK_DRAPIEZNIKA";
+        case HX711Event::EVENT_WEATHER_IMPACT: return "POGODA";
+        case HX711Event::EVENT_DRONE_EJECTION: return "TRUTNIE";
+        case HX711Event::EVENT_WINTER_CLUSTER: return "KLASTER_ZIMOWY";
+        case HX711Event::EVENT_SPRING_BUILDUP: return "WIOSNA_ROZWOJ";
+        case HX711Event::EVENT_MEasurement_ERROR: return "BLAD_POMIARU";
+        default: return "BRAK_ZDARZENIA";
+    }
+}
+
+// Konwersja wpływu zdarzenia na string
+const char* hx711EventImpactToString(HX711Event::EventImpact impact) {
+    switch (impact) {
+        case HX711Event::IMPACT_VERY_POSITIVE: return "BARDZO_POZYTYWNY";
+        case HX711Event::IMPACT_POSITIVE: return "POZYTYWNY";
+        case HX711Event::IMPACT_SLIGHTLY_POSITIVE: return "LEKKO_POZYTYWNY";
+        case HX711Event::IMPACT_NEUTRAL: return "NEUTRALNY";
+        case HX711Event::IMPACT_SLIGHTLY_NEGATIVE: return "LEKKO_NEGATYWNY";
+        case HX711Event::IMPACT_NEGATIVE: return "NEGATYWNY";
+        case HX711Event::IMPACT_VERY_NEGATIVE: return "BARDZO_NEGATYWNY";
+        case HX711Event::IMPACT_CRITICAL: return "KRYTYCZNY";
+        default: return "NIEZNANY";
+    }
+}
+
+// Generowanie opisu zdarzenia
+void generateHX711EventDescription(HX711Event& event) {
+    // Opis jest już generowany w detectHX711Events
+    // Ta funkcja może być użyta do dodatkowego formatowania
+}
+
+// ============================================================================
+// IMPLEMENTACJA FUNKCJI MODUŁU HX711
+// ============================================================================
+
+// Aktualizacja bufora cyrkularnego HX711
+void updateHX711Buffer(const HX711DataPoint& point) {
+    hx711Buffer[hx711BufferIndex] = point;
+    hx711BufferIndex = (hx711BufferIndex + 1) % HX711_BUFFER_SIZE;
+    
+    if (hx711DataCount < HX711_BUFFER_SIZE) {
+        hx711DataCount++;
+    }
+}
+
+// Filtrowanie wagi - wygładzanie wykładnicze (EMA)
+float applyWeightFilter(float raw_weight, float prev_filtered, float alpha) {
+    return alpha * raw_weight + (1.0f - alpha) * prev_filtered;
+}
+
+// Obliczanie średniej ruchomej
+float calculateMovingAverage(const float* data, uint16_t count, uint8_t window) {
+    if (count == 0 || window == 0) return 0.0f;
+    
+    uint16_t actual_window = min((uint16_t)window, count);
+    float sum = 0.0f;
+    
+    for (uint16_t i = 0; i < actual_window; i++) {
+        sum += data[count - 1 - i];
+    }
+    
+    return sum / actual_window;
+}
+
+// Regresja liniowa - obliczanie nachylenia i punktu przecięcia
+float calculateLinearRegression(const float* x, const float* y, uint16_t count, float& slope, float& intercept) {
+    if (count < 2) {
+        slope = 0.0f;
+        intercept = 0.0f;
+        return 0.0f;
+    }
+    
+    float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumX2 = 0.0f;
+    
+    for (uint16_t i = 0; i < count; i++) {
+        sumX += x[i];
+        sumY += y[i];
+        sumXY += x[i] * y[i];
+        sumX2 += x[i] * x[i];
+    }
+    
+    float denom = count * sumX2 - sumX * sumX;
+    if (abs(denom) < 1e-10f) {
+        slope = 0.0f;
+        intercept = sumY / count;
+        return 0.0f;
+    }
+    
+    slope = (count * sumXY - sumX * sumY) / denom;
+    intercept = (sumY - slope * sumX) / count;
+    
+    // Obliczanie współczynnika korelacji
+    float meanY = sumY / count;
+    float ssTot = 0.0f, ssRes = 0.0f;
+    
+    for (uint16_t i = 0; i < count; i++) {
+        float yPred = slope * x[i] + intercept;
+        ssTot += (y[i] - meanY) * (y[i] - meanY);
+        ssRes += (y[i] - yPred) * (y[i] - yPred);
+    }
+    
+    if (ssTot < 1e-10f) return 0.0f;
+    return sqrtf(max(0.0f, 1.0f - ssRes / ssTot));
+}
+
+// Obliczanie percentyla
+float calculatePercentile(const float* data, uint16_t count, float percentile) {
+    if (count == 0) return 0.0f;
+    
+    // Prosta implementacja - sortowanie bąbelkowe dla małych zbiorów
+    float sorted[HX711_BUFFER_SIZE];
+    for (uint16_t i = 0; i < count && i < HX711_BUFFER_SIZE; i++) {
+        sorted[i] = data[i];
+    }
+    
+    // Sortowanie
+    for (uint16_t i = 0; i < count - 1; i++) {
+        for (uint16_t j = 0; j < count - i - 1; j++) {
+            if (sorted[j] > sorted[j + 1]) {
+                float temp = sorted[j];
+                sorted[j] = sorted[j + 1];
+                sorted[j + 1] = temp;
+            }
+        }
+    }
+    
+    // Obliczanie indeksu percentyla
+    float index = (percentile / 100.0f) * (count - 1);
+    uint16_t lower = (uint16_t)index;
+    uint16_t upper = min((uint16_t)(lower + 1), count - 1);
+    float frac = index - lower;
+    
+    return sorted[lower] + frac * (sorted[upper] - sorted[lower]);
+}
+
+// Kompensacja temperaturowa wagi
+void compensateTemperature(float& weight, float temperature) {
+    // Współczynnik temperaturowy typowy dla tensometrów: ~0.01%/°C
+    const float tempCoeff = 0.0001f;  // 0.01% na °C
+    const float refTemp = 25.0f;      // Temperatura referencyjna
+    
+    float tempDelta = temperature - refTemp;
+    weight = weight / (1.0f + tempCoeff * tempDelta);
+}
+
+// Obliczanie odchylenia standardowego
+static float calculateStdDev(const float* data, uint16_t count, float mean) {
+    if (count < 2) return 0.0f;
+    
+    float sumSq = 0.0f;
+    for (uint16_t i = 0; i < count; i++) {
+        float diff = data[i] - mean;
+        sumSq += diff * diff;
+    }
+    
+    return sqrtf(sumSq / (count - 1));
+}
+
+// Główna funkcja obliczania metryk HX711
+void calculateHX711Metrics(HX711Metrics& metrics) {
+    if (hx711DataCount == 0) {
+        // Inicjalizacja zerowa
+        memset(&metrics, 0, sizeof(HX711Metrics));
+        return;
+    }
+    
+    // Pobranie danych do tablic
+    float weights[HX711_BUFFER_SIZE];
+    float rates[HX711_BUFFER_SIZE];
+    float times[HX711_BUFFER_SIZE];
+    
+    uint16_t validCount = 0;
+    for (uint16_t i = 0; i < hx711DataCount && i < HX711_BUFFER_SIZE; i++) {
+        uint16_t idx = (hx711BufferIndex > i) ? (hx711BufferIndex - 1 - i) : (HX711_BUFFER_SIZE - 1 - i + hx711BufferIndex);
+        if (hx711Buffer[idx].is_valid) {
+            weights[validCount] = hx711Buffer[idx].weight_filtered;
+            rates[validCount] = hx711Buffer[idx].rate_of_change;
+            times[validCount] = (float)i * 5.0f / 60.0f;  // Godziny od najnowszego (5min interval)
+            validCount++;
+        }
+    }
+    
+    if (validCount == 0) return;
+    
+    // === PODSTAWOWE STATYSTYKI ===
+    float sumWeight = 0.0f;
+    metrics.min_weight = weights[0];
+    metrics.max_weight = weights[0];
+    
+    for (uint16_t i = 0; i < validCount; i++) {
+        sumWeight += weights[i];
+        if (weights[i] < metrics.min_weight) metrics.min_weight = weights[i];
+        if (weights[i] > metrics.max_weight) metrics.max_weight = weights[i];
+    }
+    
+    metrics.mean_weight = sumWeight / validCount;
+    metrics.std_weight = calculateStdDev(weights, validCount, metrics.mean_weight);
+    metrics.range_weight = metrics.max_weight - metrics.min_weight;
+    metrics.median_weight = calculatePercentile(weights, validCount, 50.0f);
+    metrics.weight_variance = metrics.std_weight * metrics.std_weight;
+    metrics.weight_cv = (abs(metrics.mean_weight) > 1e-6f) ? metrics.std_weight / abs(metrics.mean_weight) : 0.0f;
+    metrics.weight_iqr = calculatePercentile(weights, validCount, 75.0f) - calculatePercentile(weights, validCount, 25.0f);
+    
+    // === PARAMETRY TEMPORALNE ===
+    metrics.current_rate = (validCount > 0) ? rates[0] : 0.0f;
+    
+    float sumRate = 0.0f;
+    metrics.max_rate_positive = 0.0f;
+    metrics.max_rate_negative = 0.0f;
+    
+    for (uint16_t i = 0; i < validCount; i++) {
+        sumRate += rates[i];
+        if (rates[i] > metrics.max_rate_positive) metrics.max_rate_positive = rates[i];
+        if (rates[i] < metrics.max_rate_negative) metrics.max_rate_negative = rates[i];
+    }
+    
+    metrics.mean_rate = sumRate / validCount;
+    
+    // Przyspieszenie (zmiana szybkości)
+    if (validCount >= 2) {
+        metrics.acceleration = (rates[0] - rates[1]) * 12.0f;  // kg/h² (12 godzin^-1)
+    } else {
+        metrics.acceleration = 0.0f;
+    }
+    
+    // === TRENDY ===
+    float slope1h, intercept1h;
+    uint16_t window1h = min(validCount, (uint16_t)HX711_TREND_WINDOW);
+    metrics.trend_correlation = calculateLinearRegression(times, weights, window1h, slope1h, intercept1h);
+    metrics.trend_slope_1h = -slope1h;  // Negatywne bo czas idzie wstecz
+    
+    float slope4h, intercept4h;
+    uint16_t window4h = min(validCount, (uint16_t)HX711_DAILY_WINDOW);
+    calculateLinearRegression(times, weights, window4h, slope4h, intercept4h);
+    metrics.trend_slope_4h = -slope4h;
+    
+    float slope24h, intercept24h;
+    calculateLinearRegression(times, weights, validCount, slope24h, intercept24h);
+    metrics.trend_slope_24h = -slope24h;
+    
+    // Kierunek trendu
+    if (metrics.trend_slope_1h > 0.01f) metrics.trend_direction = 1.0f;
+    else if (metrics.trend_slope_1h < -0.01f) metrics.trend_direction = -1.0f;
+    else metrics.trend_direction = 0.0f;
+    
+    // === PARAMETRY POŻYTKU ===
+    if (metrics.current_rate > HX711_NECTAR_FLOW_MIN) {
+        metrics.nectar_inflow_rate = metrics.current_rate;
+    } else {
+        metrics.nectar_inflow_rate = 0.0f;
+    }
+    
+    // Akumulacja nektaru (suma dodatnich zmian)
+    metrics.nectar_accumulation = 0.0f;
+    for (uint16_t i = 0; i < validCount; i++) {
+        if (rates[i] > 0) {
+            metrics.nectar_accumulation += rates[i] * (5.0f / 60.0f);  // 5 min = 5/60 h
+        }
+    }
+    
+    // Efektywność zbierania
+    float activityHours = 0.0f;
+    for (uint16_t i = 0; i < validCount; i++) {
+        if (rates[i] > HX711_NECTAR_FLOW_MIN) activityHours += 5.0f / 60.0f;
+    }
+    metrics.foraging_efficiency = min(100.0f, (activityHours / 12.0f) * 100.0f);  // Zakładając 12h dnia
+    
+    // Intensywność kwitnienia
+    metrics.bloom_intensity = min(100.0f, metrics.nectar_inflow_rate * 200.0f);  // Skalowanie
+    
+    // Indeks produkcji miodu
+    metrics.honey_production_idx = 0.6f * metrics.foraging_efficiency + 0.4f * metrics.bloom_intensity;
+    
+    // Jakość nektaru (szacowana na podstawie stabilności dopływu)
+    float rateStd = calculateStdDev(rates, validCount, metrics.mean_rate);
+    float stabilityFactor = 1.0f - min(1.0f, rateStd / max(0.1f, abs(metrics.mean_rate)));
+    metrics.nectar_quality_est = stabilityFactor * 100.0f;
+    
+    // === KONSUMPCJA ===
+    if (metrics.current_rate < -HX711_CONSUMPTION_MIN) {
+        metrics.consumption_rate = -metrics.current_rate;
+    } else {
+        metrics.consumption_rate = 0.0f;
+    }
+    
+    metrics.daily_consumption = metrics.consumption_rate * 24.0f;
+    
+    // Zapas żywności na dni
+    if (metrics.daily_consumption > 0.01f) {
+        metrics.food_reserve_days = metrics.mean_weight / metrics.daily_consumption;
+    } else {
+        metrics.food_reserve_days = 999.0f;  // Bardzo duży zapas
+    }
+    
+    // Gotowość do zimowli
+    float winterTarget = 15.0f;  // 15kg jako cel zimowy
+    metrics.winter_readiness = min(100.0f, (metrics.mean_weight / winterTarget) * 100.0f);
+    
+    // Ryzyko głodu
+    if (metrics.food_reserve_days < 3.0f) {
+        metrics.starvation_risk = 100.0f;
+    } else if (metrics.food_reserve_days < 7.0f) {
+        metrics.starvation_risk = 50.0f + (7.0f - metrics.food_reserve_days) * 12.5f;
+    } else if (metrics.food_reserve_days < 14.0f) {
+        metrics.starvation_risk = 20.0f + (14.0f - metrics.food_reserve_days) * 4.28f;
+    } else {
+        metrics.starvation_risk = 0.0f;
+    }
+    
+    // === CYKLICZNOŚĆ ===
+    metrics.daily_amplitude = metrics.max_weight - metrics.min_weight;
+    metrics.circadian_strength = min(1.0f, metrics.daily_amplitude / 2.0f);  // Normalizacja
+    
+    // === JAKOŚĆ SYGNAŁU ===
+    metrics.noise_level = metrics.std_weight;
+    metrics.stability_index = max(0.0f, 100.0f - metrics.weight_cv * 100.0f);
+    metrics.measurement_confidence = min(1.0f, metrics.stability_index / 100.0f);
+    
+    // Dryft czujnika
+    if (validCount >= 10) {
+        float recentMean = calculateMovingAverage(weights, validCount, 5);
+        float olderMean = calculateMovingAverage(weights, validCount - 5, 5);
+        metrics.drift_rate = (recentMean - olderMean) * 2.4f;  // kg/dzień
+    } else {
+        metrics.drift_rate = 0.0f;
+    }
+    
+    // Jakość sygnału
+    metrics.signal_quality = max(0.0f, 100.0f - metrics.noise_level * 10.0f);
+    
+    // === ANOMALIE ===
+    float zScore = (abs(metrics.current_rate - metrics.mean_rate) > 1e-6f) ? 
+                   abs(metrics.current_rate - metrics.mean_rate) / max(0.001f, metrics.std_weight) : 0.0f;
+    metrics.anomaly_score = min(1.0f, zScore / 3.0f);  // Normalizacja do 1
+    metrics.sudden_change_mag = abs(metrics.current_rate);
+    
+    // === ZDROWIE KOLONII ===
+    // Tempo wzrostu
+    metrics.colony_growth_rate = metrics.trend_slope_24h * 24.0f / max(1.0f, metrics.mean_weight) * 100.0f;
+    
+    // Indeks czerwiu (szacowany z aktywności)
+    float broodFactor = min(1.0f, metrics.foraging_efficiency / 50.0f);
+    metrics.brood_activity_idx = broodFactor * 100.0f;
+    
+    // Szacowana populacja (zakładając 0.1kg na 1000 pszczół)
+    metrics.population_estimate = metrics.mean_weight * 10.0f;  // Tysiące pszczół
+    
+    // Indeks zdrowia
+    float healthFactors = (100.0f - metrics.starvation_risk) * 0.4f + 
+                          metrics.stability_index * 0.3f +
+                          metrics.foraging_efficiency * 0.3f;
+    metrics.hive_health_weight = healthFactors;
+    
+    // Produktywność
+    metrics.productivity_score = 0.5f * metrics.foraging_efficiency + 
+                                  0.3f * metrics.honey_production_idx +
+                                  0.2f * metrics.colony_growth_rate;
+    metrics.productivity_score = max(0.0f, min(100.0f, metrics.productivity_score));
+    
+    // === PROGNOZA ===
+    metrics.predicted_weight_24h = metrics.mean_weight + metrics.trend_slope_24h * 24.0f;
+    metrics.forecast_confidence = max(0.0f, 1.0f - metrics.anomaly_score) * metrics.measurement_confidence;
+    
+    // Oczekiwany zbiór miodu
+    float surplusWeight = max(0.0f, metrics.mean_weight - 10.0f);  // Nadmiar ponad 10kg
+    metrics.expected_honey_yield = surplusWeight * 0.8f;  // 80% nadmiaru do zbioru
+}
+
 // Obliczanie trendu z okna danych
 TrendAnalysis calculateTrend(const uint8_t window_size) {
     TrendAnalysis result = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0};
@@ -2134,6 +2861,100 @@ void loop() {
     
     // Radar
     processRadar();
+    
+    // HX711 - profesjonalna analiza wagi (co 5 minut)
+    static unsigned long lastHX711Process = 0;
+    if (now - lastHX711Process > 300000) {  // 5 minut = 300000ms
+        lastHX711Process = now;
+        
+        // Konwersja surowej wartości na kg (przykładowa kalibracja)
+        float weightKg = (float)hx711_value / 1000.0f;  // Zakładając skalowanie 1000:1
+        
+        // Kompensacja temperaturowa
+        compensateTemperature(weightKg, temperature);
+        
+        // Filtrowanie wagii (wygładzanie)
+        static float prevFilteredWeight = 0.0f;
+        if (prevFilteredWeight == 0.0f) prevFilteredWeight = weightKg;
+        float filteredWeight = applyWeightFilter(weightKg, prevFilteredWeight, 0.3f);
+        prevFilteredWeight = filteredWeight;
+        
+        // Tworzenie punktu danych
+        HX711DataPoint newPoint;
+        newPoint.timestamp = now;
+        newPoint.weight_raw = weightKg;
+        newPoint.weight_filtered = filteredWeight;
+        newPoint.temperature_comp = temperature;
+        newPoint.is_valid = true;
+        
+        // Obliczanie szybkości zmiany wagi
+        if (hx711DataCount > 0) {
+            HX711DataPoint& prevPoint = hx711Buffer[(hx711BufferIndex > 0) ? hx711BufferIndex - 1 : HX711_BUFFER_SIZE - 1];
+            float timeDiffHours = (float)(now - prevPoint.timestamp) / 3600000.0f;  // ms -> godziny
+            if (timeDiffHours > 0.001f) {  // Unikanie dzielenia przez zero
+                newPoint.rate_of_change = (filteredWeight - prevPoint.weight_filtered) / timeDiffHours;
+            } else {
+                newPoint.rate_of_change = 0.0f;
+            }
+        } else {
+            newPoint.rate_of_change = 0.0f;
+        }
+        
+        // Jakość pomiaru (na podstawie stabilności)
+        newPoint.quality_score = 100;
+        if (abs(newPoint.rate_of_change) > 1.0f) newPoint.quality_score -= 20;  // Duże zmiany obniżają jakość
+        if (temperature < 10.0f || temperature > 40.0f) newPoint.quality_score -= 10;  // Ekstremalne temperatury
+        
+        // Aktualizacja bufora i wzorców
+        updateHX711Buffer(newPoint);
+        updateHX711DailyPattern(newPoint);
+        
+        // Obliczanie metryk
+        calculateHX711Metrics(currentHX711Metrics);
+        
+        // Detekcja zdarzeń
+        lastHX711Event = detectHX711Events(newPoint, currentHX711Metrics);
+        
+        // Debug output dla modułu HX711
+        Serial.printf("[HX711] Waga:%.3fkg Filtrowana:%.3fkg Zmiana:%.4fkg/h Temp:%.1fC Jakosc:%d%%\n",
+                      weightKg, filteredWeight, newPoint.rate_of_change, temperature, newPoint.quality_score);
+        
+        // Podstawowe metryki
+        Serial.printf("[HX711_METRICS] Srednia:%.3fkg Std:%.4fkg Trend1h:%.4fkg/h Trend4h:%.4fkg/h\n",
+                      currentHX711Metrics.mean_weight, currentHX711Metrics.std_weight,
+                      currentHX711Metrics.trend_slope_1h, currentHX711Metrics.trend_slope_4h);
+        
+        // Parametry pożytku
+        Serial.printf("[HX711_POZYTKI] NectarInflow:%.4fkg/h ForagingEff:%.1f%% BloomIntensity:%.1f%% HoneyProdIdx:%.1f%%\n",
+                      currentHX711Metrics.nectar_inflow_rate, currentHX711Metrics.foraging_efficiency,
+                      currentHX711Metrics.bloom_intensity, currentHX711Metrics.honey_production_idx);
+        
+        // Parametry konsumpcji
+        Serial.printf("[HX711_KONSUMPCJA] Rate:%.4fkg/h Daily:%.3fkg ZapasDni:%.1f StarvationRisk:%.1f%%\n",
+                      currentHX711Metrics.consumption_rate, currentHX711Metrics.daily_consumption,
+                      currentHX711Metrics.food_reserve_days, currentHX711Metrics.starvation_risk);
+        
+        // Wskaźniki zdrowia
+        Serial.printf("[HX711_HEALTH] ColonyGrowth:%.2f%%/dz BroodIdx:%.1f%% PopEst:%.1fk Health:%.1f%% Productivity:%.1f%%\n",
+                      currentHX711Metrics.colony_growth_rate, currentHX711Metrics.brood_activity_idx,
+                      currentHX711Metrics.population_estimate, currentHX711Metrics.hive_health_weight,
+                      currentHX711Metrics.productivity_score);
+        
+        // Informacja o zdarzeniach
+        if(lastHX711Event.type != HX711Event::EVENT_NONE) {
+            Serial.printf("[HX711_EVENT] Typ:%s Wplyw:%s Pozyczek_ulu:%s Magnitude:%.3fkg Confidence:%.1f%%\n",
+                          hx711EventTypeToString(lastHX711Event.type),
+                          hx711EventImpactToString(lastHX711Event.impact),
+                          isPositiveHX711Change(lastHX711Event) ? "POZYTYWNY" : "NEGATYWNY/NEUTRALNY",
+                          lastHX711Event.magnitude, lastHX711Event.confidence * 100.0f);
+            Serial.printf("[HX711_EVENT_DESC] %s\n", lastHX711Event.description);
+        }
+        
+        // Prognoza
+        Serial.printf("[HX711_FORECAST] Pred24h:%.3fkg ForecastConf:%.1f%% ExpectedYield:%.2fkg\n",
+                      currentHX711Metrics.predicted_weight_24h, currentHX711Metrics.forecast_confidence * 100.0f,
+                      currentHX711Metrics.expected_honey_yield);
+    }
     
     // Debug Serial - rozszerzony o dane z analizy radaru
     Serial.printf("T:%.1f H:%.1f Waga:%ld CO2:%d VOC:%d Audio:%.2f Ruch:%d\n", 

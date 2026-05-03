@@ -1,1 +1,35 @@
-(docs/05_opis_modulow_programowych.md, docs/06_funkcjonalnosci_sensorow_i_efektorow.md, docs/07_zaawansowane_funkcje_oprogramowania.md, docs/09_api_i_integracje.md)
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
+*.sym
+
+# Dependencies
+.pioenvs/
+.piolibdeps/
+.platformio/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Build outputs
+build/
+dist/
+output/
+```
