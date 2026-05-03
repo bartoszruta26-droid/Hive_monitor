@@ -1,76 +1,35 @@
 ```
-# Compiled files
-*.pyc
+# Build artifacts
 *.o
 *.obj
-*.out
-
-# Build artifacts
-build/
-dist/
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
 
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
+.pio/
+.platformio/
+lib/
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
 *.swp
 
-# Environment files
+# Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
-
-# MyPy cache
-.mypy_cache/
-
-# Pytest cache
-.pytest_cache/
-
-# Gradle
-.gradle/
-
-# Target directory (for Rust, Java, etc.)
-target/
-
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```
