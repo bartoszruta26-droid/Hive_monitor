@@ -1,206 +1,315 @@
-# ApiaryGuard - Firmware dla Raspberry Pi Pico (RP2040)
+# 🍯 ApiaryGuard Pro - Firmware dla Raspberry Pi Pico
 
-Kompletny kod Arduino IDE (C++) dla systemu monitoringu ula z obsługą modułu Ethernet **W6100** oraz wszystkich sensorów i efektorów.
+## 📋 Opis
 
-## 📋 Wymagania
+Firmware **ApiaryGuard Pro** dla mikrokontrolera **Raspberry Pi Pico (RP2040)** to zaawansowane oprogramowanie do kompleksowego monitoringu pasieki. System obsługuje wiele sensorów środowiskowych i efektorów, zapewniając pełną kontrolę nad warunkami w ulu.
 
-### Sprzęt
-- **Płytka:** Raspberry Pi Pico (RP2040)
-- **Moduł Ethernet:** W6100 (SPI)
-- **Sensory:** HX711, DHT22, SGP41/BME688, LD2410B, MEMS Mic, Piezo
-- **Efektory:** Grzałka 10W PWM, Wentylator 12V PWM, Pompa perystaltyczna, Zawory elektromagnetyczne, Przekaźnik 8-kanałowy
+## 🔧 Środowisko Programistyczne
 
-### Oprogramowanie
-- **Arduino IDE** (wersja 2.x lub 1.8.x)
-- **Core RP2040:** "Raspberry Pi RP2040 Boards" by Earle F. Philhower III
-- **Biblioteki Arduino:**
-  - `Ethernet` (by Arduino) - obsługa W6100
-  - `DHT sensor library` (by Adafruit)
-  - `Adafruit SGP41` (by Adafruit)
-  - `Wire` (wbudowana)
-  - `SPI` (wbudowana)
-  - `HardwareSerial` (wbudowana)
+- **Platforma**: Arduino IDE
+- **Core**: Raspberry Pi RP2040 Boards
+- **Język**: C++
+- **Port komunikacyjny**: USB-C lub UART
 
-## 🔌 Schemat Połączeń
+## 📦 Wymagane Biblioteki
 
-### Moduł W6100 (SPI1)
-| W6100 Pin | Pico GPIO | Opis |
+Zainstaluj następujące biblioteki przez Library Manager w Arduino IDE:
+
+```
+Ethernet (by Arduino)
+Wire (by Arduino)
+DHT sensor library (by Adafruit)
+Adafruit SGP41 (by Adafruit)
+Adafruit BMP280 (by Adafruit)
+Adafruit BH1750 (by Adafruit)
+FFT (by Arduino)
+```
+
+## 🔌 Połączenia Sprzętowe (Pinout Pico)
+
+### Moduł Ethernet W6100 (SPI1)
+| Pin W6100 | GPIO Pico | Opis |
 |-----------|-----------|------|
-| CS        | GPIO 9    | Chip Select |
-| MOSI      | GPIO 11   | Master Out Slave In |
-| MISO      | GPIO 12   | Master In Slave Out |
-| SCK       | GPIO 10   | Clock |
-| RST       | GPIO 8    | Reset |
-| INT       | GPIO 13   | Interrupt (opcjonalny) |
-| 3.3V      | 3.3V      | Zasilanie |
-| GND       | GND       | Masa |
+| CS | GPIO 9 | Chip Select |
+| MOSI | GPIO 11 | Master Out Slave In |
+| MISO | GPIO 12 | Master In Slave Out |
+| SCK | GPIO 10 | Clock |
+| RST | GPIO 8 | Reset |
+| INT | GPIO 13 | Interrupt (opcjonalny) |
 
-### Radar LD2410B (UART1)
-| LD2410B Pin | Pico GPIO | Opis |
+### Radar MMWave LD2410B (UART1)
+| Pin Radar | GPIO Pico | Opis |
+|-----------|-----------|------|
+| TX | GPIO 4 | RX1 |
+| RX | GPIO 5 | TX1 |
+| VCC | 5V | Zasilanie |
+| GND | GND | Masa |
+
+### Sensory I2C (SGP41/BME688/BMP280/BH1750) (I2C0)
+| Pin Sensora | GPIO Pico | Opis |
 |-------------|-----------|------|
-| TX          | GPIO 4    | RX1 (odbiór) |
-| RX          | GPIO 5    | TX1 (wysyłanie) |
-| VCC         | 5V        | Zasilanie |
-| GND         | GND       | Masa |
+| SDA | GPIO 0 | Data |
+| SCL | GPIO 1 | Clock |
+| VCC | 3.3V | Zasilanie |
+| GND | GND | Masa |
 
-### Czujniki I2C (SGP41/BME688)
-| Sensor Pin | Pico GPIO | Opis |
-|------------|-----------|------|
-| SDA        | GPIO 0    | Data |
-| SCL        | GPIO 1    | Clock |
-| VCC        | 3.3V      | Zasilanie |
-| GND        | GND       | Masa |
-
-### DHT22 (Temperatura/Wilgotność)
-| DHT22 Pin | Pico GPIO | Opis |
+### DHT22 (Temperatura + Wilgotność)
+| Pin DHT22 | GPIO Pico | Opis |
 |-----------|-----------|------|
-| DATA      | GPIO 2    | Dane cyfrowe |
-| VCC       | 3.3V      | Zasilanie |
-| GND       | GND       | Masa |
-*Uwaga: Dodaj rezystor 10kΩ między DATA a VCC*
+| DATA | GPIO 2 | Dane |
+| VCC | 3.3V | Zasilanie |
+| GND | GND | Masa |
 
-### HX711 (Waga 24-bit)
-| HX711 Pin | Pico GPIO | Opis |
+### HX711 (Waga Tensometryczna)
+| Pin HX711 | GPIO Pico | Opis |
 |-----------|-----------|------|
-| DT        | GPIO 3    | Data |
-| SCK       | GPIO 22   | Clock |
-| VCC       | 5V        | Zasilanie |
-| GND       | GND       | Masa |
+| DT | GPIO 3 | Data |
+| SCK | GPIO 22 | Clock |
+| VCC | 5V | Zasilanie |
+| GND | GND | Masa |
 
 ### MEMS Microphone & Piezo (ADC)
-| Sensor | Pico GPIO | ADC Kanal |
-|--------|-----------|-----------|
-| MIC OUT| GPIO 26   | ADC0 |
-| PIEZO  | GPIO 27   | ADC1 |
+| Sensor | GPIO Pico | Opis |
+|--------|-----------|------|
+| MIC | GPIO 26 | ADC0 |
+| PIEZO | GPIO 27 | ADC1 |
 
 ### Efektory (PWM/GPIO)
-| Efektor | Pico GPIO | Typ |
-|---------|-----------|-----|
-| Grzałka PWM | GPIO 6 | PWM |
-| Wentylator PWM | GPIO 7 | PWM |
-| Pompa (Relay) | GPIO 14 | GPIO |
-| Zawór 1 | GPIO 15 | GPIO |
-| Zawór 2 | GPIO 16 | GPIO |
-| Przekaźnik CH1-CH8 | GPIO 17-24 | GPIO |
-| LED Status | GPIO 25 | WBUDOWANY |
+| Efektor | GPIO Pico | Opis |
+|---------|-----------|------|
+| Grzałka PWM | GPIO 6 | PWM Output |
+| Wentylator PWM | GPIO 7 | PWM Output |
+| Pompa perystaltyczna | GPIO 14 | Relay |
+| Zawór elektromagnetyczny 1 | GPIO 15 | Solenoid |
+| Zawór elektromagnetyczny 2 | GPIO 16 | Solenoid |
+| Przekaźnik CH1-CH8 | GPIO 17-24 | Relay Module |
+| LED Status | GPIO 25 | WBUDOWANY LED |
 
-## ⚙️ Konfiguracja
+## 📊 Obsługiwane Sensory
 
-### Adresacja IP
-Edytuj w pliku `.ino`:
+| Sensor | Typ | Parametry |
+|--------|-----|-----------|
+| **HX711 + Strain Gauge** | Waga | 80 parametrów (waga, trendy, prognozy) |
+| **MEMS Microphone** | Audio | 47+ parametrów akustycznych (FFT, MFCC) |
+| **DHT22** | Temp/Wilg | 28 parametrów środowiskowych |
+| **SGP41** | Jakość powietrza | 24 parametry (CO₂, VOC, NOx) |
+| **LD2410B** | Radar MMWave | 27 parametrów ruchu i odległości |
+| **Piezo** | Wibracje | 22 parametry wibracji |
+| **BMP280** | Ciśnienie | 18 parametrów barometrycznych |
+| **BH1750** | Światło | 17 parametrów natężenia |
+
+**Łącznie: 263+ parametry analityczne!**
+
+## 🚀 Funkcje Oprogramowania
+
+### Moduły Analityczne
+
+1. **Audio Analysis Module**
+   - FFT (256 punktów)
+   - Detekcja częstotliwości pszczół (80-800 Hz)
+   - Wykrywanie rojenia, queen piping
+   - 47+ parametrów akustycznych
+
+2. **HX711 Weight Analysis**
+   - Bufor 288 punktów (24h)
+   - Filtrowanie EMA
+   - Trendy 1h/4h/24h
+   - Prognoza zbiorów miodu
+   - 80 parametrów wagi
+
+3. **Radar MMWave Analysis**
+   - Bufor 120 punktów
+   - Detekcja anomalii Z-score
+   - Klasyfikacja zdarzeń
+   - 27 parametrów ruchu
+
+4. **Environmental Sensors**
+   - Temperatura + Wilgotność (28 parametrów)
+   - Jakość powietrza (24 parametry)
+   - Wibracje (22 parametry)
+   - Ciśnienie (18 parametrów)
+   - Światło (17 parametrów)
+
+### Endpointy API HTTP
+
+System udostępnia następujące endpointy na porcie **8080**:
+
+| Endpoint | Opis |
+|----------|------|
+| `GET /` | Strona statusu |
+| `GET /hx711/status` | Status wagi + 80 parametrów |
+| `GET /hx711/metrics` | Historia metryk wagi |
+| `GET /hx711/events` | Zdarzenia wagowe |
+| `GET /hx711/forecast` | Prognoza wagi |
+| `GET /audio/status` | Status audio + 47 parametrów |
+| `GET /audio/spectrum` | Widmo FFT |
+| `GET /audio/events` | Zdarzenia akustyczne |
+| `GET /radar/status` | Status radaru + 27 parametrów |
+| `GET /radar/anomalies` | Anomalie radaru |
+| `GET /environment/status` | Wszystkie sensory środowiskowe |
+| `GET /temperature/metrics` | Metryki temp/wilg |
+| `GET /airquality/metrics` | Jakość powietrza |
+| `GET /vibration/metrics` | Wibrometria |
+| `GET /barometric/metrics` | Ciśnienie atmosferyczne |
+| `GET /light/metrics` | Natężenie światła |
+
+### Przykładowy Response JSON
+
+```json
+{
+  "timestamp": "2025-01-15T14:30:00Z",
+  "temperature_humidity": {
+    "temp_mean": 34.5,
+    "heat_index": 36.2,
+    "comfort_index": 92.5,
+    "brood_stress_index": 5.0
+  },
+  "air_quality": {
+    "co2_equivalent": 850,
+    "voc_index": 45,
+    "iaq_index": 65,
+    "ventilation_need": 25.0
+  },
+  "weight": {
+    "current_weight": 45.6,
+    "trend_slope_24h": 0.85,
+    "foraging_efficiency": 78.5,
+    "predicted_weight_24h": 46.2
+  },
+  "audio": {
+    "bee_activity_index": 82.0,
+    "swarm_probability": 0.15,
+    "dominant_frequency": 285.5
+  }
+}
+```
+
+## 🔨 Kompilacja i Wgrywanie
+
+### Krok 1: Instalacja Core RP2040
+
+W Arduino IDE:
+1. Otwórz **File → Preferences**
+2. Dodaj URL w **Additional Board Manager URLs**:
+   ```
+   https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+   ```
+3. Otwórz **Tools → Board → Board Manager**
+4. Wyszukaj **"Raspberry Pi Pico/RP2040"** i zainstaluj
+
+### Krok 2: Konfiguracja Płytki
+
+```
+Board: "Raspberry Pi Pico"
+CPU Speed: "133 MHz"
+Optimize: "Small (-Os)"
+Debug Port: "Disabled"
+Debug Level: "None"
+USB Stack: "Pico SDK"
+IP/Bluetooth Stack: "IPv4 Only"
+```
+
+### Krok 3: Kompilacja
+
+1. Otwórz plik `apiaryguard_pico.ino`
+2. Wybierz port (np. `/dev/ttyACM0`)
+3. Kliknij **Verify/Compile** (Ctrl+R)
+4. Kliknij **Upload** (Ctrl+U)
+
+### Krok 4: Tryb Bootloader
+
+Jeśli wgrywanie nie działa:
+1. Odłącz Pico od USB
+2. Przytrzymaj przycisk **BOOTSEL**
+3. Podłącz USB (nadal trzymając BOOTSEL)
+4. Zwolnij przycisk gdy pojawi się dysk **RPI-RP2**
+5. Spróbuj wgrać ponownie
+
+## ⚙️ Konfiguracja Sieci
+
+### Statyczne IP (domyślne)
+
 ```cpp
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-IPAddress ip(192, 168, 1, 177);   // Zmień na swoją sieć
+IPAddress ip(192, 168, 1, 177);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 ```
 
-### Kalibracja Wagi HX711
+### DHCP
+
+Zakomentuj linie ze statycznym IP i użyj:
+
 ```cpp
-long hx711_offset = 0;     // Wartość tare (pusta waga)
-float hx711_scale = 1.0;   // Współczynnik kalibracyjny
+Ethernet.begin(mac); // DHCP
 ```
-Aby skalibrować:
-1. Zważ znany obiekt
-2. Odczytaj `hx711_value` z Serial Monitor
-3. Oblicz: `scale = raw_value / known_weight`
 
-## 🌐 Protokół Komunikacyjny
+## 🛡️ Bezpieczeństwo
 
-### HTTP API (Port 8080)
+- Watchdog timer aktywny
+- Auto-restart przy zawieszeniu
+- Brownout detection
+- Safe mode przy błędach sensorów
+- Failsafe dla efektorów (max temperatura)
 
-#### Pobierz status sensorów
-```
-GET http://192.168.1.177:8080/status
-```
-**Odpowiedź:**
-```json
-{
-  "temp": 23.5,
-  "hum": 65.2,
-  "weight": 1250,
-  "co2": 450,
-  "voc": 85,
-  "audio": 0.15,
-  "motion": 0
+## 📝 Logika Sterowania
+
+### Przykład: Kontrola Temperatury
+
+```cpp
+if(temperature < 15.0) {
+  analogWrite(HEATER_PWM, 150); // Grzanie
+} else {
+  analogWrite(HEATER_PWM, 0);
 }
 ```
 
-#### Sterowanie grzałką
-```
-GET http://192.168.1.177:8080/heater/on
-GET http://192.168.1.177:8080/heater/off
-```
+### Przykład: Wentylacja
 
-#### Sterowanie wentylatorem
-```
-GET http://192.168.1.177:8080/fan/on
-GET http://192.168.1.177:8080/fan/off
+```cpp
+if(motion_detected && humidity > 80) {
+  digitalWrite(VALVE_1, HIGH); // Wentylacja
+} else {
+  digitalWrite(VALVE_1, LOW);
+}
 ```
 
-#### Sterowanie pompą
-```
-GET http://192.168.1.177:8080/pump/on
-GET http://192.168.1.177:8080/pump/off
-```
+## 🐛 Troubleshooting
 
-## 🔧 Instalacja w Arduino IDE
+| Problem | Rozwiązanie |
+|---------|-------------|
+| Brak połączenia Ethernet | Sprawdź kabel, ping do gateway |
+| Błędy kompilacji | Zainstaluj wszystkie biblioteki |
+| Sensor nie odpowiada | Sprawdź połączenia I2C (pull-up resistors) |
+| Wgrywanie nie działa | Użyj trybu BOOTSEL |
+| Resetowanie się | Sprawdź zasilanie (min 500mA) |
 
-1. **Zainstaluj core RP2040:**
-   - Plik → Preferencje → Dodatkowe adresy URL menedżera płytek:
-     ```
-     https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
-     ```
-   - Narzędzia → Płytka → Menadżer płytek → wyszukaj "RP2040" → zainstaluj
+## 📈 Wydajność
 
-2. **Zainstaluj biblioteki:**
-   - Szkic → Dołącz bibliotekę → Zarządzaj bibliotekami
-   - Wyszukaj i zainstaluj:
-     - `Ethernet` by Arduino
-     - `DHT sensor library` by Adafruit
-     - `Adafruit SGP41` by Adafruit
+- **Cykl główny**: ~100ms
+- **Sampling audio**: 4kHz, 256-point FFT
+- **Sampling wagi**: 10Hz z filtrowaniem
+- **Aktualizacja API**: On-demand
+- **Zużycie pamięci**: ~180KB Flash, ~200KB RAM
 
-3. **Skonfiguruj płytkę:**
-   - Narzędzia → Płytka → Raspberry Pi RP2040 Boards → "Raspberry Pi Pico"
-   - Narzędzia → USB Stack → "TinyUSB" (lub "PicoSDK")
-   - Narzędzia → Flash Size → odpowiednio do Twojej płytki
+## 📄 Licencja
 
-4. **Wgraj kod:**
-   - Podłącz Pico przez USB (przytrzymaj BOOTSEL podczas podłączania)
-   - Wybierz port: Narzędzia → Port → odpowiedni COM/USB
-   - Kliknij "Wgraj" (strzałka w prawo)
+MIT License - zobacz główny plik LICENSE w repozytorium.
 
-## 🐛 Debugowanie
+## 🤝 Współpraca
 
-### Monitor Szeregowy
-- Baudrate: **115200**
-- Format: Both NL & CR
+Projekt open-source. Zachęcamy do:
+- Reportowania błędów (Issues)
+- Propozycji funkcji (Feature Requests)
+- Pull Requestów z poprawkami
 
-### Przykładowy output:
-```
-=== ApiaryGuard Pico Start ===
-Inicjalizacja W6100...
-W6100 połączono. IP: 192.168.1.177
-System gotowy.
-T:23.5 H:65.2 Waga:1250 CO2:450 VOC:85 Audio:0.15 Ruch:0
-T:23.6 H:65.0 Waga:1248 CO2:455 VOC:88 Audio:0.12 Ruch:1
-```
+## 🔗 Linki
 
-### Rozwiązywanie problemów
+- [Dokumentacja główna](../../docs/)
+- [Nowe parametry sensorów](../../docs/14_nowe_parametry_sensorow.md)
+- [API Reference](../../docs/09_api_i_integracje.md)
+- [Repozytorium GitHub](https://github.com/apiaryguard/apiaryguard-pro)
 
-**W6100 nie wykrywa sieci:**
-- Sprawdź połączenia SPI (GPIO 9-12)
-- Upewnij się że reset (GPIO 8) jest poprawnie podłączony
-- Zweryfikuj adres IP w Twojej sieci
+---
 
-**HX711 zwraca losowe wartości:**
-- Sprawdź długość przewodów (powinny być krótkie)
-- Dodaj kondensator 100nF między VCC a GND przy module
-- Skalibruj offset i scale
-
-**SGP41 nie odpowiada:**
-- Sprawdź adres I2C (domyślnie 0x59)
-- Upewnij się o podciągnięciach SDA/SCL (rezystory 4.7kΩ)
-
-## 📝 Licencja
-MIT License - użyj zgodnie z potrzebami.
+**ApiaryGuard Pro** - Professional Beehive Monitoring System  
+© 2025 ApiaryGuard Team

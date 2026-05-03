@@ -20,6 +20,7 @@ Ten katalog zawiera podzieloną dokumentację projektu ApiaryGuard Pro dla ułat
 | `11_konserwacja_i_rozwiazywanie_problemow.md` | Konserwacja i troubleshooting |
 | `12_rozszerzenia_przyszlosciowe.md` | Planowane rozszerzenia |
 | `13_licencja_i_wspolpraca.md` | Licencja i informacje o współpracy |
+| `14_nowe_parametry_sensorow.md` | **NOWE** - Szczegółowy opis 109 nowych parametrów środowiskowych |
 
 ## 🔗 Oryginalny Plik
 
