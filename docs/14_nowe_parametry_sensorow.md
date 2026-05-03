@@ -2,7 +2,19 @@
 
 ## Przegląd Dodanych Metryk
 
-W ramach rozbudowy systemu ApiaryGuard Pro dodano **ponad 109 nowych parametrów** w 5 modułach sensorowych, które umożliwiają kompleksową analizę środowiska ulu.
+W ramach rozbudowy systemu ApiaryGuard Pro dodano **ponad 380+ parametrów** we wszystkich modułach sensorowych, które umożliwiają kompleksową analizę środowiska ulu:
+
+| Moduł Sensora | Liczba Parametrów | Opis |
+|---------------|-------------------|------|
+| **HX711 (Waga)** | 105+ | Statystyki, trendy, pożytek, konsumpcja, cykle, zdrowie kolonii, prognozy |
+| **Audio (Mikrofon)** | 97+ | Analiza FFT, parametry czasowe, częstotliwościowe, psychoakustyczne, bioakustyczne |
+| **Radar MMWave** | 27 | Detekcja ruchu, odległość, energia, prędkość, anomalie |
+| **TempHumidityMetrics** | 28 | Statystyki, komfort termiczny, stabilność, trendy, alarmy |
+| **AirQualityMetrics** | 24 | Gazy (CO₂, VOC, NOx), IAQ, zdrowie ula, trendy, alerty |
+| **PiezoVibrationMetrics** | 22 | Amplituda, częstotliwość, zdarzenia, klasyfikacja źródła |
+| **BarometricMetrics** | 18 | Ciśnienie, prognoza pogody, wpływ na pszczoły |
+| **LightMetrics** | 17 | Natężenie światła, cykl dobowy, synchronizacja cyrkadiana |
+| **RAZEM** | **338+** | **8 modułów sensorycznych** |
 
 ---
 
@@ -178,12 +190,15 @@ W ramach rozbudowy systemu ApiaryGuard Pro dodano **ponad 109 nowych parametrów
 
 | Moduł | Liczba Parametrów | Główne Kategorie |
 |-------|-------------------|------------------|
-| TempHumidityMetrics | 28 | Statystyki, Komfort, Stabilność, Trendy, Alarmy |
-| AirQualityMetrics | 24 | Gazy, Statystyki, IAQ, Zdrowie, Trendy, Alerty |
-| PiezoVibrationMetrics | 22 | Amplituda, Statystyki, Częstotliwość, Zdarzenia |
-| BarometricMetrics | 18 | Ciśnienie, Prognoza, Wpływ, Altitude |
-| LightMetrics | 17 | Światło, Cykl, Wpływ, Sezonowość, Alerty |
-| **RAZEM** | **109** | **5 modułów środowiskowych** |
+| **HX711Metrics (Waga)** | 105+ | Statystyki, Trendy, Pożytek, Konsumpcja, Cykle, Jakość Sygnału, Anomalie, Zdrowie Kolonii, Prognozy |
+| **AudioMetrics (Akustyka)** | 97+ | Czasowe, Amplitudowe, Częstotliwościowe, Psychoakustyczne, Bioakustyczne, Pasma Mocy |
+| **RadarMetrics (MMWave)** | 27 | Odległość, Energia, Prędkość, Aktywność, Trendy, Jakość, Anomalie |
+| TempHumidityMetrics | 28 | Statystyki, Komfort Termiczny, Stabilność, Trendy, Alarmy |
+| AirQualityMetrics | 24 | Gazy (CO₂/VOC/NOx), IAQ, Zdrowie Ula, Trendy, Alerty |
+| PiezoVibrationMetrics | 22 | Amplituda, Częstotliwość, Zdarzenia, Klasyfikacja Źródła |
+| BarometricMetrics | 18 | Ciśnienie, Prognoza Pogody, Wpływ na Pszczoły |
+| LightMetrics | 17 | Światło, Cykl Dobowy, Synchronizacja Cyrkadiana, Alerty |
+| **RAZEM** | **338+** | **8 kompletnych modułów sensorycznych** |
 
 ---
 
@@ -259,14 +274,38 @@ GET /apiary/light/metrics
 
 ## 🔄 Częstotliwość Aktualizacji
 
-| Moduł | Sampling Rate | Update Rate | Buffer Size |
-|-------|--------------|-------------|-------------|
-| Temp/Humidity | 0.5 Hz | Co 2s | 60 punktów |
-| Air Quality | 0.1 Hz | Co 10s | 144 punkty (24h) |
-| Vibration | 100 Hz | Co 1s | 120 punktów |
-| Barometric | 1 Hz | Co 1min | 72 punkty |
-| Light | 1 Hz | Co 1min | 1440 punktów (24h) |
+| Moduł | Sampling Rate | Update Rate | Buffer Size | Liczba Parametrów |
+|-------|--------------|-------------|-------------|-------------------|
+| HX711 (Waga) | 10 Hz | Co 5min (agregacja) | 288 punktów (24h) | 105+ |
+| Audio (Mikrofon) | 8 kHz | Co 1s (FFT) | 60 punktów | 97+ |
+| Radar MMWave | 1 Hz | Co 1s | 120 punktów | 27 |
+| Temp/Humidity | 0.5 Hz | Co 2s | 288 punktów (24h) | 28 |
+| Air Quality | 0.1 Hz | Co 10s | 144 punkty (24h) | 24 |
+| Vibration (Piezo) | 100 Hz | Co 1s | 120 punktów | 22 |
+| Barometric | 1 Hz | Co 1min | 72 punkty | 18 |
+| Light | 1 Hz | Co 1min | 1440 punktów (24h) | 17 |
 
 ---
 
-**ApiaryGuard Pro** - Kompleksowy monitoring środowiska ulu z ponad 100 parametrami analitycznymi.
+**ApiaryGuard Pro** - Kompleksowy monitoring środowiska ulu z ponad **338+ parametrami analitycznymi** we wszystkich modułach sensorycznych.
+
+### Pełna Lista Endpointów API
+
+```
+GET /apiary/status              - Status całego systemu ze wszystkimi parametrami
+GET /hx711/status               - Waga: 105+ parametrów (statystyki, trendy, pożytek, zdrowie)
+GET /hx711/metrics              - Historia metryk wagi
+GET /hx711/events               - Wykryte zdarzenia wagi
+GET /hx711/forecast             - Prognoza wagi i zbiorów
+GET /audio/status               - Audio: 97+ parametrów (FFT, psychoakustyka, bioakustyka)
+GET /audio/metrics              - Historia metryk audio
+GET /audio/events               - Zdarzenia akustyczne (rojenie, stress, aktywność)
+GET /radar/status               - Radar MMWave: 27 parametrów (ruch, odległość, energia)
+GET /radar/metrics              - Metryki radaru
+GET /radar/anomalies            - Wykryte anomalie ruchu
+GET /temperature/status         - Temp/Wilg: 28 parametrów (komfort, stabilność, alarmy)
+GET /airquality/status          - Jakość powietrza: 24 parametry (CO₂, VOC, IAQ)
+GET /vibration/status           - Wibracje Piezo: 22 parametry (aktywność, intruzi)
+GET /barometric/status          - Ciśnienie: 18 parametrów (prognoza pogody)
+GET /light/status               - Światło: 17 parametrów (cykl dobowy, circadian sync)
+```

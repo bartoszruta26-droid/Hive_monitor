@@ -11,10 +11,11 @@
 | **MH-Z19B** | CO₂ | 0-5000 ppm | ±50 ppm | 0.2 Hz | Wentylacja, metabolizm rodziny |
 | **BH1750** | Natężenie światła | 1-65535 lux | ±20% | 1 Hz | Cykl dobowy, detekcja otwarcia |
 | **BMP280** | Ciśnienie + Temp | 300-1100 hPa | ±1 hPa | 1 Hz | Prognoza pogody, korekta wysokościowa |
-| **SGP30** | Jakość powietrza | eCO₂ 400-60000 ppm | ±10% | 1 Hz | TVOC, jakość powietrza w ulu |
+| **SGP30/SGP41** | Jakość powietrza | eCO₂ 400-60000 ppm | ±10% | 1 Hz | TVOC, jakość powietrza w ulu |
 | **Reed Switch** | Magnetyczny | Binary (ON/OFF) | N/A | Event-driven | Anti-theft, detekcja otwarcia |
 | **NEO-6M GPS** | Lokalizacja | Globalny | ±2.5 m | 1 Hz | Tracking pasieki, anti-theft |
 | **Capacitive Soil** | Wilgotność gleby | 0-100% | ±3% | 0.1 Hz | Warunki podłoża, drenaż |
+| **Radar MMWave** | Wykrywanie ruchu | 0.1-10 m | ±2 cm | 1 Hz | Detekcja intruzów, monitoring aktywności |
 
 ### Szczegółowe Opisy Funkcjonalności Sensorów
 
@@ -31,7 +32,7 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 - **Outlier Detection**: Odrzucanie anomaliowych odczytów metodą Z-score (np. wiatr, ptaki)
 - **Linear Regression**: Analiza trendów w oknach czasowych (1h, 4h, 24h)
 
-**80 Parametrów HX711Metrics - Kompleksowa Analiza Danych:**
+**105+ Parametrów HX711Metrics + Radar MMWave - Kompleksowa Analiza Danych:**
 
 **A. Podstawowe Parametry Statystyczne (6):**
 - `mean_weight` - Średnia waga [kg]
@@ -125,12 +126,41 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 - `vitality_index` - Indeks vitalności (0-100%)
 - `resilience_score` - Zdolność do regeneracji (0-1)
 
-**K. Parametry Prognozy (6):**
+**K. Parametry Prognozy (5):**
 - `predicted_weight_24h` - Prognoza wagi za 24h [kg]
 - `forecast_confidence` - Pewność prognozy (0-1)
 - `expected_honey_yield` - Oczekiwany zbiór miodu [kg]
 - `prediction_interval` - Przedział ufności prognozy [kg]
 - `forecast_trend` - Kierunek prognozy (-1, 0, 1)
+
+**L. Dodatkowe Parametry Radar MMWave (27):**
+- `mean_distance` - Średnia odległość obiektów [m]
+- `std_distance` - Odchylenie standardowe odległości [m]
+- `min_distance`, `max_distance` - Ekstrema odległości [m]
+- `range_distance` - Zakres odległości (max-min) [m]
+- `mean_energy` - Średnia energia sygnału [AU]
+- `std_energy` - Odchylenie standardowe energii [AU]
+- `min_energy`, `max_energy` - Ekstrema energii [AU]
+- `energy_variance` - Wariancja energii [AU²]
+- `energy_cv` - Współczynnik zmienności energii
+- `mean_speed` - Średnia prędkość radialna [m/s]
+- `std_speed` - Odchylenie standardowe prędkości [m/s]
+- `max_speed_abs` - Maksymalna wartość bezwzględna prędkości [m/s]
+- `activity_ratio` - Stosunek czasu aktywności do całkowitego [%]
+- `idle_time_percent` - Procent czasu bezczynności [%]
+- `motion_intensity` - Intensywność ruchu
+- `target_rate` - Średnia liczba celów na pomiar
+- `max_target_count` - Maksymalna liczba wykrytych celów
+- `target_density` - Gęstość celów
+- `trend_slope` - Nachylenie trendu energii [AU/s]
+- `trend_correlation` - Współczynnik korelacji trendu [-1 do 1]
+- `acceleration_rate` - Tempo zmiany aktywności
+- `signal_quality` - Jakość sygnału (0-100%)
+- `anomaly_score` - Ogólny wynik anomalii (0-1)
+- `hive_health_index` - Indeks zdrowia ula (0-100%)
+- `power_spectrum_peak` - Dominująca częstotliwość w spektrum mocy
+- `zero_crossing_rate` - Częstotliwość przejść przez zero
+- `entropy` - Entropia sygnału (miara losowości)
 
 **Wykrywane Zdarzenia:**
 - **Spadek wagi >2kg w 24h**: Potencjalne rojenie (alert)
@@ -149,10 +179,12 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 ```
 
 **API Endpointy:**
-- `GET /hx711/status` - Aktualny status i wszystkie 80 parametrów
+- `GET /hx711/status` - Aktualny status i wszystkie 105+ parametrów (HX711 + Radar MMWave)
 - `GET /hx711/metrics` - Historia metryk
 - `GET /hx711/events` - Wykryte zdarzenia
 - `GET /hx711/forecast` - Prognoza wagi i zbiorów
+- `GET /radar/metrics` - Metryki radaru MMWave
+- `GET /radar/status` - Status wykrywania ruchu i intruzów
 
 #### 2. Analiza Akustyczna (Microphone + FFT)
 
@@ -161,9 +193,9 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 - **Hamming Window**: Redukcja przecieków widmowych
 - **256-point FFT**: Rozdzielczość częstotliwościowa ~31.25 Hz @ 8kHz (pełna implementacja Cooley-Tukey z liczbami zespolonymi)
 - **Spectrogram Generation**: Wizualizacja czasowo-częstotliwościowa
-- **47 parametrów akustycznych**: Kompleksowa analiza metryk czasowych, częstotliwościowych, statystycznych i psychoakustycznych
+- **97+ parametrów akustycznych**: Kompleksowa analiza metryk czasowych, częstotliwościowych, statystycznych, psychoakustycznych i zaawansowanych
 
-**Parametry Akustyczne (AudioMetrics - 47 metryk):**
+**Parametry Akustyczne (AudioMetrics - 97+ metryk):**
 
 **A. Parametry Czasowe i Amplitudowe:**
 - `rms_amplitude` - Root Mean Square (energia sygnału)
@@ -224,7 +256,57 @@ System wykorzystuje cztery tensometry rezystancyjne połączone w mostek Wheatst
 - `loudness` - Głośność perceived (sones)
 - `roughness_fast` - Szybkie fluktuacje (<70Hz)
 - `spectral_decrease` - Spadek spektralny (ciemność dźwięku)
-- `irregularity` - Niereegularność widmowa
+- `irregularity` - Nieregularność widmowa
+
+**I. NOWE Parametry Zaawansowane (dodatkowe 50+ metryk):**
+- `spectral_flux` - Strumień spektralny (zmiana widma w czasie)
+- `spectral_slope` - Nachylenie widma (balans tonalny)
+- `spectral_kurtosis` - Kurtoza widma (ostrość pików)
+- `spectral_skewness` - Asymetria widma
+- `fundamental_salience` - Wyraźność tonu podstawowego (0-1)
+- `partial_energy_ratio` - Stosunek energii harmonicznych do całości
+- `odd_harmonic_energy` - Energia nieparzystych harmonicznych
+- `even_harmonic_energy` - Energia parzystych harmonicznych
+- `tritone_distance` - Dystans od trytonu (miara dysonansu)
+- `inharmonicity_deviation` - Odchylenie nieharmoniczności
+- `spectral_irregularity` - Nieregularność widmowa
+- `log_attack_time` - Logarytmiczny czas ataku
+- `temporal_log_attack` - Temporalny log attack
+- `effective_duration` - Efektywny czas trwania sygnału
+- `rise_time` - Czas narastania (10-90%)
+- `decay_rate` - Szybkość zanikania [dB/s]
+- `release_time` - Czas wybrzmiewania
+- `vibrato_depth` - Głębokość wibrata (detekcja queen piping)
+- `vibrato_rate` - Częstotliwość wibrata [Hz]
+- `tremolo_depth` - Głębokość tremola
+- `tremolo_rate` - Częstotliwość tremola [Hz]
+- `spectral_valley_count` - Liczba dolin w widmie
+- `peak_prominence` - Wyraźność dominującego piku
+- `bandwidth_75` - Szerokość pasma 75% energii
+- `bandwidth_95` - Szerokość pasma 95% energii
+- `equivalent_sound_level` - Równoważny poziom dźwięku Leq [dB]
+- `percentile_level_10` - Poziom L10 [dB]
+- `percentile_level_90` - Poziom L90 [dB]
+- `noise_floor_estimate` - Szacowane tło szumowe [dB]
+- `signal_to_noise_ratio` - SNR [dB]
+- `acoustic_complexity` - Złożoność akustyczna (ACI index)
+- `bioacoustic_index` - Indeks bioakustyczny (BI)
+- `normalized_difference` - Znormalizowany indeks różnicowy (NDI)
+- `acoustic_diversity` - Różnorodność akustyczna (ADI)
+- `acoustic_evenness` - Równość akustyczna (AEI)
+- `power_band_1` do `power_band_8` - Moc w 8 pasmach częstotliwości [dB]
+- `formant_freq_1`, `formant_freq_2` - Częstotliwości formantów [Hz]
+- `formant_bandwidth_1`, `formant_bandwidth_2` - Szerokości formantów [Hz]
+- `fundamental_frequency` - Częstotliwość podstawowa F0 [Hz]
+- `pitch_strength` - Siła wysokości dźwięku (0-1)
+- `inharmonicity` - Nieharmoniczność sygnału (0-1)
+- `shimmer` - Fluktuacja amplitudy (%)
+- `jitter` - Fluktuacja częstotliwości (%)
+- `noise_to_harmonic_ratio` - NHR
+- `harmonic_to_noise_ratio` - HNR
+- `sustain_level` - Poziom podtrzymania (0-1)
+- `colony_coherence` - Spójność kolonii (0-1)
+- `foraging_efficiency_audio` - Efektywność zbierania z audio (0-100%)
 
 **Signature Sounds:**
 - **Piping (200-300 Hz)**: Queen pipes - sygnał przedrojowy
