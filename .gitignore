@@ -2,36 +2,22 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.elf
-*.hex
-*.bin
 *.out
+apiary_logger_test
 
 # Dependencies
-.pio/
-.platformio/
-lib/
-src/lib/
+build/
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-
-# Build outputs
-build/
-dist/
-release/
-debug/
 ```

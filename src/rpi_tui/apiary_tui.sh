@@ -1,0 +1,505 @@
+#!/bin/bash
+#
+# apiary_tui.sh - Terminal UI dla systemu monitoringu uli (Raspberry Pi)
+# Ten skrypt bash zapewnia interfejs TUI do debugowania i logowania
+# Bez Pythona - czysty Bash z ncurses (przez tput)
+#
+
+set -e
+
+# Konfiguracja
+LOG_FILE="/var/log/apiaryguard/apiary.log"
+DEBUG_FILE="/var/log/apiaryguard/debug.log"
+CONFIG_DIR="/etc/apiaryguard"
+DATA_DIR="/var/lib/apiaryguard"
+LOCK_FILE="/tmp/apiary_tui.lock"
+
+# Kolory (ANSI escape codes)
+COLOR_RESET="\033[0m"
+COLOR_RED="\033[31m"
+COLOR_GREEN="\033[32m"
+COLOR_YELLOW="\033[33m"
+COLOR_BLUE="\033[34m"
+COLOR_MAGENTA="\033[35m"
+COLOR_CYAN="\033[36m"
+COLOR_WHITE="\033[37m"
+COLOR_BOLD="\033[1m"
+
+# Stan aplikacji
+CURRENT_TAB=0
+TAB_COUNT=4
+SCROLL_OFFSET_LOG=0
+SCROLL_OFFSET_DEBUG=0
+AUTO_REFRESH=true
+REFRESH_INTERVAL=2
+LAST_REFRESH=0
+
+# Tablice do przechowywania danych
+declare -a LOG_LINES
+declare -a DEBUG_LINES
+declare -a HIVES
+declare -a HIVE_STATUS
+
+# Inicjalizacja katalogów i plików
+init_system() {
+    mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$(dirname $LOG_FILE)" "$(dirname $DEBUG_FILE)" 2>/dev/null || true
+    touch "$LOG_FILE" "$DEBUG_FILE" 2>/dev/null || true
+    
+    # Przykładowe dane uli (w produkcji pobierane z sieci)
+    HIVES=("UL-001" "UL-002" "UL-003" "UL-004")
+    HIVE_STATUS=("online" "online" "offline" "warning")
+}
+
+# Czyszczenie ekranu
+clear_screen() {
+    tput clear
+    tput home
+}
+
+# Ukrycie kursora
+hide_cursor() {
+    tput civis
+}
+
+# Pokazanie kursora
+show_cursor() {
+    tput cnorm
+}
+
+# Pobranie rozmiarów terminala
+get_terminal_size() {
+    TERM_WIDTH=$(tput cols)
+    TERM_HEIGHT=$(tput lines)
+}
+
+# Rysowanie ramki
+draw_box() {
+    local x=$1 y=$2 w=$3 h=$4 title="$5"
+    
+    # Górna linia
+    tput cup $y $x
+    echo -ne "╔"
+    for ((i=1; i<w-1; i++)); do echo -ne "═"; done
+    echo -ne "╗"
+    
+    # Boczne linie
+    for ((i=1; i<h-1; i++)); do
+        tput cup $((y+i)) $x
+        echo -ne "║"
+        tput cup $((y+i)) $((x+w-1))
+        echo -ne "║"
+    done
+    
+    # Dolna linia
+    tput cup $((y+h-1)) $x
+    echo -ne "╚"
+    for ((i=1; i<w-1; i++)); do echo -ne "═"; done
+    echo -ne "╝"
+    
+    # Tytuł
+    if [ -n "$title" ]; then
+        tput cup $y $((x + (w - ${#title}) / 2 - 1))
+        echo -ne " $title "
+    fi
+}
+
+# Rysowanie paska tytułowego
+draw_header() {
+    get_terminal_size
+    
+    tput cup 0 0
+    echo -ne "${COLOR_BOLD}${COLOR_BLUE}"
+    printf '━%.0s' $(seq 1 $TERM_WIDTH)
+    echo -ne "${COLOR_RESET}"
+    
+    local title="🐝 APIARY GUARD - System Monitoringu Uli"
+    local title_pos=$(( (TERM_WIDTH - ${#title}) / 2 ))
+    tput cup 0 $title_pos
+    echo -ne "${COLOR_BOLD}${COLOR_WHITE}$title${COLOR_RESET}"
+    
+    local version="v1.0.0"
+    tput cup 0 $((TERM_WIDTH - ${#version} - 2))
+    echo -ne "${COLOR_CYAN}$version${COLOR_RESET}"
+}
+
+# Rysowanie paska zakładek
+draw_tabs() {
+    get_terminal_size
+    local y=2
+    local x=1
+    local tabs=("LOGI" "DEBUG" "ULIE" "USTAWIENIA")
+    
+    for i in "${!tabs[@]}"; do
+        local tab="${tabs[$i]}"
+        local len=${#tab}
+        
+        if [ $i -eq $CURRENT_TAB ]; then
+            echo -ne "${COLOR_BOLD}${COLOR_GREEN}"
+            tput cup $y $x
+            echo -ne "┌${tab}"
+            for ((j=0; j<12-len; j++)); do echo -ne "─"; done
+            echo -ne "┘"
+            echo -ne "${COLOR_RESET}"
+        else
+            echo -ne "${COLOR_CYAN}"
+            tput cup $y $x
+            echo -ne " $tab "
+            echo -ne "${COLOR_RESET}"
+        fi
+        x=$((x + 15))
+    done
+    
+    # Linia oddzielająca
+    tput cup $((y+1)) 0
+    echo -ne "${COLOR_BLUE}"
+    printf '─%.0s' $(seq 1 $TERM_WIDTH)
+    echo -ne "${COLOR_RESET}"
+}
+
+# Ładowanie logów
+load_logs() {
+    LOG_LINES=()
+    if [ -f "$LOG_FILE" ]; then
+        while IFS= read -r line; do
+            LOG_LINES+=("$line")
+        done < <(tail -n 100 "$LOG_FILE" 2>/dev/null)
+    fi
+    
+    # Dodaj przykładowe logi jeśli puste
+    if [ ${#LOG_LINES[@]} -eq 0 ]; then
+        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] System uruchomiony")
+        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] Połączono z UL-001")
+        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [WARN] Wysoka temperatura w UL-002: 38°C")
+        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] Zapisano dane pomiarowe")
+        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [ERROR] Utracono połączenie z UL-003")
+    fi
+}
+
+# Ładowanie debugów
+load_debug() {
+    DEBUG_LINES=()
+    if [ -f "$DEBUG_FILE" ]; then
+        while IFS= read -r line; do
+            DEBUG_LINES+=("$line")
+        done < <(tail -n 100 "$DEBUG_FILE" 2>/dev/null)
+    fi
+    
+    # Dodaj przykładowe debugi jeśli puste
+    if [ ${#DEBUG_LINES[@]} -eq 0 ]; then
+        DEBUG_LINES+=("[DEBUG] Inicjalizacja modułu sieciowego")
+        DEBUG_LINES+=("[DEBUG] ETH0: IP 192.168.1.100, MASK 255.255.255.0")
+        DEBUG_LINES+=("[DEBUG] MQTT: Próba połączenia z brokerem...")
+        DEBUG_LINES+=("[DEBUG] MQTT: Połączono successfully")
+        DEBUG_LINES+=("[DEBUG] Thread sensor_001 started")
+        DEBUG_LINES+=("[DEBUG] Memory usage: 45MB / 512MB")
+        DEBUG_LINES+=("[DEBUG] CPU load: 12%")
+    fi
+}
+
+# Rysowanie panelu logów
+draw_log_panel() {
+    get_terminal_size
+    load_logs
+    
+    local start_y=4
+    local start_x=1
+    local width=$((TERM_WIDTH - 2))
+    local height=$((TERM_HEIGHT - start_y - 4))
+    
+    draw_box $start_x $start_y $width $height "Dziennik Zdarzeń (LOG)"
+    
+    local content_start=$((start_y + 1))
+    local content_height=$((height - 2))
+    
+    # Oblicz maksymalny offset przewijania
+    local max_offset=$((${#LOG_LINES[@]} - content_height))
+    if [ $max_offset -lt 0 ]; then max_offset=0; fi
+    if [ $SCROLL_OFFSET_LOG -gt $max_offset ]; then SCROLL_OFFSET_LOG=$max_offset; fi
+    
+    # Wyświetl logi
+    for ((i=0; i<content_height && i+SCROLL_OFFSET_LOG<${#LOG_LINES[@]}; i++)); do
+        local line_idx=$((i + SCROLL_OFFSET_LOG))
+        local line="${LOG_LINES[$line_idx]}"
+        
+        # Kolorowanie po poziomie logu
+        local color="$COLOR_WHITE"
+        if [[ "$line" == *"[ERROR]"* ]]; then
+            color="$COLOR_RED"
+        elif [[ "$line" == *"[WARN]"* ]]; then
+            color="$COLOR_YELLOW"
+        elif [[ "$line" == *"[INFO]"* ]]; then
+            color="$COLOR_GREEN"
+        fi
+        
+        tput cup $((content_start + i)) $((start_x + 2))
+        echo -ne "${color}${line:0:$((width-4))}${COLOR_RESET}"
+    done
+    
+    # Informacja o przewijaniu
+    if [ $max_offset -gt 0 ]; then
+        tput cup $((start_y + height - 1)) $((start_x + width - 20))
+        echo -ne "${COLOR_CYAN}Scroll: ${SCROLL_OFFSET_LOG}/${max_offset}${COLOR_RESET}"
+    fi
+}
+
+# Rysowanie panelu debug
+draw_debug_panel() {
+    get_terminal_size
+    load_debug
+    
+    local start_y=4
+    local start_x=1
+    local width=$((TERM_WIDTH - 2))
+    local height=$((TERM_HEIGHT - start_y - 4))
+    
+    draw_box $start_x $start_y $width $height "Panel Debugowania"
+    
+    local content_start=$((start_y + 1))
+    local content_height=$((height - 2))
+    
+    local max_offset=$((${#DEBUG_LINES[@]} - content_height))
+    if [ $max_offset -lt 0 ]; then max_offset=0; fi
+    if [ $SCROLL_OFFSET_DEBUG -gt $max_offset ]; then SCROLL_OFFSET_DEBUG=$max_offset; fi
+    
+    for ((i=0; i<content_height && i+SCROLL_OFFSET_DEBUG<${#DEBUG_LINES[@]}; i++)); do
+        local line_idx=$((i + SCROLL_OFFSET_DEBUG))
+        local line="${DEBUG_LINES[$line_idx]}"
+        
+        tput cup $((content_start + i)) $((start_x + 2))
+        echo -ne "${COLOR_MAGENTA}${line:0:$((width-4))}${COLOR_RESET}"
+    done
+    
+    if [ $max_offset -gt 0 ]; then
+        tput cup $((start_y + height - 1)) $((start_x + width - 20))
+        echo -ne "${COLOR_CYAN}Scroll: ${SCROLL_OFFSET_DEBUG}/${max_offset}${COLOR_RESET}"
+    fi
+}
+
+# Rysowanie panelu uli
+draw_hive_panel() {
+    get_terminal_size
+    
+    local start_y=4
+    local start_x=1
+    local width=$((TERM_WIDTH - 2))
+    local height=$((TERM_HEIGHT - start_y - 4))
+    
+    draw_box $start_x $start_y $width $height "Status Uli"
+    
+    local content_start=$((start_y + 2))
+    local col_width=$((width / 5))
+    
+    # Nagłówki
+    tput cup $((start_y + 1)) $((start_x + 2))
+    echo -ne "${COLOR_BOLD}ID${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 2 + col_width))
+    echo -ne "${COLOR_BOLD}STATUS${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 2 + col_width*2))
+    echo -ne "${COLOR_BOLD}TEMP${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 2 + col_width*3))
+    echo -ne "${COLOR_BOLD}WILGOTNOŚĆ${COLOR_RESET}"
+    tput cup $((start_y + 1)) $((start_x + 2 + col_width*4))
+    echo -ne "${COLOR_BOLD}BATERIA${COLOR_RESET}"
+    
+    # Dane uli
+    for i in "${!HIVES[@]}"; do
+        local hive="${HIVES[$i]}"
+        local status="${HIVE_STATUS[$i]}"
+        local temp=$((20 + RANDOM % 15))
+        local humidity=$((40 + RANDOM % 30))
+        local battery=$((60 + RANDOM % 40))
+        
+        local status_color="$COLOR_GREEN"
+        [ "$status" == "offline" ] && status_color="$COLOR_RED"
+        [ "$status" == "warning" ] && status_color="$COLOR_YELLOW"
+        
+        local row=$((content_start + i))
+        tput cup $row $((start_x + 2))
+        echo -ne "${COLOR_CYAN}$hive${COLOR_RESET}"
+        tput cup $row $((start_x + 2 + col_width))
+        echo -ne "${status_color}$status${COLOR_RESET}"
+        tput cup $row $((start_x + 2 + col_width*2))
+        echo -ne "${COLOR_WHITE}${temp}°C${COLOR_RESET}"
+        tput cup $row $((start_x + 2 + col_width*3))
+        echo -ne "${COLOR_WHITE}${humidity}%${COLOR_RESET}"
+        tput cup $row $((start_x + 2 + col_width*4))
+        echo -ne "${COLOR_WHITE}${battery}%${COLOR_RESET}"
+    done
+}
+
+# Rysowanie panelu ustawień
+draw_settings_panel() {
+    get_terminal_size
+    
+    local start_y=4
+    local start_x=1
+    local width=$((TERM_WIDTH - 2))
+    local height=$((TERM_HEIGHT - start_y - 4))
+    
+    draw_box $start_x $start_y $width $height "Ustawienia Systemu"
+    
+    local content_start=$((start_y + 2))
+    
+    tput cup $content_start $((start_x + 4))
+    echo -ne "${COLOR_YELLOW}[${AUTO_REFRESH:+✓}${AUTO_REFRESH:- }] Auto-odświeżanie${COLOR_RESET}"
+    
+    tput cup $((content_start + 1)) $((start_x + 4))
+    echo -ne "${COLOR_YELLOW}Interwał: ${REFRESH_INTERVAL}s${COLOR_RESET}"
+    
+    tput cup $((content_start + 3)) $((start_x + 4))
+    echo -ne "${COLOR_CYAN}Plik logów: ${LOG_FILE}${COLOR_RESET}"
+    
+    tput cup $((content_start + 4)) $((start_x + 4))
+    echo -ne "${COLOR_CYAN}Plik debug: ${DEBUG_FILE}${COLOR_RESET}"
+    
+    tput cup $((content_start + 6)) $((start_x + 4))
+    echo -ne "${COLOR_WHITE}Klawisze:${COLOR_RESET}"
+    tput cup $((content_start + 7)) $((start_x + 6))
+    echo -ne "←/→ : Nawigacja zakładek"
+    tput cup $((content_start + 8)) $((start_x + 6))
+    echo -ne "↑/↓ : Przewijanie"
+    tput cup $((content_start + 9)) $((start_x + 6))
+    echo -ne "r   : Odśwież"
+    tput cup $((content_start + 10)) $((start_x + 6))
+    echo -ne "a   : Toggle auto-refresh"
+    tput cup $((content_start + 11)) $((start_x + 6))
+    echo -ne "q   : Wyjście"
+}
+
+# Rysowanie paska stopki
+draw_footer() {
+    get_terminal_size
+    
+    tput cup $((TERM_HEIGHT - 1)) 0
+    echo -ne "${COLOR_BLUE}"
+    printf '━%.0s' $(seq 1 $TERM_WIDTH)
+    echo -ne "${COLOR_RESET}"
+    
+    local help="q-Wyjście | ←/→-Tab | ↑/↓-Scroll | r-Odśwież | a-AutoRefresh"
+    local help_pos=$(( (TERM_WIDTH - ${#help}) / 2 ))
+    tput cup $((TERM_HEIGHT - 1)) $help_pos
+    echo -ne "${COLOR_WHITE}$help${COLOR_RESET}"
+}
+
+# Główna funkcja rysująca
+draw_ui() {
+    clear_screen
+    hide_cursor
+    draw_header
+    draw_tabs
+    
+    case $CURRENT_TAB in
+        0) draw_log_panel ;;
+        1) draw_debug_panel ;;
+        2) draw_hive_panel ;;
+        3) draw_settings_panel ;;
+    esac
+    
+    draw_footer
+    show_cursor
+}
+
+# Obsługa klawiszy
+handle_input() {
+    # Sprawdź czy dostępne są dane z stdin
+    if read -t 0.1 -n 1 key; then
+        case "$key" in
+            $'\x1b')  # Escape sequence
+                read -t 0.1 -n 1 key2
+                read -t 0.1 -n 1 key3
+                case "$key3" in
+                    'A') # Strzałka w górę
+                        if [ $CURRENT_TAB -eq 0 ]; then
+                            [ $SCROLL_OFFSET_LOG -gt 0 ] && ((SCROLL_OFFSET_LOG--))
+                        elif [ $CURRENT_TAB -eq 1 ]; then
+                            [ $SCROLL_OFFSET_DEBUG -gt 0 ] && ((SCROLL_OFFSET_DEBUG--))
+                        fi
+                        ;;
+                    'B') # Strzałka w dół
+                        if [ $CURRENT_TAB -eq 0 ]; then
+                            ((SCROLL_OFFSET_LOG++))
+                        elif [ $CURRENT_TAB -eq 1 ]; then
+                            ((SCROLL_OFFSET_DEBUG++))
+                        fi
+                        ;;
+                    'C') # Strzałka w prawo
+                        ((CURRENT_TAB = (CURRENT_TAB + 1) % TAB_COUNT))
+                        SCROLL_OFFSET_LOG=0
+                        SCROLL_OFFSET_DEBUG=0
+                        ;;
+                    'D') # Strzałka w lewo
+                        ((CURRENT_TAB = (CURRENT_TAB - 1 + TAB_COUNT) % TAB_COUNT))
+                        SCROLL_OFFSET_LOG=0
+                        SCROLL_OFFSET_DEBUG=0
+                        ;;
+                esac
+                ;;
+            'q'|'Q')
+                return 1
+                ;;
+            'r'|'R')
+                # Ręczne odświeżenie
+                ;;
+            'a'|'A')
+                AUTO_REFRESH=!$AUTO_REFRESH
+                ;;
+            'h'|'H'|'?')
+                # Pomoc (można rozwinąć)
+                ;;
+        esac
+    fi
+    return 0
+}
+
+# Funkcja czyszcząca przy wyjściu
+cleanup() {
+    show_cursor
+    tput clear
+    tput cup 0 0
+    echo -ne "${COLOR_RESET}"
+    stty sane
+    echo "APIARY TUI zakończone."
+}
+
+# Główna pętla aplikacji
+main_loop() {
+    trap cleanup EXIT INT TERM
+    
+    # Konfiguracja terminala
+    stty -echo -icanon min 0 time 0
+    
+    init_system
+    
+    while true; do
+        draw_ui
+        
+        if ! handle_input; then
+            break
+        fi
+        
+        # Auto-refresh
+        if [ "$AUTO_REFRESH" = true ]; then
+            sleep $REFRESH_INTERVAL
+        else
+            sleep 0.1
+        fi
+    done
+}
+
+# Punkt wejścia
+main() {
+    echo "Uruchamianie APIARY Guard TUI..."
+    
+    # Sprawdź zależności
+    if ! command -v tput &> /dev/null; then
+        echo "BŁĄD: Wymagany jest tput (pakiet ncurses-bin)"
+        exit 1
+    fi
+    
+    main_loop
+}
+
+# Uruchom jeśli skrypt jest wykonywany bezpośrednio
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
