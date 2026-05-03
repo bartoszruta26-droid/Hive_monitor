@@ -5,12 +5,12 @@
 *.hex
 *.elf
 *.bin
-*.map
-*.sym
+*.out
 
 # Dependencies
+.pio/
+.platformio/
 lib/
-libraries/
 
 # Logs and temp files
 *.log
@@ -20,7 +20,7 @@ libraries/
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -30,6 +30,6 @@ libraries/
 
 # Build outputs
 build/
-output/
 dist/
+output/
 ```

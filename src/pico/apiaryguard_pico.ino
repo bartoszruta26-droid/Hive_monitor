@@ -153,7 +153,7 @@ EthernetServer server(8080); // Port nasłuchiwania
 #define RELAY_CH3  19
 #define RELAY_CH4  20
 #define RELAY_CH5  21
-#define RELAY_CH6  22
+#define RELAY_CH6  26  // POPRAWKA: Zmieniono z GPIO 22 na GPIO 26 (konflikt z HX711_SCK i RELAY_CH4)
 #define RELAY_CH7  23
 #define RELAY_CH8  24
 
