@@ -1,3 +1,26 @@
-# Examples
-docs/03_specyfikacja_sprzetowa.md
-docs/12_rozszerzenia_przyszlosciowe.md
+```
+# Arduino build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+*.sym
+
+# Build directories
+build/
+dist/
+
+# IDE specific
+.vscode/
+.idea/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment files
+.env
+.env.local
+*.env.*
+```
