@@ -1,10 +1,13 @@
-# ApiaryGuard - Kod Arduino IDE dla W6100
+# ApiaryGuard - Kod Arduino IDE dla W6100 z Web Serverem GUI
 
 ## 📋 Opis
 
 Ten folder zawiera kompletny kod firmware dla Arduino Nano (ATmega328P) obsługujący:
 
 - **Moduł Ethernet W6100** - komunikacja TCP/IP przez SPI
+- **Web Server HTTP** - przyjazne GUI w przeglądarce
+- **JSON API** - dostęp do wszystkich danych sensorów
+- **Panel sterowania** - kontrola efektorów przez WWW
 - **Sensory**:
   - HX711 + Strain Gauge (waga 24-bit ADC)
   - DHT22/AM2302 (temperatura i wilgotność)
@@ -18,6 +21,27 @@ Ten folder zawiera kompletny kod firmware dla Arduino Nano (ATmega328P) obsługu
   - Pompa perystaltyczna (dozowanie terapeutyczne)
   - Zawory elektromagnetyczne
   - Moduł przekaźnikowy 8-kanałowy
+
+## ✨ Nowe Funkcje
+
+### 🌐 Web Server z GUI
+- **Adres**: `http://<IP_ARDUINO>` (domyślnie http://192.168.1.100)
+- **Auto-refresh**: Dane odświeżają się co 5 sekund
+- **Responsywny design**: Działa na komputerach, tabletach i telefonach
+- **Karty sensorów**: Przejrzyste kafelki z wszystkimi parametrami
+- **Panel sterowania**: Suwaki PWM, przyciski czasowe, przełączniki
+
+### 📡 JSON API
+- **Endpoint**: `http://<IP_ARDUINO>/api`
+- **Format**: JSON ze wszystkimi danymi sensorów i efektorów
+- **Zastosowanie**: Integracja z Home Assistant, Node-RED, własnymi aplikacjami
+
+### 🎛️ Sterowanie
+- **Grzałka**: Suwak PWM 0-255
+- **Wentylator**: Suwak PWM 0-255
+- **Pompa**: Przyciski 5s/10s/30s
+- **Zawór**: WŁĄCZ/WYŁĄCZ
+- **Przekaźniki**: Toggle Relay 1 i Relay 2
 
 ## 🔧 Wymagania
 
@@ -149,6 +173,44 @@ const uint16_t serverPort = 1883;    // Port MQTT/TCP
 5. **Kompiluj i wgraj**:
    - Kliknij ✓ (Verify/Compile)
    - Kliknij → (Upload)
+
+## 🌐 Dostęp do Web Servera
+
+### Strona Główna GUI
+1. Otwórz przeglądarkę internetową
+2. Wpisz adres: `http://192.168.1.100` (lub inny skonfigurowany)
+3. Zobaczysz dashboard z wszystkimi sensorami i panelem sterowania
+4. Dane odświeżają się automatycznie co 5 sekund
+
+### JSON API
+1. Otwórz: `http://192.168.1.100/api`
+2. Otrzymasz dane w formacie JSON:
+```json
+{
+  "timestamp": 1234567,
+  "weight_kg": 45.67,
+  "temperature_c": 23.5,
+  "humidity_percent": 55.2,
+  "audio_rms": 125,
+  "piezo_activity": 45,
+  "co2_ppm": 450,
+  "tvoc_ppb": 120,
+  "radar_motion": 0,
+  "network_connected": true,
+  "uptime_seconds": 3600,
+  "heater_pwm": 128,
+  "fan_pwm": 64,
+  "valve_state": 0,
+  "relay_mask": 0
+}
+```
+
+### Sterowanie Efektorami
+Przez panel GUI na stronie głównej:
+- **Suwaki PWM**: Przesuń aby zmienić wartość grzałki/wentylatora
+- **Przyciski Pompy**: Kliknij 5s/10s/30s aby uruchomić pompę
+- **Zawór**: Kliknij WŁĄCZ/WYŁĄCZ
+- **Przekaźniki**: Toggle ON/OFF dla każdego przekaźnika
 
 ## 📊 Protokół Komunikacyjny
 

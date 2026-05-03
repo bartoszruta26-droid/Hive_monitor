@@ -1,5 +1,5 @@
 /*
- * ApiaryGuard - Arduino Nano Firmware
+ * ApiaryGuard - Arduino Nano Firmware z Web Server GUI
  * 
  * Obsługa sensorów i efektorów dla systemu monitoringu uli
  * Komunikacja przez Ethernet W6100 (SPI) + I2C do Raspberry Pi
@@ -18,6 +18,12 @@
  * - Pompa perystaltyczna
  * - Zawory elektromagnetyczne
  * - Przekaźniki 8-kanałowe
+ * 
+ * Funkcje dodatkowe:
+ * - Web Server z GUI HTML/CSS
+ * - JSON API dla wszystkich parametrów
+ * - Panel sterowania efektorami
+ * - Auto-refresh danych co 5 sekund
  * 
  * Autor: ApiaryGuard Team
  * Licencja: MIT
@@ -79,6 +85,9 @@ IPAddress dns(8, 8, 8, 8);
 IPAddress serverIP(192, 168, 1, 50);
 const uint16_t serverPort = 1883;
 
+// Web Server port
+EthernetServer webServer(80);
+
 // ============================================================================
 // STRUKTURY DANYCH
 // ============================================================================
@@ -109,6 +118,7 @@ struct ActuatorCommand {
 // ============================================================================
 
 EthernetClient ethClient;
+EthernetClient webClient;
 SensorData currentData;
 ActuatorCommand actuatorCmd;
 
@@ -135,6 +145,10 @@ void readAllSensors();
 void processNetworkCommands();
 void sendSensorData();
 void executeActuatorCommands();
+void handleWebClients();
+void sendWebPage(EthernetClient &client);
+void sendJSONData(EthernetClient &client);
+void handleControlCommand(String params);
 float readWeight();
 float readTemperature();
 float readHumidity();
@@ -189,8 +203,13 @@ void setup() {
   memset(&currentData, 0, sizeof(SensorData));
   memset(&actuatorCmd, 0, sizeof(ActuatorCommand));
   
+  // Start Web Server
+  webServer.begin();
+  
   Serial.println(F("System gotowy!"));
   Serial.print(F("IP: "));
+  Serial.println(Ethernet.localIP());
+  Serial.println(F("Web Server: http://"));
   Serial.println(Ethernet.localIP());
 }
 
@@ -201,8 +220,11 @@ void setup() {
 void loop() {
   unsigned long now = millis();
   
-  // Obsługa klienta Ethernet
+  // Obsługa klienta Ethernet (MQTT)
   Ethernet.maintain();
+  
+  // Obsługa Web Server GUI
+  handleWebClients();
   
   // Czytaj sensory co SENSOR_INTERVAL
   if (now - lastSensorRead >= SENSOR_INTERVAL) {
@@ -697,6 +719,362 @@ void loadCalibration() {
   
   weight_scale = 1.0f;
   weight_offset = 0.0f;
+}
+
+// ============================================================================
+// WEB SERVER - GUI I API
+// ============================================================================
+
+/**
+ * Obsługa klientów web servera
+ */
+void handleWebClients() {
+  EthernetClient client = webServer.available();
+  
+  if (client) {
+    boolean currentLineIsBlank = true;
+    String httpRequest = "";
+    
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        httpRequest += c;
+        
+        if (c == '\n' && currentLineIsBlank) {
+          // Koniec nagłówka HTTP
+          
+          // Sprawdź typ żądania
+          if (httpRequest.indexOf("GET /api ") > 0) {
+            // Żądanie JSON API
+            sendJSONData(client);
+          } else if (httpRequest.indexOf("GET /control?") > 0) {
+            // Żądanie sterowania
+            int startIndex = httpRequest.indexOf("/control?");
+            int endIndex = httpRequest.indexOf(" ", startIndex);
+            String params = httpRequest.substring(startIndex + 9, endIndex);
+            handleControlCommand(params);
+            sendWebPage(client);
+          } else {
+            // Żądanie strony głównej
+            sendWebPage(client);
+          }
+          break;
+        }
+        
+        if (c == '\n') {
+          currentLineIsBlank = true;
+        } else if (c != '\r') {
+          currentLineIsBlank = false;
+        }
+      }
+    }
+    
+    delay(1);
+    client.stop();
+  }
+}
+
+/**
+ * Wysyłka strony HTML z GUI
+ */
+void sendWebPage(EthernetClient &client) {
+  // Nagłówek HTTP
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println("Refresh: 5");  // Auto-refresh co 5 sekund
+  client.println();
+  
+  // HTML开始
+  client.println("<!DOCTYPE html><html><head>");
+  client.println("<meta charset='UTF-8'>");
+  client.println("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
+  client.println("<title>ApiaryGuard - Monitor Ula</title>");
+  client.println("<style>");
+  client.println("*{box-sizing:border-box;margin:0;padding:0}");
+  client.println("body{font-family:Arial,sans-serif;background:#f0f4f8;padding:20px}");
+  client.println(".container{max-width:1200px;margin:0 auto}");
+  client.println("h1{color:#2c3e50;text-align:center;margin-bottom:20px}");
+  client.println(".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}");
+  client.println(".card{background:white;border-radius:10px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}");
+  client.println(".card h2{color:#3498db;font-size:18px;margin-bottom:15px;border-bottom:2px solid #3498db;padding-bottom:10px}");
+  client.println(".metric{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}");
+  client.println(".metric:last-child{border-bottom:none}");
+  client.println(".metric-label{color:#7f8c8d}");
+  client.println(".metric-value{color:#2c3e50;font-weight:bold}");
+  client.println(".unit{color:#95a5a6;font-size:12px}");
+  client.println(".status-ok{color:#27ae60}");
+  client.println(".status-warn{color:#f39c12}");
+  client.println(".status-error{color:#e74c3c}");
+  client.println(".control-panel{margin-top:20px}");
+  client.println(".control-group{background:white;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}");
+  client.println(".control-group h2{color:#e67e22;margin-bottom:15px}");
+  client.println("input[type=range]{width:100%;margin:10px 0}");
+  client.println("button{background:#3498db;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;margin:5px}");
+  client.println("button:hover{background:#2980b9}");
+  client.println("button.active{background:#27ae60}");
+  client.println(".footer{text-align:center;margin-top:30px;color:#7f8c8d}");
+  client.println("</style></head><body>");
+  client.println("<div class='container'>");
+  client.println("<h1>🐝 ApiaryGuard - Monitor Ula</h1>");
+  
+  // Sekcja Sensorów
+  client.println("<div class='grid'>");
+  
+  // Karta: Waga
+  client.println("<div class='card'><h2>⚖️ Waga Ula</h2>");
+  client.print("<div class='metric'><span class='metric-label'>Waga:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.weight_kg, 2);
+  client.println(" <span class='unit'>kg</span></span></div>");
+  client.println("</div>");
+  
+  // Karta: Klimat
+  client.println("<div class='card'><h2>🌡️ Klimat</h2>");
+  client.print("<div class='metric'><span class='metric-label'>Temperatura:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.temperature_c, 1);
+  client.println(" <span class='unit'>°C</span></span></div>");
+  client.print("<div class='metric'><span class='metric-label'>Wilgotność:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.humidity_percent, 1);
+  client.println(" <span class='unit'>%</span></span></div>");
+  client.println("</div>");
+  
+  // Karta: Jakość Powietrza
+  client.println("<div class='card'><h2>💨 Jakość Powietrza</h2>");
+  client.print("<div class='metric'><span class='metric-label'>CO2:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.co2_ppm);
+  client.println(" <span class='unit'>ppm</span></span></div>");
+  client.print("<div class='metric'><span class='metric-label'>TVOC:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.tvoc_ppb);
+  client.println(" <span class='unit'>ppb</span></span></div>");
+  client.println("</div>");
+  
+  // Karta: Dźwięk i Wibracje
+  client.println("<div class='card'><h2>🔊 Dźwięk i Wibracje</h2>");
+  client.print("<div class='metric'><span class='metric-label'>Poziom Audio:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.audio_rms);
+  client.println(" <span class='unit'>RMS</span></span></div>");
+  client.print("<div class='metric'><span class='metric-label'>Wibracje:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(currentData.piezo_activity);
+  client.println(" <span class='unit'>ADC</span></span></div>");
+  client.println("</div>");
+  
+  // Karta: Radar i Status
+  client.println("<div class='card'><h2>📡 Radar i Status</h2>");
+  client.print("<div class='metric'><span class='metric-label'>Ruch:</span>");
+  client.print("<span class='metric-value ");
+  if (currentData.radar_motion > 0) {
+    client.println("status-ok'>Wykryto</span></div>");
+  } else {
+    client.println("'>Brak</span></div>");
+  }
+  client.print("<div class='metric'><span class='metric-label'>Sieć:</span>");
+  client.print("<span class='metric-value ");
+  if (Ethernet.linkStatus() == LinkON) {
+    client.println("status-ok'>Połączono</span></div>");
+  } else {
+    client.println("status-error'>Rozłączono</span></div>");
+  }
+  client.print("<div class='metric'><span class='metric-label'>Uptime:</span>");
+  client.print("<span class='metric-value'>");
+  client.print(millis() / 1000);
+  client.println(" <span class='unit'>s</span></span></div>");
+  client.println("</div>");
+  
+  client.println("</div>");  // End grid
+  
+  // Panel Sterowania
+  client.println("<div class='control-panel'>");
+  client.println("<div class='control-group'><h2>🎛️ Panel Sterowania</h2>");
+  
+  // Grzałka
+  client.println("<div style='margin-bottom:15px'>");
+  client.println("<label>Grzałka PWM: </label>");
+  client.print("<form method='GET' action='/control' style='display:inline'>");
+  client.println("<input type='range' name='heater' min='0' max='255' value='");
+  client.print(actuatorCmd.heater_pwm);
+  client.println("' onchange='this.form.submit()'>");
+  client.print("<span id='heaterVal'>");
+  client.print(actuatorCmd.heater_pwm);
+  client.println("</span></form></div>");
+  
+  // Wentylator
+  client.println("<div style='margin-bottom:15px'>");
+  client.println("<label>Wentylator PWM: </label>");
+  client.print("<form method='GET' action='/control' style='display:inline'>");
+  client.println("<input type='range' name='fan' min='0' max='255' value='");
+  client.print(actuatorCmd.fan_pwm);
+  client.println("' onchange='this.form.submit()'>");
+  client.print("<span id='fanVal'>");
+  client.print(actuatorCmd.fan_pwm);
+  client.println("</span></form></div>");
+  
+  // Pompa
+  client.println("<div style='margin-bottom:15px'>");
+  client.println("<label>Pompa: </label>");
+  client.print("<form method='GET' action='/control' style='display:inline'>");
+  client.println("<button type='submit' name='pump' value='5'>5s</button>");
+  client.println("<button type='submit' name='pump' value='10'>10s</button>");
+  client.println("<button type='submit' name='pump' value='30'>30s</button>");
+  client.println("</form></div>");
+  
+  // Zawór
+  client.println("<div style='margin-bottom:15px'>");
+  client.println("<label>Zawór: </label>");
+  client.print("<form method='GET' action='/control' style='display:inline'>");
+  if (actuatorCmd.valve_state == 0) {
+    client.println("<button type='submit' name='valve' value='1' style='background:#e74c3c'>WŁĄCZ</button>");
+  } else {
+    client.println("<button type='submit' name='valve' value='0' class='active'>WYŁĄCZ</button>");
+  }
+  client.println("</form></div>");
+  
+  // Przekaźniki
+  client.println("<div style='margin-bottom:15px'>");
+  client.println("<label>Przekaźniki: </label>");
+  client.print("<form method='GET' action='/control' style='display:inline'>");
+  client.print("<button type='submit' name='relay1' value='");
+  client.println((actuatorCmd.relay_mask & 0x01) ? "0" : "1");
+  client.print("'>Relay 1: ");
+  client.println((actuatorCmd.relay_mask & 0x01) ? "ON" : "OFF");
+  client.print("</button><button type='submit' name='relay2' value='");
+  client.println((actuatorCmd.relay_mask & 0x02) ? "0" : "2");
+  client.print("'>Relay 2: ");
+  client.println((actuatorCmd.relay_mask & 0x02) ? "ON" : "OFF");
+  client.println("</button></form></div>");
+  
+  client.println("</div></div>");  // End control-panel and control-group
+  
+  // Footer
+  client.println("<div class='footer'>");
+  client.println("<p>ApiaryGuard v1.0 | Odświeżanie: 5s | <a href='/api' target='_blank'>API JSON</a></p>");
+  client.println("</div>");
+  
+  client.println("</div></body></html>");
+}
+
+/**
+ * Wysyłka danych w formacie JSON (API)
+ */
+void sendJSONData(EthernetClient &client) {
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: application/json");
+  client.println("Connection: close");
+  client.println();
+  
+  client.println("{");
+  client.print("  \"timestamp\": ");
+  client.println(currentData.timestamp);
+  client.print("  \"weight_kg\": ");
+  client.println(currentData.weight_kg, 2);
+  client.print("  \"temperature_c\": ");
+  client.println(currentData.temperature_c, 1);
+  client.print("  \"humidity_percent\": ");
+  client.println(currentData.humidity_percent, 1);
+  client.print("  \"audio_rms\": ");
+  client.println(currentData.audio_rms);
+  client.print("  \"piezo_activity\": ");
+  client.println(currentData.piezo_activity);
+  client.print("  \"co2_ppm\": ");
+  client.println(currentData.co2_ppm);
+  client.print("  \"tvoc_ppb\": ");
+  client.println(currentData.tvoc_ppb);
+  client.print("  \"radar_motion\": ");
+  client.println(currentData.radar_motion);
+  client.print("  \"network_connected\": ");
+  client.println((Ethernet.linkStatus() == LinkON) ? "true" : "false");
+  client.print("  \"uptime_seconds\": ");
+  client.println(millis() / 1000);
+  client.print("  \"heater_pwm\": ");
+  client.println(actuatorCmd.heater_pwm);
+  client.print("  \"fan_pwm\": ");
+  client.println(actuatorCmd.fan_pwm);
+  client.print("  \"valve_state\": ");
+  client.println(actuatorCmd.valve_state);
+  client.print("  \"relay_mask\": ");
+  client.println(actuatorCmd.relay_mask);
+  client.println("}");
+}
+
+/**
+ * Obsługa komend sterujących z GUI
+ */
+void handleControlCommand(String params) {
+  // Parsowanie parametrów URL
+  if (params.indexOf("heater=") >= 0) {
+    int start = params.indexOf("heater=") + 7;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    actuatorCmd.heater_pwm = constrain(val.toInt(), 0, 255);
+    Serial.print("Heater PWM: ");
+    Serial.println(actuatorCmd.heater_pwm);
+  }
+  
+  if (params.indexOf("fan=") >= 0) {
+    int start = params.indexOf("fan=") + 4;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    actuatorCmd.fan_pwm = constrain(val.toInt(), 0, 255);
+    Serial.print("Fan PWM: ");
+    Serial.println(actuatorCmd.fan_pwm);
+  }
+  
+  if (params.indexOf("pump=") >= 0) {
+    int start = params.indexOf("pump=") + 5;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    actuatorCmd.pump_duration = constrain(val.toInt(), 0, 60);
+    Serial.print("Pump duration: ");
+    Serial.print(actuatorCmd.pump_duration);
+    Serial.println("s");
+  }
+  
+  if (params.indexOf("valve=") >= 0) {
+    int start = params.indexOf("valve=") + 6;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    actuatorCmd.valve_state = val.toInt();
+    Serial.print("Valve: ");
+    Serial.println(actuatorCmd.valve_state ? "ON" : "OFF");
+  }
+  
+  if (params.indexOf("relay1=") >= 0) {
+    int start = params.indexOf("relay1=") + 7;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    if (val.toInt() == 1) {
+      actuatorCmd.relay_mask |= 0x01;
+    } else {
+      actuatorCmd.relay_mask &= ~0x01;
+    }
+    Serial.print("Relay 1: ");
+    Serial.println((actuatorCmd.relay_mask & 0x01) ? "ON" : "OFF");
+  }
+  
+  if (params.indexOf("relay2=") >= 0) {
+    int start = params.indexOf("relay2=") + 7;
+    int end = params.indexOf("&", start);
+    if (end < 0) end = params.length();
+    String val = params.substring(start, end);
+    if (val.toInt() == 2) {
+      actuatorCmd.relay_mask |= 0x02;
+    } else {
+      actuatorCmd.relay_mask &= ~0x02;
+    }
+    Serial.print("Relay 2: ");
+    Serial.println((actuatorCmd.relay_mask & 0x02) ? "ON" : "OFF");
+  }
 }
 
 /**
