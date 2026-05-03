@@ -130,8 +130,9 @@ public:
 
     // Parsowanie i przetwarzanie danych
     void processData(const std::string& raw_data, const std::string& source_ip) {
-        // Format oczekiwany od Pico: ID,HUM,TEMP,WEIGHT,BAT
-        // Przykład: "UL-1,65.5,24.3,45.2,98"
+        // Format oczekiwany od Pico: ID,TEMP,HUM,WEIGHT,BAT,TIMESTAMP
+        // Przykład: "UL-1,24.5,65.2,45.3,98,1234567890"
+        // UWAGA: Kolejność TEMP,HUM została zmieniona aby pasowała do Pico
         
         std::stringstream ss(raw_data);
         std::string segment;
@@ -148,8 +149,8 @@ public:
 
         try {
             std::string hive_id = parts[0];
-            float humidity = std::stof(parts[1]);
-            float temp = std::stof(parts[2]);
+            float temp = std::stof(parts[1]);      // TEMP - zmiana kolejności
+            float humidity = std::stof(parts[2]);  // HUM - zmiana kolejności
             float weight = std::stof(parts[3]);
             int battery = std::stoi(parts[4]);
             long long now = std::time(nullptr);

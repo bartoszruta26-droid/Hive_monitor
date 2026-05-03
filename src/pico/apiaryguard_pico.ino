@@ -111,6 +111,7 @@
 
 #include <SPI.h>
 #include <Ethernet.h>
+#include <EthernetUdp.h>
 #include <Wire.h>
 #include <DHT.h>
 #include <Adafruit_SGP41.h>
@@ -121,7 +122,10 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 177); // Statyczne IP dla Pico
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-EthernetServer server(8080); // Port nasłuchiwania
+IPAddress rpi_ip(192, 168, 1, 100); // IP Raspberry Pi - odbiorca danych UDP
+EthernetServer server(8080); // Port nasłuchiwania HTTP
+EthernetUDP udp; // Klient UDP do wysyłania danych do RPi
+const int UDP_PORT = 5005; // Port UDP na Raspberry Pi
 
 // --- DEFINICJE PINÓW PICO ---
 #define W6100_CS   9
@@ -1031,10 +1035,40 @@ void initW6100() {
   if (Ethernet.begin(mac, ip, gateway, subnet)) {
     Serial.println("W6100 połączono. IP: " + Ethernet.localIP().toString());
     server.begin();
+    udp.begin(random(1024, 65535)); // Losowy port źródłowy dla UDP
+    Serial.println("UDP zainicjalizowany. Wysyłanie danych do: " + rpi_ip.toString() + ":" + String(UDP_PORT));
   } else {
     Serial.println("Błąd konfiguracji W6100!");
     while(true); // Zatrzymaj jeśli brak łącza
   }
+}
+
+// Wysyłanie danych sensorów przez UDP do Raspberry Pi
+void sendUdpDataToRpi() {
+  // Format: HIVE_ID,TEMP,HUM,WEIGHT,BAT,TIMESTAMP
+  // Przykład: "UL-1,24.5,65.2,45.3,98,1234567890"
+  
+  char packetBuffer[128];
+  long timestamp = millis() / 1000;
+  
+  // Oblicz wagę w kg (przybliżenie)
+  float weight_kg = (float)hx711_value / 1000.0f;
+  
+  // Zakładamy stały poziom baterii (można rozszerzyć o monitoring napięcia)
+  int battery_level = 95;
+  
+  snprintf(packetBuffer, sizeof(packetBuffer), 
+           "UL-1,%.1f,%.1f,%.3f,%d,%ld",
+           temperature, humidity, weight_kg, battery_level, timestamp);
+  
+  Serial.print("[UDP] Wysyłanie: ");
+  Serial.println(packetBuffer);
+  
+  udp.beginPacket(rpi_ip, UDP_PORT);
+  udp.write((uint8_t*)packetBuffer, strlen(packetBuffer));
+  udp.endPacket();
+  
+  Serial.println("[UDP] Wysłano do RPi");
 }
 
 // Obsługa HX711 (Bit-bang dla Pico)
@@ -4345,10 +4379,17 @@ void loop() {
     client.stop();
   }
   
-  // 3. Heartbeat sieciowy (opcjonalne pingi)
+  // 3. Wysyłanie danych UDP do Raspberry Pi (co 5 sekund)
+  static unsigned long lastUdpSend = 0;
+  if(now - lastUdpSend > 5000) {
+    lastUdpSend = now;
+    sendUdpDataToRpi();
+  }
+  
+  // Heartbeat sieciowy (opcjonalne pingi)
   if(now - networkHeartbeat > 10000) {
     networkHeartbeat = now;
-    // Tu można dodać wysyłanie danych do serwera centralnego przez TCP/UDP
+    Serial.println(\"[NETWORK] Heartbeat - system aktywny\");
   }
   
   // 4. Logika sterowania (przykład)
