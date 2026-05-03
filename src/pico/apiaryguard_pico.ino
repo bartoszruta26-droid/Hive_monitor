@@ -454,6 +454,29 @@ TrendAnalysis calculateTrend(const uint8_t window_size) {
     // Nachylenie trendu (regresja liniowa)
     result.slope = calculateLinearRegressionSlope(time_indices, energies, result.sample_count);
     
+    // Obliczanie współczynnika korelacji (Pearson correlation coefficient)
+    float sum_x = 0.0f, sum_y = 0.0f, sum_xy = 0.0f, sum_xx = 0.0f, sum_yy = 0.0f;
+    for (uint8_t i = 0; i < result.sample_count; i++) {
+        sum_x += time_indices[i];
+        sum_y += energies[i];
+        sum_xy += time_indices[i] * energies[i];
+        sum_xx += time_indices[i] * time_indices[i];
+        sum_yy += energies[i] * energies[i];
+    }
+    
+    float numerator = result.sample_count * sum_xy - sum_x * sum_y;
+    float denominator_x = result.sample_count * sum_xx - sum_x * sum_x;
+    float denominator_y = result.sample_count * sum_yy - sum_y * sum_y;
+    
+    if (denominator_x > 0.0f && denominator_y > 0.0f) {
+        result.correlation = numerator / sqrt(denominator_x * denominator_y);
+        // Clamp correlation to [-1, 1] range to handle floating point errors
+        if (result.correlation > 1.0f) result.correlation = 1.0f;
+        if (result.correlation < -1.0f) result.correlation = -1.0f;
+    } else {
+        result.correlation = 0.0f;
+    }
+    
     return result;
 }
 
@@ -819,7 +842,13 @@ void calculateRadarMetrics(RadarMetrics& metrics, const uint8_t window_size) {
     // === PARAMETRY TEMPORALNE ===
     metrics.activity_ratio = (float)active_frames / valid_samples * 100.0f;
     metrics.idle_time_percent = 100.0f - metrics.activity_ratio;
-    metrics.motion_intensity = metrics.mean_energy * (sum_speed / valid_samples);
+    
+    // Use absolute motion for motion intensity to avoid cancellation from opposite directions
+    float sum_abs_speed = 0.0f;
+    for (uint8_t i = 0; i < valid_samples; i++) {
+        sum_abs_speed += abs(speeds[i]);
+    }
+    metrics.motion_intensity = metrics.mean_energy * (sum_abs_speed / valid_samples);
     
     // === PARAMETRY CZĘSTOTLIWOŚCIOWE ===
     uint16_t sum_targets = 0;
