@@ -164,18 +164,20 @@ Adafruit_SGP41 sgp;
 HardwareSerial radarSerial(uart1); // UART1 dla radaru
 
 // Zmienne dla HX711 (prosta implementacja bit-bang)
-long hx711_value = 0;
-long hx711_offset = 0;
-float hx711_scale = 1.0;
+// UWAGA: hx711_offset i hx711_scale są używane do kalibracji wagi
+// Wartości powinny być ustawiane podczas kalibracji (obecnie wartości domyślne)
+long hx711_value = 0;           // Aktualna wartość z wagi (po przeliczeniu)
+const long hx711_offset = 0;    // Offset kalibracyjny (tare) - do ustawienia podczas kalibracji
+const float hx711_scale = 1.0f; // Współczynnik skalowania - do ustawienia podczas kalibracji
 
-// Zmienne sensorów
-float temperature = 0.0;
-float humidity = 0.0;
-uint16_t co2_eq = 0;
-uint16_t voc_idx = 0;
-float audio_rms = 0.0;
-// vibration_level usunięte - dane z piezo są przetwarzane przez currentPiezoMetrics
-bool motion_detected = false;
+// Zmienne sensorów - główne wskaźniki stanu
+float temperature = 0.0f;       // Temperatura z DHT22/SHT40 [°C]
+float humidity = 0.0f;          // Wilgotność względna z DHT22/SHT40 [%RH]
+uint16_t co2_eq = 0;            // Równoważne CO2 z SGP41 [ppm]
+uint16_t voc_idx = 0;           // Indeks VOC z SGP41 [index]
+// UWAGA: audio_rms usunięte - dane dostępne w currentAudioMetrics.rms_amplitude
+// UWAGA: motion_detected usunięte - dane dostępne w currentRadarMetrics.activity_ratio
+bool motion_detected = false;   // Flaga wykrycia ruchu z radaru (tymczasowo zachowana dla kompatybilności)
 
 // ============================================================================
 // MODUŁ PROFESJONALNEJ ANALIZY DŹWIĘKU - STRUKTURY DANYCH

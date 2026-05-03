@@ -2,18 +2,16 @@
 # Compiled and build artifacts
 *.o
 *.obj
+*.elf
 *.hex
 *.bin
-*.elf
-*.map
-*.lst
-*.sym
-*.lss
+*.out
 
 # Dependencies
 .pio/
-.pioenvs/
-.piolibdeps/
+.platformio/
+lib/
+src/lib/
 
 # Logs and temp files
 *.log
