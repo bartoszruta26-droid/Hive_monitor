@@ -2,10 +2,9 @@
 
 ![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%202%20%7C%20Arduino%20Nano-orange.svg)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%202%20%7C%20Raspberry%20Pi%20Pico-orange.svg)
 ![Connectivity](https://img.shields.io/badge/connectivity-LTE%20(Aero2)%20%7C%20Ethernet%20PoE-red.svg)
-![AI Core](https://img.shields.io/badge/AI-Qwen%20Agent%20Integrated-purple.svg)
-![No Python](https://img.shields.io/badge/code-C%23%20%7C%20C%2B%2B%20%7C%20Bash-yellow.svg)
+![No Python](https://img.shields.io/badge/code-C%2B%2B%20%7C%20Bash-yellow.svg)
 
 ## 📖 Spis Treści
 
@@ -15,29 +14,28 @@
 4. [Hierarchia Plików i Katalogów](#4-hierarchia-plików-i-katalogów)
 5. [Szczegółowy Opis Modułów Sprzętowych](#5-szczegółowy-opis-modułów-sprzętowych)
 6. [Oprogramowanie Układowe (Firmware C++)](#6-oprogramowanie-układowe-firmware-c)
-7. [Backend Serwerowy (C# .NET + Apache2)](#7-backend-serwerowy-c-net--apache2)
+7. [Backend Serwerowy (Bash + Apache2)](#7-backend-serwerowy-bash--apache2)
 8. [Skrypty Automatyzujące (Bash)](#8-skrypty-automatyzujące-bash)
-9. [Integracja Sztucznej Inteligencji: Qwen Agent](#9-integracja-sztucznej-inteligencji-qwen-agent)
-10. [Moduł Wizyjny: Kamera PoE i Analiza Obrazu](#10-moduł-wizyjny-kamera-poe-i-analiza-obrazu)
-11. [Bezpieczeństwo i Niezawodność](#11-bezpieczeństwo-i-niezawodność)
-12. [Instalacja i Konfiguracja](#12-instalacja-i-konfiguracja)
-13. [API i Integracje](#13-api-i-integracje)
-14. [Harmonogram Konserwacji i Troubleshooting](#14-harmonogram-konserwacji-i-troubleshooting)
-15. [Roadmap Rozwoju](#15-roadmap-rozwoju)
+9. [Moduł Wizyjny: Kamera PoE i Analiza Obrazu](#9-moduł-wizyjny-kamera-poe-i-analiza-obrazu)
+10. [Bezpieczeństwo i Niezawodność](#10-bezpieczeństwo-i-niezawodność)
+11. [Instalacja i Konfiguracja](#11-instalacja-i-konfiguracja)
+12. [API i Integracje](#12-api-i-integracje)
+13. [Harmonogram Konserwacji i Troubleshooting](#13-harmonogram-konserwacji-i-troubleshooting)
+14. [Roadmap Rozwoju](#14-roadmap-rozwoju)
 
 ---
 
 ## 1. Wstęp i Opis Projektu
 
-**ApiaryGuard Pro** to zaawansowany, skalowalny system monitoringu i zarządzania pasieką klasy enterprise, zaprojektowany do pracy w trudnych warunkach terenowych. System pozwala na centralną obsługę **wielu uli** (multi-hive) za pośrednictwem jednego serwera Apache2 hostowanego na Raspberry Pi 2, który komunikuje się z rozproszonymi jednostkami końcowymi opartymi o mikrokontrolery Arduino Nano.
+**ApiaryGuard Pro** to zaawansowany, skalowalny system monitoringu i zarządzania pasieką klasy enterprise, zaprojektowany do pracy w trudnych warunkach terenowych. System pozwala na centralną obsługę **wielu uli** (multi-hive) za pośrednictwem jednego serwera Apache2 hostowanego na Raspberry Pi 2, który komunikuje się przez HTTP API z rozproszonymi jednostkami końcowymi opartymi o mikrokontrolery **Raspberry Pi Pico**.
 
 ### Kluczowe Założenia Projektowe:
 *   **Multi-Tenancy:** Jeden serwer zbiera dane z dziesiątek uli, identyfikując każdą jednostkę po unikalnym ID sprzętowym.
 *   **Connectivity:** Hybrydowa łączność wykorzystująca darmową sieć LTE **Aero2** (SIM free) jako główny kanał transmisji danych zdalnych oraz Ethernet PoE dla lokalnej komunikacji wysokiej przepustowości (kamery, aktualizacje).
-*   **Stack Technologiczny:** Ścisłe przestrzeganie zakazu używania Pythona. Cały stack oparty jest o wydajne języki kompilowane: **C++** (firmware Arduino), **C#** (.NET Core backend logic), **Bash** (skrypty systemowe Linux) oraz **SQL** (bazy danych).
+*   **Stack Technologiczny:** Ścisłe przestrzeganie zakazu używania Pythona. Cały stack oparty jest o wydajne języki kompilowane: **C++** (firmware Raspberry Pi Pico), **Bash** (skrypty systemowe Linux, TUI/GUI na Raspberry Pi 2) oraz **SQL** (bazy danych).
 *   **Zaawansowana Diagnostyka:** Pełny zestaw sensorów biometrycznych ula (waga, dźwięk, wibracje, temperatura, wilgotność) wsparty aktywnymi efektorami (grzanie, wentylacja, podawanie leków).
 *   **Monitoring Wizyjny:** Zintegrowana kamera PoE wykonująca zdjęcia co 60 sekund w celu analizy aktywności wylotowej i wykrywania intruzów.
-*   **AI-Driven:** Rdzeń decyzyjny oparty o agenta **Qwen AI**, zapewniający predykcję rójki, diagnozę chorób i autonomiczne reakcje.
+*   **Architektura:** Raspberry Pi 2 posiada GUI/TUI i komunikuje się przez HTTP API z Raspberry Pi Pico w każdym ulu.
 
 ---
 
@@ -73,7 +71,7 @@
 └───────────────┘   └─────────────────┘   └───────────────┘
                               │
                     ┌─────────▼─────────┐
-                    │   Arduino Nano    │
+                    │ Raspberry Pi Pico │
                     │   (Slave Device)  │
                     │   - Sensor Hub    │
                     │   - Actuator Ctrl │
@@ -100,7 +98,7 @@
 - Odporność na wilgotność, temperaturę, wibracje
 
 #### Warstwa 2: Sterowania (Control Layer)
-- Arduino Nano jako lokalny kontroler
+- Raspberry Pi Pico jako lokalny kontroler
 - Real-time processing sygnałów
 - PWM sterowanie efektorem
 - Watchdog i safe-mode
@@ -134,17 +132,17 @@
 | Power | 5V/2A microUSB lub PoE przez HAT |
 | OS | Raspberry Pi OS Lite (64-bit) |
 
-### Mikrokontroler: Arduino Nano V3.0
+### Mikrokontroler: Raspberry Pi Pico (RP2040)
 
 | Parametr | Specyfikacja |
 |----------|-------------|
-| MCU | ATmega328P @ 16 MHz |
-| Flash | 32 KB (2 KB bootloader) |
-| SRAM | 2 KB |
-| EEPROM | 1 KB |
-| ADC | 6x 10-bit |
+| MCU | RP2040 Dual-Core ARM Cortex-M0+ @ 133 MHz |
+| Flash | 2MB (zewnętrzny QSPI) |
+| SRAM | 264 KB |
+| ADC | 3x 12-bit |
 | Communication | UART, I2C, SPI |
-| Power | 5V (USB lub VIN 7-12V) |
+| Power | 5V (USB-C lub VSYS 1.8-5.5V) |
+| WiFi | Tak (w modelu Pico W) |
 
 ### Moduł Łączności: LTE USB Dongle (Aero2)
 
@@ -250,15 +248,14 @@
   - Dokumentacja fotograficzna dla ML
   - Walidacja innych sensorów
 
-##### d) Upgrade Mikrokontrolera: ESP32-WROOM-32 / Raspberry Pi Pico W
-- **Problem Arduino Nano**: Za mało RAM (2KB) i Flash (32KB) dla nowych sensorów
-- **ESP32**: Dual-core 240MHz, 520KB SRAM, WiFi+BT, 18x ADC
-- **Pico W**: RP2040 dual-core, 264KB SRAM, WiFi, MicroPython/C++
-- **UZASADNIENIE**: Arduino niewystarczające dla:
+##### d) Upgrade Mikrokontrolera: Raspberry Pi Pico / Pico W
+- **Wybrany mikrokontroler**: Raspberry Pi Pico (RP2040) - dual-core 133MHz, 264KB SRAM, 2MB Flash
+- **Pico W**: Dodatkowy moduł WiFi dla lokalnej komunikacji bezprzewodowej
+- **UZASADNIENIE**: Arduino Nano było niewystarczające dla:
   - FFT audio w czasie rzeczywistym
   - Wielu sensorów I2C jednocześnie
-  - Edge AI inference
-  - WiFi dla lokalnego dashboardu
+  - Większej pamięci na buffering danych sensorycznych
+  - WiFi dla lokalnego dashboardu (w modelu Pico W)
 
 ##### e) EMF Shield Protection
 - **Problem**: Radary MMWave, WiFi, LTE generują pole elektromagnetyczne
@@ -421,9 +418,9 @@
 │       └── sensor_fusion_algorithms.md
 │
 ├── hardware/                           # Projekty sprzętowe
-│   ├── arduino_nano/                   # Firmware Arduino Nano
+│   ├── pico/                           # Firmware Raspberry Pi Pico
 │   │   ├── src/
-│   │   │   ├── main.cpp                # Główna pętla Arduino
+│   │   │   ├── main.cpp                # Główna pętla Pico
 │   │   │   ├── sensors/
 │   │   │   │   ├── hx711_driver.cpp    # Sterowanie wagą
 │   │   │   │   ├── microphone_adc.cpp  # Akwizycja audio
@@ -436,18 +433,18 @@
 │   │   │   │   ├── dispenser_pump.cpp  # Dozowanie leków
 │   │   │   │   └── valve_control.cpp   # Zawory elektromagnetyczne
 │   │   │   ├── communication/
-│   │   │   │   ├── i2c_slave.cpp       # I2C komunikacja z RPi
-│   │   │   │   ├── uart_protocol.cpp   # Protokół szeregowy
-│   │   │   │   └── message_queue.cpp   # Kolejka wiadomości
+│   │   │   │   ├── http_server.cpp     # HTTP Server dla RPi
+│   │   │   │   ├── ethernet_w6100.cpp  # Obsługa W6100 Ethernet
+│   │   │   │   └── api_endpoints.cpp   # Endpointy API
 │   │   │   ├── utils/
 │   │   │   │   ├── watchdog.cpp        # Watchdog timer
 │   │   │   │   ├── eeprom_storage.cpp  # Persistent storage
 │   │   │   │   └── calibration.cpp     # Procedury kalibracji
 │   │   │   └── config/
-│   │   │       ├── pin_definitions.h   # Mapowanie pinów
+│   │   │       ├── pin_definitions.h   # Mapowanie pinów Pico
 │   │   │       ├── constants.h         # Stałe systemowe
 │   │   │       └── thresholds.h        # Progi alarmowe
-│   │   ├── lib/                        # Biblioteki Arduino
+│   │   ├── lib/                        # Biblioteki Pico
 │   │   │   ├── HX711/
 │   │   │   ├── DHT-sensor-library/
 │   │   │   └── PID-AutoTune/
@@ -456,7 +453,7 @@
 │   │
 │   ├── raspberry_pi/                   # Oprogramowanie Raspberry Pi
 │   │   ├── src/
-│   │   │   ├── CSharp/                 # Główne aplikacje C# (.NET Core)
+│   │   │   ├── Bash/                   # Główne skrypty Bash
 │   │   │   │   ├── ApiaryGuard.Core/
 │   │   │   │   │   ├── ApiaryGuard.Core.csproj
 │   │   │   │   │   ├── Models/
