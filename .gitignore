@@ -2,16 +2,17 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.elf
-*.hex
-*.bin
 *.out
+build/
+dist/
 
 # Dependencies
-.pio/
-.platformio/
-lib/
-src/lib/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs and temp files
 *.log
@@ -21,7 +22,7 @@ src/lib/
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -29,9 +30,20 @@ src/lib/
 *.swp
 *.swo
 
-# Build outputs
-build/
-dist/
-release/
-debug/
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# Gradle
+.gradle/
+
+# Target (Rust, etc.)
+target/
 ```
