@@ -333,50 +333,181 @@ namespace ApiaryGuard.Worker.Workers
 
 ### Moduły C++ (High-Performance Processing)
 
-#### FFT Audio Analyzer
+#### FFT Audio Analyzer (256-point Cooley-Tukey)
 
 ```cpp
-// fft_analyzer.cpp
+// fft_analyzer.cpp - Implementacja na Raspberry Pi Pico
 #include "fft_analyzer.hpp"
-#include <fftw3.h>
-#include <complex>
+#include <cmath>
 #include <vector>
 
 namespace ApiaryGuard {
 namespace SignalProcessing {
 
+// Struktura przechowująca 47 parametrów akustycznych
+struct AudioMetrics {
+    // Parametry czasowe i amplitudowe (7)
+    float rms_amplitude;
+    float peak_amplitude;
+    float peak_to_peak;
+    float zero_crossing_rate;
+    float signal_energy;
+    float crest_factor;
+    float average_amplitude;
+    
+    // Parametry statystyczne (6)
+    float mean_value;
+    float std_deviation;
+    float skewness;
+    float kurtosis;
+    float coefficient_of_variation;
+    float dynamic_range;
+    
+    // Parametry częstotliwościowe (8)
+    float dominant_frequency;
+    float spectral_centroid;
+    float spectral_bandwidth;
+    float spectral_flatness;
+    float spectral_rolloff;
+    float spectral_entropy;
+    float harmonic_to_noise_ratio;
+    float autocorrelation_peak;
+    
+    // Moc w pasmach (5)
+    float power_low_freq;
+    float power_bee_band;
+    float power_swarm_band;
+    float power_mid_freq;
+    float power_high_freq;
+    
+    // Wskaźniki klasyfikacji (4)
+    float bee_activity_index;
+    float swarm_probability;
+    float stress_indicator;
+    float hive_health_audio;
+    
+    // Formanty i jakość dźwięku (8)
+    float formant_f1, formant_f2, formant_f3;
+    float brightness;
+    float roughness;
+    float sharpness;
+    float tonality;
+    float prominence_ratio;
+    
+    // Cechy temporalne (5)
+    float attack_time;
+    float decay_time;
+    float temporal_centroid;
+    float silence_ratio;
+    float modulation_index;
+    
+    // Parametry psychoakustyczne (4)
+    float loudness;
+    float roughness_fast;
+    float spectral_decrease;
+    float irregularity;
+};
+
 class FFTAnalyzer {
 private:
-    int sampleSize;
-    fftw_complex* fftOutput;
-    fftw_plan fftPlan;
-    double* inputBuffer;
+    static const int FFT_SIZE = 256;
+    float fft_real[FFT_SIZE];
+    float fft_imag[FFT_SIZE];
+    float spectrum[FFT_SIZE / 2];
     
-public:
-    FFTAnalyzer(int size) : sampleSize(size) {
-        inputBuffer = (double*)fftw_malloc(sizeof(double) * size);
-        fftOutput = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * (size/2 + 1));
-        fftPlan = fftw_plan_dft_r2c_1d(size, inputBuffer, fftOutput, FFTW_ESTIMATE);
-    }
-    
-    ~FFTAnalyzer() {
-        fftw_destroy_plan(fftPlan);
-        fftw_free(inputBuffer);
-        fftw_free(fftOutput);
-    }
-    
-    std::vector<FrequencyPeak> analyze(const std::vector<float>& audioSamples) {
-        // Copy samples to input buffer
-        for (int i = 0; i < sampleSize && i < audioSamples.size(); ++i) {
-            inputBuffer[i] = audioSamples[i];
+    // Pełna implementacja Cooley-Tukey radix-2 FFT
+    void performFFT(int16_t* input, int size) {
+        // Inicjalizacja buforów
+        for (int i = 0; i < size; i++) {
+            fft_real[i] = (float)input[i] / 2048.0f;
+            fft_imag[i] = 0.0f;
         }
         
-        // Execute FFT
-        fftw_execute(fftPlan);
+        // Bit-reversal permutation
+        int j = 0;
+        for (int i = 0; i < size; i++) {
+            if (i < j) {
+                float temp_re = fft_real[i];
+                float temp_im = fft_imag[i];
+                fft_real[i] = fft_real[j];
+                fft_imag[i] = fft_imag[j];
+                fft_real[j] = temp_re;
+                fft_imag[j] = temp_im;
+            }
+            
+            int k = size >> 1;
+            while (k <= j) {
+                j -= k;
+                k >>= 1;
+            }
+            j += k;
+        }
         
-        // Extract frequency peaks
-        std::vector<FrequencyPeak> peaks;
-        double sampleRate = 8000.0; // 8kHz
+        // Butterfly operations z pełną mnożeniem zespolonym
+        for (int len = 2; len <= size; len <<= 1) {
+            float angle = -2.0f * PI / len;
+            float w_re = cosf(angle);
+            float w_im = sinf(angle);
+            
+            for (int i = 0; i < size; i += len) {
+                float cur_w_re = 1.0f;
+                float cur_w_im = 0.0f;
+                
+                for (int k = 0; k < len / 2; k++) {
+                    int u = i + k;
+                    int v = i + k + len / 2;
+                    
+                    // Pełne mnożenie zespolone
+                    float t_re = fft_real[v] * cur_w_re - fft_imag[v] * cur_w_im;
+                    float t_im = fft_real[v] * cur_w_im + fft_imag[v] * cur_w_re;
+                    
+                    fft_real[v] = fft_real[u] - t_re;
+                    fft_imag[v] = fft_imag[u] - t_im;
+                    fft_real[u] = fft_real[u] + t_re;
+                    fft_imag[u] = fft_imag[u] + t_im;
+                    
+                    // Aktualizacja twiddle factor
+                    float temp = cur_w_re * w_re - cur_w_im * w_im;
+                    cur_w_im = cur_w_re * w_im + cur_w_im * w_re;
+                    cur_w_re = temp;
+                }
+            }
+        }
+        
+        // Obliczenie modułów widma
+        for (int i = 0; i < size / 2; i++) {
+            spectrum[i] = sqrtf(fft_real[i] * fft_real[i] + 
+                               fft_imag[i] * fft_imag[i]);
+        }
+    }
+    
+public:
+    FFTAnalyzer() {
+        memset(fft_real, 0, sizeof(fft_real));
+        memset(fft_imag, 0, sizeof(fft_imag));
+        memset(spectrum, 0, sizeof(spectrum));
+    }
+    
+    AudioMetrics analyze(const std::vector<int16_t>& audioSamples) {
+        AudioMetrics metrics;
+        memset(&metrics, 0, sizeof(AudioMetrics));
+        
+        // Wykonanie FFT
+        performFFT((int16_t*)audioSamples.data(), FFT_SIZE);
+        
+        // Obliczenie wszystkich 47 parametrów
+        calculateTimeDomainMetrics(metrics, audioSamples);
+        calculateFrequencyDomainMetrics(metrics);
+        calculateStatisticalMetrics(metrics, audioSamples);
+        calculateClassificationMetrics(metrics);
+        
+        return metrics;
+    }
+};
+
+} // namespace SignalProcessing
+} // namespace ApiaryGuard
+```
         
         for (int i = 0; i < sampleSize/2; ++i) {
             double magnitude = sqrt(
