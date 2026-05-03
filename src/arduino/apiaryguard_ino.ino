@@ -32,6 +32,7 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <Wire.h>
+#include <math.h>  // Biblioteka matematyczna dla funkcji sqrt()
 
 // ============================================================================
 // KONFIGURACJA PINÓW
@@ -88,6 +89,11 @@ const uint16_t serverPort = 1883;
 // Web Server port
 EthernetServer webServer(80);
 
+// Debug flag - włącza/wyłącza szczegółowe logi
+#define DEBUG_WEB 1
+#define DEBUG_SENSORS 1
+#define DEBUG_NETWORK 1
+
 // ============================================================================
 // STRUKTURY DANYCH
 // ============================================================================
@@ -118,7 +124,7 @@ struct ActuatorCommand {
 // ============================================================================
 
 EthernetClient ethClient;
-EthernetClient webClient;
+// EthernetClient webClient;  // USUNIĘTE: nieużywana zmienna, webServer używa webServer.available()
 SensorData currentData;
 ActuatorCommand actuatorCmd;
 
@@ -368,26 +374,37 @@ void readAllSensors() {
   // TVOC
   currentData.tvoc_ppb = readTVOC();
   
-  // Radar motion
+  // Radar motion - detekcja ruchu z radaru MMWave
   currentData.radar_motion = readRadarMotion();
-  
-  // Status flags
+
+  // Status flags - flagi statusu systemu
   currentData.status_flags = 0x00;
   if (Ethernet.linkStatus() == LinkON) {
-    currentData.status_flags |= 0x01;
+    currentData.status_flags |= 0x01;  // Bit 0: sieM-EM-^B aktywna
   }
-  
-  // Debug output
-  #ifdef DEBUG_SENSORS
-  Serial.print(F("Weight: "));
-  Serial.print(currentData.weight_kg);
+
+  // Debug output - szczegM-CM-3M-EM-^Bowe logi sensoryczne
+#ifdef DEBUG_SENSORS
+  Serial.print(F("[SENS] Weight: "));
+  Serial.print(currentData.weight_kg, 2);
   Serial.print(F(" kg, Temp: "));
-  Serial.print(currentData.temperature_c);
+  Serial.print(currentData.temperature_c, 1);
   Serial.print(F(" C, Hum: "));
-  Serial.print(currentData.humidity_percent);
-  Serial.println(F(" %"));
-  #endif
+  Serial.print(currentData.humidity_percent, 1);
+  Serial.print(F(" %"));
+  Serial.print(F(", Audio: "));
+  Serial.print(currentData.audio_rms);
+  Serial.print(F(", Piezo: "));
+  Serial.print(currentData.piezo_activity);
+  Serial.print(F(", CO2: "));
+  Serial.print(currentData.co2_ppm);
+  Serial.print(F(" ppm, TVOC: "));
+  Serial.print(currentData.tvoc_ppb);
+  Serial.print(F(" ppb, Radar: "));
+  Serial.println(currentData.radar_motion ? "DETECTED" : "NONE");
+#endif
 }
+
 
 /**
  * Odczyt wagi z HX711
@@ -726,41 +743,61 @@ void loadCalibration() {
 // ============================================================================
 
 /**
- * Obsługa klientów web servera
+ * Obsługa klientów web servera - główna pętla obsługi żądań HTTP
+ * Obsługuje: stronę główną GUI, API JSON, komendy sterujące
  */
 void handleWebClients() {
   EthernetClient client = webServer.available();
-  
+
   if (client) {
     boolean currentLineIsBlank = true;
     String httpRequest = "";
-    
+
+#ifdef DEBUG_WEB
+    Serial.println(F("[WEB] Nowe połączenie klienta HTTP"));
+#endif
+
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
         httpRequest += c;
-        
+
         if (c == '\n' && currentLineIsBlank) {
-          // Koniec nagłówka HTTP
+          // Koniec nagłówka HTTP - przetwarzaj żądanie
           
+#ifdef DEBUG_WEB
+          Serial.print(F("[WEB] Żądanie: "));
+          Serial.println(httpRequest.substring(0, httpRequest.indexOf('\r')));
+#endif
+
           // Sprawdź typ żądania
           if (httpRequest.indexOf("GET /api ") > 0) {
-            // Żądanie JSON API
+            // Żądanie JSON API - dane sensorów w formacie JSON
+#ifdef DEBUG_WEB
+            Serial.println(F("[WEB] Wysyłanie JSON API"));
+#endif
             sendJSONData(client);
           } else if (httpRequest.indexOf("GET /control?") > 0) {
-            // Żądanie sterowania
+            // Żądanie sterowania - parsuj parametry i wykonaj akcję
             int startIndex = httpRequest.indexOf("/control?");
             int endIndex = httpRequest.indexOf(" ", startIndex);
             String params = httpRequest.substring(startIndex + 9, endIndex);
+#ifdef DEBUG_WEB
+            Serial.print(F("[WEB] Komenda sterująca: "));
+            Serial.println(params);
+#endif
             handleControlCommand(params);
             sendWebPage(client);
           } else {
-            // Żądanie strony głównej
+            // Żądanie strony głównej - wyślij pełne GUI HTML
+#ifdef DEBUG_WEB
+            Serial.println(F("[WEB] Wysyłanie strony GUI"));
+#endif
             sendWebPage(client);
           }
           break;
         }
-        
+
         if (c == '\n') {
           currentLineIsBlank = true;
         } else if (c != '\r') {
@@ -768,9 +805,12 @@ void handleWebClients() {
         }
       }
     }
-    
+
     delay(1);
     client.stop();
+#ifdef DEBUG_WEB
+    Serial.println(F("[WEB] Połączenie zamknięte"));
+#endif
   }
 }
 
