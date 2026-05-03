@@ -4,6 +4,14 @@
 
 #### Wersja 2.5 (Q1 2025) - NOWE SENSORY I AKTUALIZACJA SPRZĘTU
 - [x] Integracja radaru MMWave GHz Human Presence Sensor (LD2410B/RCWL-9600)
+  - Parser protokołu z obsługą nagłówka `0xF4 0xF3 0xF2 0xF1`
+  - Bufor cyrkularny 120 pomiarów z bounds checking
+  - **27 parametrów analitycznych**: statystyki odległości, energii, dynamiki ruchu, trendów czasowych
+  - Wykrywanie anomalii metodą Z-score (próg 2.5σ)
+  - Detekcja zdarzeń: rojenie, atak drapieżnika, blokada wlotu, agregacja pszczół
+  - API HTTP: `/radar/status`, `/radar/params`, `/radar/anomalies`, `/radar/raw`
+  - Klasyfikacja pożytku: POZYTYWNY/NEGATYWNY/NORMALNY
+  - Indeks zdrowia ula (0-10) na podstawie aktywności radarowej
 - [x] Wielogazowy sensor CO2/VOC/NOx (SGP41/BME688)
 - [x] Upgrade mikrokontrolera: ESP32-WROOM-32 / Raspberry Pi Pico W
 - [x] Projekt mechaniczny obudowy IP66/IP67/IP68 z EMF shielding

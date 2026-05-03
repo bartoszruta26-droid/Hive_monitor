@@ -2,6 +2,116 @@
 
 ### REST API Endpoints
 
+#### Radar mmWave Endpoints (LD2410B)
+
+```http
+GET /radar/status
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "firmware_version": "2.5.0",
+  "uptime_seconds": 86400,
+  "radar_connected": true,
+  "buffer_size": 120,
+  "samples_collected": 4521
+}
+```
+
+```http
+GET /radar/params
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "distance_stats": {
+    "mean_cm": 45.3,
+    "median_cm": 44.8,
+    "std_dev_cm": 12.7,
+    "min_cm": 15.2,
+    "max_cm": 98.4,
+    "percentile_10_cm": 28.5,
+    "percentile_90_cm": 67.2
+  },
+  "energy_analysis": {
+    "total_energy": 1247.5,
+    "energy_density": 10.4,
+    "coefficient_of_variation": 0.34
+  },
+  "motion_dynamics": {
+    "estimated_velocity_cm_s": 23.5,
+    "acceleration_cm_s2": 4.2,
+    "swarm_liveness_index": 7.8
+  },
+  "temporal_trends": {
+    "trend_slope": 1.23,
+    "linear_regression_r2": 0.87,
+    "predicted_activity_5min": 8.2
+  },
+  "anomaly_detection": {
+    "zscore_max": 1.8,
+    "outliers_count": 2,
+    "anomaly_score": 0.15
+  },
+  "quality_indices": {
+    "hive_health_index": 8.5,
+    "forage_status": "POZYTYWNY",
+    "activity_level": "HIGH"
+  }
+}
+```
+
+```http
+GET /radar/anomalies
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "status": "POZYTYWNY",
+  "event_type": "INTENSYWNY_OBLOT",
+  "confidence": 0.92,
+  "hive_health_index": 8.5,
+  "anomaly_score": 0.1,
+  "details": {
+    "trend_slope": 1.2,
+    "energy_change_percent": 15.4,
+    "target_count_avg": 45,
+    "zscore_current": 1.8
+  },
+  "recent_events": [
+    {
+      "type": "NAGLY_WZROST_RUCHU",
+      "timestamp": "2024-01-15T10:25:00Z",
+      "severity": "LOW",
+      "description": "Wykryto nagły wzrost aktywności - powrót z pożytku"
+    }
+  ]
+}
+```
+
+```http
+GET /radar/raw?seconds=5
+Authorization: Bearer {token}
+
+Response:
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "samples": [
+    {
+      "timestamp": "2024-01-15T10:29:55Z",
+      "distance_cm": 45.2,
+      "energy": 127,
+      "speed_cm_s": 22.5,
+      "targets_count": 3
+    },
+    ...
+  ]
+}
+```
+
 #### Authentication
 ```http
 POST /api/auth/login

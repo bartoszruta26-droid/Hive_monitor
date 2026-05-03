@@ -75,21 +75,47 @@
 #### 5. Zaawansowane Czujniki Specjalistyczne (NEW)
 
 ##### a) Radar MMWave GHz Human Presence Sensor (np. LD2410B / RCWL-9600)
-- **Technologia**: FMCW radar 24GHz lub 60GHz z detekcją mikro-ruchów
+- **Technologia**: FMCW radar 24GHz z detekcją mikro-ruchów
 - **Zakres detekcji**: 0.2m - 8m, kąt 120°
-- **Precyzja**: Wykrywa ruchy rzędu milimetrów (oddech, bicie serca)
-- **Częstotliwość**: Continuous wave monitoring
+- **Precyzja**: Wykrywa ruchy rzędu milimetrów (oddech, bicie serca, machanie skrzydeł)
+- **Interfejs**: UART (115200 baud) podłączony do Raspberry Pi Pico
+- **Częstotliwość**: Continuous wave monitoring z analizą Dopplera
 - **Zastosowanie w ulu**:
-  - **Detekcja obecności pszczelarza**: Automatyczne logowanie wizyt serwisowych
-  - **Monitoring aktywności na wylotku**: Precyzyjny pomiar ruchu bez inwazji do wnętrza
-  - **Wykrywanie drapieżników**: Detekcja dużych obiektów (niedźwiedzie, kuny) przed ulem
+  - **Detekcja aktywności na wylotku**: Precyzyjny pomiar ruchu pszczół bez inwazji do wnętrza
+  - **Wykrywanie drapieżników**: Detekcja dużych obiektów (niedźwiedzie, kuny, osy) przed ulem
   - **Analiza wzorców wylotowych**: Liczenie pszczół wylatujących/wracających bez kontaktu fizycznego
+  - **Monitorowanie behawioru agregacji**: Wykrywanie grupowania się pszczół przed wlotem
+  - **Detekcja rojenia**: Rozpoznawanie charakterystycznych wzorców masowego wylotu
 - **UZASADNIENIE POTRZEBY**: Tradycyjne czujniki PIR nie wykrywają małych obiektów jak pszczoły. Radar MMWave umożliwia:
   - Monitorowanie bez ingerencji w strukturę ula (montaż zewnętrzny)
   - Detekcję nawet pojedynczych pszczół dzięki wysokiej częstotliwości
   - Pracę w całkowitej ciemności i przez ścianki ula (nieinwazyjne)
   - Pomiar odległości do obiektu - można określić czy pszczoła jest przy wylotku czy w locie
-- **EMF Shielding**: Wymagane ekranowanie kierunku wnętrza ula aby minimalizować promieniowanie RF wewnątrz gniazda
+  - Rozróżnienie kierunku ruchu (wylot vs wlot) dzięki efektowi Dopplera
+- **EMF Shielding**: Wymagane ekranowanie kierunku wnętrza ula (mu-metal) aby minimalizować promieniowanie RF wewnątrz gniazda
+- **Integracja z ApiaryGuard Pro**:
+  - Parser protokołu LD2410B z poprawną obsługą nagłówka `0xF4 0xF3 0xF2 0xF1`
+  - Zabezpieczenie przed przepełnieniem bufora (bounds checking)
+  - Bufor cyrkularny 120 ostatnich pomiarów (2 minuty historii)
+  - **27 parametrów analitycznych** wyliczanych w czasie rzeczywistym:
+    - *Statystyki odległości*: średnia, mediana, odchylenie standardowe, min/max, percentyle (P10, P90)
+    - *Analiza energii*: całkowita energia sygnału, gęstość energii, współczynnik zmienności
+    - *Dynamika ruchu*: szacowana prędkość radialna, przyspieszenie, "żywość" roju
+    - *Trendy czasowe*: regresja liniowa, nachylenie trendu, przewidywana aktywność
+    - *Wykrywanie anomalii*: Z-score (próg 2.5σ), threshold crossing, outlier detection
+    - *Wskaźniki jakościowe*: Indeks zdrowia ula (0-10), wynik anomalii, status pożytku (POZYTYWNY/NEGATYWNY/NORMALNY)
+  - Detekcja zdarzeń specjalnych:
+    - Nagłe skoki ruchu (pozytywne/negatywne zmiany)
+    - Stopniowe zmiany aktywności (trendy wzrostowe/spadkowe)
+    - Brak aktywności (możliwa blokada wlotu lub wyginięcie)
+    - Wzory rojenia (masowy wylot)
+    - Podejście drapieżnika (duży obiekt w strefie)
+    - Grupowanie pszczół (agregacja przed wlotem)
+  - API HTTP endpoints:
+    - `/radar/status` - pełny status systemu radarowego
+    - `/radar/params` - wszystkie 27 parametrów w formacie JSON
+    - `/radar/anomalies` - ostatnie wykryte anomalie i status pożytku
+    - `/radar/raw` - surowe dane z ostatniej sekundy
 
 ##### b) Wielogazowy Sensor CO2/VOC/Gas (np. SGP41 / BME688 / CCS811 z rozszerzeniem)
 - **Technologia**: MOX (Metal Oxide Semiconductor) + NDIR dla CO2
