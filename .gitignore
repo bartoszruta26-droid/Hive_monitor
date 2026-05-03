@@ -3,14 +3,17 @@
 *.o
 *.obj
 *.hex
-*.elf
 *.bin
-*.out
+*.elf
+*.map
+*.lst
+*.sym
+*.lss
 
 # Dependencies
 .pio/
-.platformio/
-lib/
+.pioenvs/
+.piolibdeps/
 
 # Logs and temp files
 *.log
@@ -20,7 +23,7 @@ lib/
 # Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # Editors
 .vscode/
@@ -31,5 +34,6 @@ lib/
 # Build outputs
 build/
 dist/
-output/
+release/
+debug/
 ```

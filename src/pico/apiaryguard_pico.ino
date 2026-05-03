@@ -153,7 +153,7 @@ EthernetServer server(8080); // Port nasłuchiwania
 #define RELAY_CH3  19
 #define RELAY_CH4  20
 #define RELAY_CH5  21
-#define RELAY_CH6  26  // POPRAWKA: Zmieniono z GPIO 22 na GPIO 26 (konflikt z HX711_SCK i RELAY_CH4)
+#define RELAY_CH6  28  // POPRAWKA: Zmieniono z GPIO 26 na GPIO 28 (konflikt z MIC_PIN - ADC0)
 #define RELAY_CH7  23
 #define RELAY_CH8  24
 
@@ -174,7 +174,7 @@ float humidity = 0.0;
 uint16_t co2_eq = 0;
 uint16_t voc_idx = 0;
 float audio_rms = 0.0;
-float vibration_level = 0.0;
+// vibration_level usunięte - dane z piezo są przetwarzane przez currentPiezoMetrics
 bool motion_detected = false;
 
 // ============================================================================
@@ -3897,8 +3897,9 @@ void loop() {
     }
     
     // Wibracje (Piezo) - tylko jeśli wykryty
+    // Aktualizacja metryk piezo zamiast pojedynczej zmiennej
     if (sensors.piezo.active) {
-      vibration_level = analogRead(PIEZO_PIN);
+      calculatePiezoMetrics(currentPiezoMetrics);
     }
     
     // Radar - tylko jeśli wykryty
@@ -4038,7 +4039,7 @@ void loop() {
       client.println();
     };
     
-    // STRONA GŁÓWNA - HUMAN READABLE GUI
+    // STRONA GŁÓWNA - HUMAN READABLE GUI Z ROZSZERZONYM DEBUGOWANIEM
     if(request.indexOf("GET / ") >= 0 && request.indexOf(".json") < 0 && 
        request.indexOf("/status") < 0 && request.indexOf("/metrics") < 0 &&
        request.indexOf("/events") < 0 && request.indexOf("/anomalies") < 0 &&
@@ -4046,50 +4047,270 @@ void loop() {
        request.indexOf("/pump") < 0) {
       
       sendHeader("text/html; charset=utf-8");
-      client.println("<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'><title>ApiaryGuard</title>");
-      client.println("<style>body{font-family:Arial;background:#667eea;padding:20px}.card{background:white;border-radius:10px;padding:15px;margin:10px 0}.metric{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee}</style></head><body>");
-      client.println("<h1>ApiaryGuard - Monitoring Ula</h1>");
-      client.printf("<p>IP: %s | Uptime: %lu s</p>", Ethernet.localIP().toString().c_str(), millis()/1000);
+      client.println("<!DOCTYPE html><html lang='pl'><head><meta charset='UTF-8'><title>ApiaryGuard Pico - Dashboard</title>");
+      client.println("<style>");
+      client.println("body{font-family:'Segoe UI',Arial,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px;color:#333}");
+      client.println("h1{color:white;text-align:center;text-shadow:2px 2px 4px rgba(0,0,0,0.3)}");
+      client.println("h2{color:#667eea;border-bottom:3px solid #667eea;padding-bottom:10px;margin-top:0}");
+      client.println("h3{color:#764ba2;margin-top:30px}");
+      client.println(".card{background:white;border-radius:15px;padding:20px;margin:15px 0;box-shadow:0 4px 15px rgba(0,0,0,0.2)}");
+      client.println(".metric{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #eee;font-size:1.1em}");
+      client.println(".metric:last-child{border-bottom:none}");
+      client.println(".metric span:first-child{font-weight:600;color:#555}");
+      client.println(".metric span:last-child{font-weight:700;color:#667eea}");
+      client.println(".status-ok{color:#22c55e}");
+      client.println(".status-warning{color:#f59e0b}");
+      client.println(".status-error{color:#ef4444}");
+      client.println(".info-bar{background:rgba(255,255,255,0.95);border-radius:10px;padding:15px;margin:15px 0;display:flex;justify-content:space-around;flex-wrap:wrap}");
+      client.println(".info-item{text-align:center;margin:10px}");
+      client.println(".info-label{font-size:0.9em;color:#666}");
+      client.println(".info-value{font-size:1.3em;font-weight:700;color:#667eea}");
+      client.println(".debug-section{background:#f8f9fa;border-radius:10px;padding:15px;margin:15px 0;border-left:4px solid #667eea}");
+      client.println(".debug-title{font-weight:700;color:#667eea;margin-bottom:10px}");
+      client.println(".debug-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #ddd;font-size:0.95em}");
+      client.println(".debug-row:last-child{border-bottom:none}");
+      client.println(".api-links{background:white;border-radius:10px;padding:15px;margin:15px 0}");
+      client.println(".api-links a{display:inline-block;background:#667eea;color:white;padding:10px 20px;margin:5px;border-radius:5px;text-decoration:none;font-weight:600}");
+      client.println(".api-links a:hover{background:#764ba2}");
+      client.println("</style></head><body>");
       
-      client.println("<div class='card'><h2>Środowisko</h2>");
-      client.printf("<div class='metric'><span>Temperatura</span><span>%.1f C</span></div>", temperature);
+      client.println("<h1>🐝 ApiaryGuard Pico - Monitoring Ula 🐝</h1>");
+      
+      // Pasek informacyjny
+      client.println("<div class='info-bar'>");
+      client.printf("<div class='info-item'><div class='info-label'>Adres IP</div><div class='info-value'>%s</div></div>", Ethernet.localIP().toString().c_str());
+      client.printf("<div class='info-item'><div class='info-label'>Czas pracy</div><div class='info-value'>%lu s</div></div>", millis()/1000);
+      client.printf("<div class='info-item'><div class='info-label'>RAM Free</div><div class='info-value'>~%lu KB</div></div>", (unsigned long)(rp2040.getFreeHeap() / 1024));
+      client.printf("<div class='info-item'><div class='info-label'>CPU Temp</div><div class='info-value'>%.1f C</div></div>", analogReadTempSensor());
+      client.println("</div>");
+      
+      // Środowisko
+      client.println("<div class='card'><h2>🌡️ Środowisko w Ulu</h2>");
+      client.printf("<div class='metric'><span>Temperatura</span><span>%.1f °C</span></div>", temperature);
       client.printf("<div class='metric'><span>Wilgotność</span><span>%.1f %%</span></div>", humidity);
-      client.printf("<div class='metric'><span>CO2</span><span>%d ppm</span></div>", co2_eq);
-      client.printf("<div class='metric'><span>VOC</span><span>%d</span></div>", voc_idx);
-      client.printf("<div class='metric'><span>Waga</span><span>%.2f kg</span></div>", (float)hx711_value/1000.0f);
+      float heatIndex = calculateHeatIndex(temperature, humidity);
+      client.printf("<div class='metric'><span>Indeks ciepła</span><span>%.1f °C</span></div>", heatIndex);
+      float dewPoint = calculateDewPoint(temperature, humidity);
+      client.printf("<div class='metric'><span>Punkt rosy</span><span>%.1f °C</span></div>", dewPoint);
+      float vpd = calculateVPD(temperature, humidity);
+      client.printf("<div class='metric'><span>VPD</span><span>%.2f kPa</span></div>", vpd);
+      client.printf("<div class='metric'><span>CO₂ (eq)</span><span>%d ppm</span></div>", co2_eq);
+      client.printf("<div class='metric'><span>VOC Index</span><span>%d</span></div>", voc_idx);
       client.println("</div>");
       
-      client.println("<div class='card'><h2>Audio</h2>");
-      client.printf("<div class='metric'><span>RMS</span><span>%.3f V</span></div>", currentAudioMetrics.rms_amplitude);
-      client.printf("<div class='metric'><span>Aktywnosc</span><span>%.1f %%</span></div>", currentAudioMetrics.bee_activity_index);
-      client.printf("<div class='metric'><span>Zdrowie</span><span>%.1f %%</span></div>", currentAudioMetrics.hive_health_audio);
-      client.println("</div>");
-      
-      client.println("<div class='card'><h2>Waga</h2>");
-      client.printf("<div class='metric'><span>Waga</span><span>%.3f kg</span></div>", currentHX711Metrics.mean_weight);
+      // Waga ulu
+      client.println("<div class='card'><h2>⚖️ Waga Ula - Analiza</h2>");
+      client.printf("<div class='metric'><span>Aktualna waga</span><span>%.3f kg</span></div>", currentHX711Metrics.mean_weight);
+      client.printf("<div class='metric'><span>Waga filtrowana</span><span>%.3f kg</span></div>", currentHX711Metrics.filtered_weight);
       client.printf("<div class='metric'><span>Trend 1h</span><span>%.4f kg/h</span></div>", currentHX711Metrics.trend_slope_1h);
-      client.printf("<div class='metric'><span>Zapas dni</span><span>%.1f</span></div>", currentHX711Metrics.food_reserve_days);
+      client.printf("<div class='metric'><span>Trend 4h</span><span>%.4f kg/h</span></div>", currentHX711Metrics.trend_slope_4h);
+      client.printf("<div class='metric'><span>Trend 24h</span><span>%.4f kg/h</span></div>", currentHX711Metrics.trend_slope_24h);
+      client.printf("<div class='metric'><span>Zmiana 24h</span><span>%.3f kg</span></div>", currentHX711Metrics.weight_change_24h);
+      client.printf("<div class='metric'><span>Zapas pokarmu</span><span>%.1f dni</span></div>", currentHX711Metrics.food_reserve_days);
+      client.printf("<div class='metric'><span>Ryzyko głodu</span><span>%.1f %%</span></div>", currentHX711Metrics.starvation_risk);
+      client.printf("<div class='metric'><span>Jakość sygnału</span><span>%d %%</span></div>", currentHX711Metrics.signal_quality);
       client.println("</div>");
       
-      client.println("<div class='card'><h2>Radar</h2>");
+      // Pożytki i produkcja miodu
+      client.println("<div class='card'><h2>🍯 Pożytki i Produkcja Miodu</h2>");
+      client.printf("<div class='metric'><span>Napływ nektaru</span><span>%.4f kg/h</span></div>", currentHX711Metrics.nectar_inflow_rate);
+      client.printf("<div class='metric'><span>Efektywność zbierania</span><span>%.1f %%</span></div>", currentHX711Metrics.foraging_efficiency);
+      client.printf("<div class='metric'><span>Intensywność pożytku</span><span>%.1f %%</span></div>", currentHX711Metrics.bloom_intensity);
+      client.printf("<div class='metric'><span>Indeks produkcji miodu</span><span>%.1f %%</span></div>", currentHX711Metrics.honey_production_idx);
+      client.printf("<div class='metric'><span>Szacowany zbiór</span><span>%.2f kg</span></div>", currentHX711Metrics.expected_honey_yield);
+      client.println("</div>");
+      
+      // Zdrowie kolonii z wagi
+      client.println("<div class='card'><h2>🐛 Zdrowie Kolonii (z wagi)</h2>");
+      client.printf("<div class='metric'><span>Wzrost kolonii</span><span>%.2f %%/dz</span></div>", currentHX711Metrics.colony_growth_rate);
+      client.printf("<div class='metric'><span>Aktywność czerwiu</span><span>%.1f %%</span></div>", currentHX711Metrics.brood_activity_idx);
+      client.printf("<div class='metric'><span>Szacowana populacja</span><span>%.1f tys.</span></div>", currentHX711Metrics.population_estimate_k);
+      client.printf("<div class='metric'><span>Indeks zdrowia</span><span>%.1f %%</span></div>", currentHX711Metrics.hive_health_weight);
+      client.printf("<div class='metric'><span>Produktywność</span><span>%.1f %%</span></div>", currentHX711Metrics.productivity_score);
+      client.println("</div>");
+      
+      // Audio - dźwięki ula
+      client.println("<div class='card'><h2>🎵 Analiza Audio Ula</h2>");
+      client.printf("<div class='metric'><span>RMS amplituda</span><span>%.3f V</span></div>", currentAudioMetrics.rms_amplitude);
+      client.printf("<div class='metric'><span>Częstotliwość dominująca</span><span>%.1f Hz</span></div>", currentAudioMetrics.dominant_frequency);
+      client.printf("<div class='metric'><span>Aktywność pszczół</span><span>%.1f %%</span></div>", currentAudioMetrics.bee_activity_index);
+      client.printf("<div class='metric'><span>Prawdopodobieństwo rojenia</span><span>%.2f</span></div>", currentAudioMetrics.swarm_probability);
+      client.printf("<div class='metric'><span>Zdrowie (audio)</span><span>%.1f %%</span></div>", currentAudioMetrics.hive_health_audio);
+      client.printf("<div class='metric'><span>Stres kolonii</span><span>%.2f</span></div>", currentAudioMetrics.stress_indicator);
+      client.printf("<div class='metric'><span>Efektywność zbierania</span><span>%.1f %%</span></div>", currentAudioMetrics.foraging_efficiency);
+      client.printf("<div class='metric'><span>Spójność kolonii</span><span>%.2f</span></div>", currentAudioMetrics.colony_coherence);
+      client.printf("<div class='metric'><span>Entropia widmowa</span><span>%.3f</span></div>", currentAudioMetrics.spectral_entropy);
+      client.printf("<div class='metric'><span>Tonalność</span><span>%.2f</span></div>", currentAudioMetrics.tonal_strength);
+      client.println("</div>");
+      
+      // Zaawansowane parametry audio
+      client.println("<div class='card'><h2>🎼 Zaawansowana Analiza Audio</h2>");
+      client.printf("<div class='metric'><span>Formant 1</span><span>%.1f Hz</span></div>", currentAudioMetrics.formant_freq_1);
+      client.printf("<div class='metric'><span>Formant 2</span><span>%.1f Hz</span></div>", currentAudioMetrics.formant_freq_2);
+      client.printf("<div class='metric'><span>Częstotliwość podstawowa F0</span><span>%.1f Hz</span></div>", currentAudioMetrics.fundamental_frequency);
+      client.printf("<div class='metric'><span>Siła wysokości (pitch)</span><span>%.2f</span></div>", currentAudioMetrics.pitch_strength);
+      client.printf("<div class='metric'><span>Nieharmoniczność</span><span>%.2f</span></div>", currentAudioMetrics.inharmonicity);
+      client.printf("<div class='metric'><span>Shimmer (fluktuacja amp.)</span><span>%.1f %%</span></div>", currentAudioMetrics.shimmer);
+      client.printf("<div class='metric'><span>Jitter (fluktuacja freq.)</span><span>%.1f %%</span></div>", currentAudioMetrics.jitter);
+      client.printf("<div class='metric'><span>Stosunek szumu do harmonicznych</span><span>%.2f</span></div>", currentAudioMetrics.noise_to_harmonic_ratio);
+      client.printf("<div class='metric'><span>Autokorelacja</span><span>%.2f</span></div>", currentAudioMetrics.autocorrelation_peak);
+      client.printf("<div class='metric'><span>Głośność psychoakustyczna</span><span>%.2f sones</span></div>", currentAudioMetrics.loudness_zwicker);
+      client.println("</div>");
+      
+      // Radar MMWave
+      client.println("<div class='card'><h2>📡 Radar MMWave - Ruch Pszczół</h2>");
       if(radarDataCount > 0) {
         RadarDataPoint& lr = radarBuffer[(radarBufferIndex>0)?radarBufferIndex-1:RADAR_BUFFER_SIZE-1];
-        client.printf("<div class='metric'><span>Cele</span><span>%d</span></div>", lr.target_count);
-        client.printf("<div class='metric'><span>Dystans</span><span>%.2f m</span></div>", lr.distance);
-        client.printf("<div class='metric'><span>Zdrowie ula</span><span>%.2f %%</span></div>", currentMetrics.hive_health_index);
+        client.printf("<div class='metric'><span>Liczba celów</span><span>%d</span></div>", lr.target_count);
+        client.printf("<div class='metric'><span>Dystans średni</span><span>%.3f m</span></div>", lr.distance);
+        client.printf("<div class='metric'><span>Energia sygnału</span><span>%.2f</span></div>", lr.energy);
+        client.printf("<div class='metric'><span>Prędkość radialna</span><span>%.2f m/s</span></div>", lr.radial_velocity);
+        client.printf("<div class='metric'><span>Zdrowie ula (radar)</span><span>%.1f %%</span></div>", currentMetrics.hive_health_index);
+        client.printf("<div class='metric'><span>Wskaźnik aktywności</span><span>%.1f %%</span></div>", currentMetrics.activity_ratio);
+        client.printf("<div class='metric'><span>CV energii</span><span>%.3f</span></div>", currentMetrics.energy_cv);
+        client.printf("<div class='metric'><span>Tempo pojawiania się celów</span><span>%.1f/min</span></div>", currentMetrics.target_rate);
+        client.printf("<div class='metric'><span>Jakość sygnału</span><span>%.1f %%</span></div>", currentMetrics.signal_quality);
+        client.printf("<div class='metric'><span>Entropia</span><span>%.3f</span></div>", currentMetrics.entropy);
+        client.printf("<div class='metric'><span>Nachylenie trendu</span><span>%.4f</span></div>", currentMetrics.trend_slope);
+      } else {
+        client.println("<div class='metric'><span>Brak danych z radaru</span><span>-</span></div>");
       }
       client.println("</div>");
       
-      client.println("<div class='card'><h2>Powietrze</h2>");
-      client.printf("<div class='metric'><span>CO2</span><span>%d ppm</span></div>", currentAirQualityMetrics.co2_equivalent);
-      client.printf("<div class='metric'><span>VOC</span><span>%d</span></div>", currentAirQualityMetrics.voc_index);
-      client.printf("<div class='metric'><span>IAQ</span><span>%.0f</span></div>", currentAirQualityMetrics.iaq_index);
+      // Jakość powietrza
+      client.println("<div class='card'><h2>💨 Jakość Powietrza w Ulu</h2>");
+      client.printf("<div class='metric'><span>CO₂ (równoważnik)</span><span>%d ppm</span></div>", currentAirQualityMetrics.co2_equivalent);
+      client.printf("<div class='metric'><span>VOC Index</span><span>%d</span></div>", currentAirQualityMetrics.voc_index);
+      client.printf("<div class='metric'><span>NOx (równoważnik)</span><span>%d</span></div>", currentAirQualityMetrics.no_x_equivalent);
+      client.printf("<div class='metric'><span>IAQ Index</span><span>%.0f</span></div>", currentAirQualityMetrics.iaq_index);
+      client.printf("<div class='metric'><span>Poziom jakości powietrza</span><span>%d</span></div>", currentAirQualityMetrics.air_quality_level);
+      client.printf("<div class='metric'><span>Potrzeba wentylacji</span><span>%.2f</span></div>", currentAirQualityMetrics.ventilation_need);
+      client.printf("<div class='metric'><span>Komfort ula</span><span>%.1f %%</span></div>", currentAirQualityMetrics.hive_comfort_index);
+      client.printf("<div class='metric'><span>Ryzyko pleśni</span><span>%.1f %%</span></div>", currentAirQualityMetrics.mold_risk);
+      client.printf("<div class='metric'><span>Stres od powietrza</span><span>%.2f</span></div>", currentAirQualityMetrics.stress_from_air);
+      client.printf("<div class='metric'><span>Wynik ryzyka łączonego</span><span>%.2f</span></div>", currentAirQualityMetrics.combined_risk_score);
       client.println("</div>");
       
-      client.println("<h3>API:</h3>");
-      client.println("<a href='/status'>Status JSON</a> | ");
-      client.println("<a href='/radar/status'>Radar</a> | ");
-      client.println("<a href='/radar/anomalies'>Anomalie</a>");
+      // Wibracje z czujnika Piezo
+      client.println("<div class='card'><h2>📳 Wibracje (Piezo)</h2>");
+      client.printf("<div class='metric'><span>RMS wibracji</span><span>%.2f mV</span></div>", currentPiezoMetrics.vibration_rms);
+      client.printf("<div class='metric'><span>Amplituda szczytowa</span><span>%.2f mV</span></div>", currentPiezoMetrics.vibration_peak);
+      client.printf("<div class='metric'><span>Indeks aktywności wibracyjnej</span><span>%.1f %%</span></div>", currentPiezoMetrics.vibration_activity_idx);
+      client.printf("<div class='metric'><span>Wynik ruchu pszczół</span><span>%.1f %%</span></div>", currentPiezoMetrics.bee_traffic_score);
+      client.printf("<div class='metric'><span>Wynik drapieżnika</span><span>%.1f %%</span></div>", currentPiezoMetrics.predator_vib_score);
+      client.printf("<div class='metric'><span>Prawdopodobieństwo intruza</span><span>%.2f</span></div>", currentPiezoMetrics.intrusion_probability);
+      client.printf("<div class='metric'><span>Flaga wibracji rojowej</span><span>%.2f</span></div>", currentPiezoMetrics.swarm_vibration_flag);
+      client.println("</div>");
+      
+      // Sekcja debugowania - szczegółowe informacje systemowe
+      client.println("<div class='debug-section'>");
+      client.println("<div class='debug-title'>🔍 Szczegółowe Debugowanie Systemu</div>");
+      
+      client.println("<div class='debug-row'><span>Status sensorów:</span>");
+      client.printf("<span>Temp/Wilg:%s | HX711:%s | Audio:%s | Radar:%s | AirQual:%s | Piezo:%s</span></div>",
+                    sensors.tempHum.active ? "OK" : "OFF",
+                    sensors.hx711.active ? "OK" : "OFF",
+                    sensors.audio.active ? "OK" : "OFF",
+                    sensors.radar.active ? "OK" : "OFF",
+                    sensors.airQual.active ? "OK" : "OFF",
+                    sensors.piezo.active ? "OK" : "OFF");
+      
+      client.println("<div class='debug-row'><span>Ostatnie zdarzenia audio:</span>");
+      client.printf("<span>Typ:%s | Wpływ:%s | Pewność:%.1f%%</span></div>",
+                    audioEventTypeToString(lastAudioEvent.type),
+                    audioEventImpactToString(lastAudioEvent.impact),
+                    lastAudioEvent.confidence * 100.0f);
+      
+      client.println("<div class='debug-row'><span>Ostatnie zdarzenia wagi:</span>");
+      client.printf("<span>Typ:%s | Wpływ:%s | Magnituda:%.3fkg</span></div>",
+                    hx711EventTypeToString(lastHX711Event.type),
+                    hx711EventImpactToString(lastHX711Event.impact),
+                    lastHX711Event.magnitude_kg);
+      
+      client.println("<div class='debug-row'><span>Ostatnie anomalie radaru:</span>");
+      client.printf("<span>Typ:%s | Kierunek:%s | Poważność:%.2f</span></div>",
+                    anomalyTypeToString(lastAnomaly.type),
+                    changeDirectionToString(lastAnomaly.direction),
+                    lastAnomaly.severity);
+      
+      client.println("<div class='debug-row'><span>Prognoza wagi 24h:</span>");
+      client.printf("<span>Przewidywana:%.3fkg | Pewność:%.1f%% | Oczekiwany zbiór:%.2fkg</span></div>",
+                    currentHX711Metrics.predicted_weight_24h,
+                    currentHX711Metrics.forecast_confidence,
+                    currentHX711Metrics.expected_honey_yield);
+      
+      client.println("<div class='debug-row'><span>Statystyki audio (szczegóły):</span>");
+      client.printf("<span>CrestFactor:%.2f | SpectCentroid:%.1fHz | RollOff:%.1fHz | Flux:%.3f</span></div>",
+                    currentAudioMetrics.crest_factor,
+                    currentAudioMetrics.spectral_centroid,
+                    currentAudioMetrics.spectral_rolloff,
+                    currentAudioMetrics.spectral_flux);
+      
+      client.println("<div class='debug-row'><span>Pasma mocy audio:</span>");
+      client.printf("<span>0-50Hz:%.1fdB | 50-100Hz:%.1fdB | 100-200Hz:%.1fdB | 200-400Hz:%.1fdB | 400-800Hz:%.1fdB</span></div>",
+                    currentAudioMetrics.power_band_1,
+                    currentAudioMetrics.power_band_2,
+                    currentAudioMetrics.power_band_3,
+                    currentAudioMetrics.power_band_4,
+                    currentAudioMetrics.power_band_5);
+      
+      client.println("<div class='debug-row'><span>Indeksy bioakustyczne:</span>");
+      client.printf("<span>ACI:%.2f | BI:%.2f | NDI:%.2f | ADI:%.2f | AEI:%.2f</span></div>",
+                    currentAudioMetrics.acoustic_complexity,
+                    currentAudioMetrics.bioacoustic_index,
+                    currentAudioMetrics.normalized_difference,
+                    currentAudioMetrics.acoustic_diversity,
+                    currentAudioMetrics.acoustic_evenness);
+      
+      client.println("<div class='debug-row'><span>Analiza trendów wagi:</span>");
+      client.printf("<span>Slope1h:%.4f | Slope4h:%.4f | Slope24h:%.4f | Correlation:%.2f | Direction:%s</span></div>",
+                    currentHX711Metrics.trend_slope_1h,
+                    currentHX711Metrics.trend_slope_4h,
+                    currentHX711Metrics.trend_slope_24h,
+                    currentHX711Metrics.trend_correlation,
+                    getTrendDirectionName(currentHX711Metrics.trend_direction).c_str());
+      
+      client.println("<div class='debug-row'><span>Zmienność wagi:</span>");
+      client.printf("<span>StdDev:%.4fkg | CV:%.2f%% | IQR:%.3fkg | Range:%.3fkg | StabilityIdx:%.1f%%</span></div>",
+                    currentHX711Metrics.weight_std_dev,
+                    currentHX711Metrics.weight_cv,
+                    currentHX711Metrics.weight_iqr,
+                    currentHX711Metrics.weight_range,
+                    currentHX711Metrics.stability_index);
+      
+      client.println("<div class='debug-row'><span>Analiza cykliczna:</span>");
+      client.printf("<span>Amplituda dobowa:%.3fkg | Siła cyrkadiana:%.2f | Trend sezonowy:%s</span></div>",
+                    currentHX711Metrics.daily_amplitude,
+                    currentHX711Metrics.circadian_strength,
+                    getSeasonalTrendName(currentHX711Metrics.seasonal_trend).c_str());
+      
+      client.println("</div>");
+      
+      // Linki API
+      client.println("<div class='api-links'>");
+      client.println("<h3>🔗 Endpointy API JSON:</h3>");
+      client.println("<a href='/status'>Status ogólny</a> ");
+      client.println("<a href='/radar/status'>Radar status</a> ");
+      client.println("<a href='/radar/anomalies'>Anomalie radaru</a> ");
+      client.println("<a href='/hx711/status'>Waga status</a> ");
+      client.println("<a href='/hx711/metrics'>Waga metryki</a> ");
+      client.println("<a href='/hx711/events'>Zdarzenia wagi</a> ");
+      client.println("<a href='/audio/status'>Audio status</a> ");
+      client.println("<a href='/audio/spectrum'>Widmo audio</a> ");
+      client.println("<a href='/airquality/status'>Jakość powietrza</a> ");
+      client.println("<a href='/airquality/metrics'>Metryki powietrza</a> ");
+      client.println("</div>");
+      
+      client.println("<h3>⚡ Sterowanie efektorem:</h3>");
+      client.println("<div class='api-links'>");
+      client.println("<a href='/heater/on'>Grzałka ON</a> ");
+      client.println("<a href='/heater/off'>Grzałka OFF</a> ");
+      client.println("<a href='/fan/on'>Wentylator ON</a> ");
+      client.println("<a href='/fan/off'>Wentylator OFF</a> ");
+      client.println("<a href='/pump/on'>Pompa ON</a> ");
+      client.println("<a href='/pump/off'>Pompa OFF</a> ");
+      client.println("</div>");
+      
       client.println("</body></html>");
     }
     else if(request.indexOf("/status") > 0) {
