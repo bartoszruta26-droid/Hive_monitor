@@ -2797,6 +2797,65 @@ mosquitto_sub -t "apiaryguard/#" -v
 
 ## 🔌 API i Integracje
 
+### 🖥️ Human-Readable GUI (Interfejs Graficzny)
+
+System ApiaryGuard udostępnia przyjazny dla użytkownika interfejs webowy dostępny pod głównym adresem IP urządzenia (port 8080).
+
+#### Dostęp do GUI
+```
+http://192.168.1.177:8080/
+```
+
+#### Struktura Dashboardu
+
+**Nagłówek:**
+- Adres IP urządzenia
+- Czas pracy (uptime w sekundach)
+- Tytuł: "ApiaryGuard - Monitoring Ula"
+
+**Karty z Parametrami:**
+
+1. **🌡️ Środowisko**
+   - Temperatura (°C)
+   - Wilgotność (%)
+   - CO₂ (ppm)
+   - VOC (index)
+   - Waga (kg)
+
+2. **🎤 Audio**
+   - RMS Amplitude (V)
+   - Indeks aktywności pszczół (%)
+   - Wskaźnik zdrowia ula (%)
+
+3. **⚖️ Waga**
+   - Średnia waga (kg)
+   - Trend 1h (kg/h)
+   - Zapas pokarmu (dni)
+
+4. **📡 Radar**
+   - Liczba wykrytych celów
+   - Dystans ostatniego celu (m)
+   - Indeks zdrowia ula (%)
+
+5. **💨 Powietrze**
+   - CO₂ equivalent (ppm)
+   - VOC index
+   - IAQ Index (Indoor Air Quality)
+
+**Sekcja API Links:**
+- [Status JSON](/status) - podstawowe dane w formacie JSON
+- [Radar](/radar/status) - szczegółowe metryki radaru
+- [Anomalie](/radar/anomalies) - detekcja pożytków i anomalii
+
+#### Design
+- Responsywny layout działający na urządzeniach mobilnych i desktop
+- Kolorystyka: gradient fioletowo-niebieski (#667eea)
+- Białe karty z zaokrąglonymi rogami
+- Czytelne etykiety w języku polskim
+- Emoji dla lepszej wizualnej orientacji
+
+---
+
 ### REST API Endpoints
 
 #### Authentication
@@ -2869,6 +2928,33 @@ Response:
   ]
 }
 ```
+
+#### Device Control Endpoints (Efektory - Pico W6100)
+
+Sterowanie efektorami na poziomie urządzenia dostępne jest przez proste endpointy GET:
+
+```http
+GET /heater/on    - Włączenie grzałki PWM (GPIO 6)
+GET /heater/off   - Wyłączenie grzałki
+GET /fan/on       - Włączenie wentylatora PWM (GPIO 7)
+GET /fan/off      - Wyłączenie wentylatora
+GET /pump/on      - Włączenie pompy perystaltycznej (GPIO 14)
+GET /pump/off     - Wyłączenie pompy
+```
+
+**Przykłady użycia:**
+```
+http://192.168.1.177:8080/heater/on
+http://192.168.1.177:8080/fan/off
+http://192.168.1.177:8080/pump/on
+```
+
+**Odpowiedzi:**
+- `Heater ON/OFF` - potwierdzenie zmiany stanu grzałki
+- `Fan ON/OFF` - potwierdzenie zmiany stanu wentylatora
+- `Pump ON/OFF` - potwierdzenie zmiany stanu pompy
+
+---
 
 #### Actuators Control
 ```http
@@ -3300,3 +3386,93 @@ Projekt powstał dzięki wkładowi:
 
 *Ostatnia aktualizacja dokumentacji: Styczeń 2025*
 *Wersja dokumentacji: 2.1.0*
+
+---
+
+### 📋 Podsumowanie Endpointów API (Pico W6100)
+
+#### Główne Endpointy Urządzenia
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/` | GET | Human-Readable GUI - Dashboard z parametrami |
+| `/status` | GET | Podstawowe dane sensory w JSON |
+| `/heater/on` | GET | Włącz grzałkę |
+| `/heater/off` | GET | Wyłącz grzałkę |
+| `/fan/on` | GET | Włącz wentylator |
+| `/fan/off` | GET | Wyłącz wentylator |
+| `/pump/on` | GET | Włącz pompę |
+| `/pump/off` | GET | Wyłącz pompę |
+| `/radar/status` | GET | Status radaru mmWave |
+| `/radar/anomalies` | GET | Wykryte anomalie i pożytki |
+
+#### Endpointy Audio (MEMS Microphone)
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/audio/status` | GET | Status modułu audio |
+| `/audio/metrics` | GET | Szczegółowe metryki audio (25+ parametrów) |
+| `/audio/events` | GET | Zdarzenia akustyczne |
+| `/audio/spectrum` | GET | Widmo FFT |
+| `/audio/history` | GET | Historia pomiarów |
+
+#### Endpointy Radar (LD2410B mmWave)
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/radar/status` | GET | Status radaru |
+| `/radar/params` | GET | Parametry ruchu i energii (27 parametrów) |
+| `/radar/anomalies` | GET | Detekcja anomalii i pożytków |
+| `/radar/raw` | GET | Surowe dane radaru |
+
+#### Endpointy Waga (HX711)
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/hx711/status` | GET | Status wagi |
+| `/hx711/metrics` | GET | Metryki wagi (30+ parametrów) |
+| `/hx711/events` | GET | Zdarzenia wagowe |
+| `/hx711/forecast` | GET | Prognoza wagi |
+
+#### Endpointy Jakość Powietrza (SGP41)
+
+| Endpoint | Metoda | Opis |
+|----------|--------|------|
+| `/airquality/status` | GET | Status jakości powietrza |
+| `/airquality/metrics` | GET | Metryki jakości (24+ parametry) |
+| `/airquality/events` | GET | Zdarzenia jakościowe |
+
+---
+
+### 🔐 Bezpieczeństwo API
+
+- **Autentykacja:** Bearer Token (JWT)
+- **Autorizacja:** Role-based access control (RBAC)
+- **HTTPS:** Zalecane dla produkcji
+- **Rate Limiting:** 100 requests/minute na endpoint
+
+---
+
+### 🎯 Przykłady Użycia API
+
+**1. Pobranie statusu urządzenia:**
+```bash
+curl http://192.168.1.177:8080/status
+```
+
+**2. Włączenie grzałki:**
+```bash
+curl http://192.168.1.177:8080/heater/on
+```
+
+**3. Sprawdzenie anomalii radaru:**
+```bash
+curl http://192.168.1.177:8080/radar/anomalies
+```
+
+**4. Dostęp do GUI:**
+```
+Otwórz w przeglądarce: http://192.168.1.177:8080/
+```
+
+---
