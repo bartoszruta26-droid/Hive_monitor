@@ -238,6 +238,51 @@ struct AudioMetrics {
     float hive_health_audio;      // Indeks zdrowia na podstawie audio (0-100%)
     float foraging_efficiency;    // Efektywność zbierania nektaru (0-100%) - nowość
     float colony_coherence;       // Spójność kolonii (0-1) - nowość
+    
+    // NOWE PARAMETRY DODANE - analiza zaawansowana (dodatkowe 18 parametrów)
+    float spectral_flux;          // Strumień spektralny - zmiana widma w czasie
+    float spectral_slope;         // Nachylenie widma - balans tonalny
+    float spectral_kurtosis;      // Kurtoza widma - ostrość pików
+    float spectral_skewness;      // Asymetria widma
+    float fundamental_salience;   // Wyraźność tonu podstawowego (0-1)
+    float partial_energy_ratio;   // Stosunek energii harmonicznych do całości
+    float odd_harmonic_energy;    // Energia nieparzystych harmonicznych
+    float even_harmonic_energy;   // Energia parzystych harmonicznych
+    float tritone_distance;       // Dystans od trytonu (miara dysonansu)
+    float inharmonicity_deviation;// Odchylenie nieharmoniczności
+    float spectral_irregularity;  // Nieregularność widmowa
+    float log_attack_time;        // Logarytmiczny czas ataku
+    float temporal_log_attack;    // Temporalny log attack
+    float effective_duration;     // Efektywny czas trwania sygnału
+    float rise_time;              // Czas narastania (10-90%)
+    float decay_rate;             // Szybkość zanikania [dB/s]
+    float release_time;           // Czas wybrzmiewania
+    float vibrato_depth;          // Głębokość wibrata (detekcja queen piping)
+    float vibrato_rate;           // Częstotliwość wibrata [Hz]
+    float tremolo_depth;          // Głębokość tremola
+    float tremolo_rate;           // Częstotliwość tremola [Hz]
+    float spectral_valley_count;  // Liczba dolin w widmie
+    float peak_prominence;        // Wyraźność dominującego piku
+    float bandwidth_75;           // Szerokość pasma 75% energii
+    float bandwidth_95;           // Szerokość pasma 95% energii
+    float equivalent_sound_level; // Równoważny poziom dźwięku Leq [dB]
+    float percentile_level_10;    // Poziom przekroczony w 10% czasu L10 [dB]
+    float percentile_level_90;    // Poziom przekroczony w 90% czasu L90 [dB]
+    float noise_floor_estimate;   // Szacowane tło szumowe [dB]
+    float signal_to_noise_ratio;  // Stosunek sygnału do szumu [dB]
+    float acoustic_complexity;    // Złożoność akustyczna (ACI index)
+    float bioacoustic_index;      // Indeks bioakustyczny (BI)
+    float normalized_difference;  // Znormalizowany indeks różnicowy (NDI)
+    float acoustic_diversity;     // Różnorodność akustyczna (ADI)
+    float acoustic_evenness;      // Równość akustyczna (AEI)
+    float power_band_1;           // Moc w paśmie 0-50 Hz [dB]
+    float power_band_2;           // Moc w paśmie 50-100 Hz [dB]
+    float power_band_3;           // Moc w paśmie 100-200 Hz [dB]
+    float power_band_4;           // Moc w paśmie 200-400 Hz [dB]
+    float power_band_5;           // Moc w paśmie 400-800 Hz [dB]
+    float power_band_6;           // Moc w paśmie 800-1600 Hz [dB]
+    float power_band_7;           // Moc w paśmie 1600-3200 Hz [dB]
+    float power_band_8;           // Moc w paśmie >3200 Hz [dB]
 };
 
 // Bufory dla przetwarzania audio

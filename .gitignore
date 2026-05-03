@@ -5,31 +5,31 @@
 *.hex
 *.elf
 *.bin
-*.map
-*.lst
-*.sym
+*.out
 
 # Dependencies
-.pioenvs/
-.piolibdeps/
+.pio/
 .platformio/
+lib/
+src/lib/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
 
-# Editors
-.vscode/
-.idea/
-
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Build outputs
 build/
 dist/
-output/
 ```
