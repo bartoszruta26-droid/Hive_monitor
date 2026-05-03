@@ -517,20 +517,32 @@ float calculateAudioRMS() {
 // ============================================================================
 
 // Prosta implementacja FFT (Cooley-Tukey radix-2 algorithm)
-// Dla mikrokontrolerów z ograniczoną pamięcią
-void performFFT(int16_t* input, float* output, int size) {
-    // Inicjalizacja - normalizacja wejścia
+// Globalne bufory dla FFT (część rzeczywista i urojona)
+float fft_imag[FFT_SIZE]; // Dodatkowy bufor na część urojoną
+
+// Dla mikrokontrolerów z ograniczoną pamięcią - PEŁNA implementacja FFT z liczbami zespolonymi
+void performFFT(int16_t* input, float* output_real, int size) {
+    float* output_imag = fft_imag; // Użycie globalnego bufora na część urojoną
+    
+    // Inicjalizacja - normalizacja wejścia do części rzeczywistej, urojona = 0
     for (int i = 0; i < size; i++) {
-        output[i] = (float)input[i] / 2048.0f;  // Normalizacja do zakresu [-1, 1]
+        output_real[i] = (float)input[i] / 2048.0f;  // Normalizacja do zakresu [-1, 1]
+        output_imag[i] = 0.0f;
     }
     
-    // Bit-reversal permutation
+    // Bit-reversal permutation (dla obu części)
     int j = 0;
     for (int i = 0; i < size - 1; i++) {
         if (i < j) {
-            float temp = output[i];
-            output[i] = output[j];
-            output[j] = temp;
+            // Zamiana części rzeczywistej
+            float temp_re = output_real[i];
+            output_real[i] = output_real[j];
+            output_real[j] = temp_re;
+            
+            // Zamiana części urojonej
+            float temp_im = output_imag[i];
+            output_imag[i] = output_imag[j];
+            output_imag[j] = temp_im;
         }
         int k = size >> 1;
         while (k <= j && k > 0) {
@@ -540,10 +552,7 @@ void performFFT(int16_t* input, float* output, int size) {
         j += k;
     }
     
-    // Cooley-Tukey FFT (uproszczona wersja - tylko moduły)
-    // Uwaga: Pełna implementacja FFT wymaga liczb zespolonych
-    // Ta wersja jest zoptymalizowana pod kątem szybkości na RP2040
-    
+    // Pełna implementacja Cooley-Tukey FFT z liczbami zespolonymi
     for (int len = 2; len <= size; len <<= 1) {
         float angle = -2.0f * PI / len;
         float wlen_re = cos(angle);
@@ -557,14 +566,23 @@ void performFFT(int16_t* input, float* output, int size) {
                 int u = i + k;
                 int v = i + k + len / 2;
                 
-                // Mnożenie przez współczynnik obrotowy (uproszczone)
-                float t_re = output[v] * w_re;
-                float t_im = output[v] * w_im;
+                // PEŁNE mnożenie zespolone: (v_re + j*v_im) * (w_re + j*w_im)
+                // t_re = v_re * w_re - v_im * w_im
+                // t_im = v_re * w_im + v_im * w_re
+                float t_re = output_real[v] * w_re - output_imag[v] * w_im;
+                float t_im = output_real[v] * w_im + output_imag[v] * w_re;
                 
-                output[v] = output[u] - t_re;
-                output[u] = output[u] + t_re;
+                // Operacja motylkowa dla obu części
+                float u_re = output_real[u];
+                float u_im = output_imag[u];
                 
-                // Aktualizacja współczynnika obrotowego
+                output_real[v] = u_re - t_re;
+                output_imag[v] = u_im - t_im;
+                
+                output_real[u] = u_re + t_re;
+                output_imag[u] = u_im + t_im;
+                
+                // Aktualizacja współczynnika obrotowego (pełne mnożenie zespolone)
                 float new_w_re = w_re * wlen_re - w_im * wlen_im;
                 float new_w_im = w_re * wlen_im + w_im * wlen_re;
                 w_re = new_w_re;
@@ -574,8 +592,9 @@ void performFFT(int16_t* input, float* output, int size) {
     }
     
     // Obliczenie modułów widma (tylko pierwsza połowa - Nyquist)
+    // |X[k]| = sqrt(re^2 + im^2)
     for (int i = 0; i < size / 2; i++) {
-        output[i] = abs(output[i]);  // Moduł (uproszczony)
+        output_real[i] = sqrt(output_real[i] * output_real[i] + output_imag[i] * output_imag[i]);
     }
 }
 
@@ -712,8 +731,8 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     // Obliczanie wartości RMS, średniej, szczytowej
     float sum = 0.0f;
     float sumSq = 0.0f;
-    float minVal = 0.0f;
-    float maxVal = 0.0f;
+    float minVal = (float)audioBuffer[0] / 2048.0f;  // Inicjalizacja pierwszą próbką
+    float maxVal = minVal;  // Inicjalizacja pierwszą próbką
     int zeroCrossings = 0;
     
     for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {

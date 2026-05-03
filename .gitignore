@@ -5,7 +5,10 @@
 *.hex
 *.bin
 *.elf
-*.out
+*.map
+*.lst
+*.sym
+*.lss
 
 # Dependencies
 .pio/
@@ -32,12 +35,5 @@ src/lib/
 # Build outputs
 build/
 dist/
-release/
-debug/
-.firmware/
-
-# Arduino/Pico specific
-*.pio/
-.pioenvs/
-.piolibdeps/
+.release/
 ```
