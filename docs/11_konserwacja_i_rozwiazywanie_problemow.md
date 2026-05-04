@@ -136,7 +136,7 @@ journalctl -u apiaryguard-core -n 50 --no-pager
 - Baza danych SQLite
 - Konfiguracje aplikacji (appsettings.json)
 - Konfiguracje systemowe (network, Apache, MQTT)
-- Firmware Arduino
+- Firmware Raspberry Pi Pico (UF2)
 - Nagrania audio (ostatnie 30 dni)
 - Logi (ostatnie 7 dni)
 

@@ -156,12 +156,12 @@
   - Walidacja innych sensorów (korelacja wagowych spadków z wizją rojenia)
 
 ##### d) Upgrade Mikrokontrolera: Raspberry Pi Pico / Pico W
-- **Wybór Raspberry Pi Pico**: Zdecydowano się na RP2040 zamiast Arduino Nano ze względu na znacznie lepsze parametry
+- **Wybór Raspberry Pi Pico**: Zdecydowano się na RP2040 zamiast innych mikrokontrolerów ze względu na znacznie lepsze parametry
 - **Raspberry Pi Pico** (główny wybór):
   - RP2040 dual-core ARM Cortex-M0+ @ 133 MHz
   - 264 KB SRAM, 2MB Flash
   - 3x 12-bit ADC, extensive GPIO
-  - C++ support (Arduino Core for RP2040 lub Pico SDK)
+  - C++ support (Pico SDK)
   - Łatwa programowalność przez USB
 - **Raspberry Pi Pico W** (opcja z WiFi):
   - Wszystkie cechy Pico + WiFi 802.11n
