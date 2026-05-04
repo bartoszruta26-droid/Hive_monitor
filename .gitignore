@@ -1,1 +1,113 @@
-Nothing should be ignored based on the provided file changes, as they only include source files (.md, .php, .js, .html) without any build artifacts, dependencies, or temporary files.
+```
+# Backup files
+*.bak
+
+# Executables
+apiary_collector
+
+# Build artifacts
+*.o
+*.obj
+*.out
+build/
+dist/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# C/C++ specific
+*.o
+*.obj
+*.out
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+*.hex
+*.elf
+*.map
+*.sym
+*.lst
+*.srec
+*.hex
+*.bin
+*.out
+*.stackdump
+*.core
+*.gdb
+*.gch
+*.gcno
+*.gcda
+*.gcov
+*.info
+*.d
+*.dep
+*.orig
+*.rej
+*.bak
+*.~*
+*~
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*#
+.\#*
+```
