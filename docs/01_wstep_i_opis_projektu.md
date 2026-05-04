@@ -9,7 +9,7 @@
 *   **Architektura Komunikacji:** Raspberry Pi 2 pełni rolę serwera HTTP z interfejsem GUI/TUI, komunikującego się przez REST API z Raspberry Pi Pico w każdym ulu.
 *   **Zaawansowana Diagnostyka:** Pełny zestaw sensorów biometrycznych ula (waga, dźwięk, wibracje, temperatura, wilgotność) wsparty aktywnymi efektorami (grzanie, wentylacja, podawanie leków).
 *   **Monitoring Wizyjny:** Zintegrowana kamera PoE wykonująca zdjęcia co 60 sekund w celu analizy aktywności wylotowej i wykrywania intruzów.
-*   **AI-Driven (Przyszłość):** Planowana integracja z agentem **Qwen AI**, zapewniającym predykcję rójki, diagnozę chorób i autonomiczne reakcje.
+*   **AI-Driven (Planowane):** Integracja z agentem **Qwen AI**, zapewniającym predykcję rójki, diagnozę chorób i autonomiczne reakcje.
 
 ---
 

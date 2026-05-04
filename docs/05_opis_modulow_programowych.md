@@ -4,26 +4,22 @@
 
 #### Architektura Firmware
 
-Firmware Raspberry Pi Pico został napisany w C++ z wykorzystaniem Raspberry Pi Pico SDK i Arduino Core for RP2040, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację HTTP.
+Firmware Raspberry Pi Pico został napisany w C++ z wykorzystaniem Raspberry Pi Pico SDK, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację HTTP.
 
 ```cpp
 // Przykład: main.cpp - Główna pętla Raspberry Pi Pico
-#include <Arduino.h>
+#include "pico/stdlib.h"
 #include "config/pin_definitions.h"
 #include "sensors/hx711_driver.h"
 #include "sensors/microphone_adc.h"
 #include "actuators/heater_control.h"
 #include "communication/http_server.h"
-#include <WiFiWebServer.h>
 
 void setup() {
-    Serial.begin(115200);
+    stdio_init_all();
     
-    // Inicjalizacja WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-    }
+    // Inicjalizacja WiFi (Pico W) lub Ethernet (W6100)
+    init_network();
     
     // Inicjalizacja sensorów
     HX711_init();
@@ -36,14 +32,14 @@ void setup() {
     }
     
     // Konfiguracja watchdog
-    rp2040.wdt_enable(2000);
+    watchdog_enable(2000, true);
     
     // Start HTTP server
     httpServer.begin();
 }
 
 void loop() {
-    rp2040.wdt_reset();
+    watchdog_update();
     
     // Akwizycja danych (non-blocking)
     uint32_t weight = HX711_read_average(10);
@@ -57,7 +53,7 @@ void loop() {
     packet.temperature = temp;
     packet.humidity = humidity;
     packet.audio_rms = audio_level;
-    packet.timestamp = millis();
+    packet.timestamp = time_us_32();
     
     // Obsługa żądań HTTP z Raspberry Pi 2
     httpServer.handleClient();
@@ -65,7 +61,7 @@ void loop() {
     // Obsługa komend z RPi przez HTTP API
     process_actuator_commands();
     
-    delay(100); // 10Hz sampling rate
+    sleep_ms(100); // 10Hz sampling rate
 }
 ```
 

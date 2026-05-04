@@ -16,7 +16,7 @@
 - SQLite3 / InfluxDB
 - GCC/G++ dla C++ (kompilacja TUI/GUI)
 - Bash skrypty systemowe
-- Raspberry Pi Pico SDK lub Arduino IDE z core RP2040
+- Raspberry Pi Pico SDK
 - Git
 
 ### Krok-po-Kroku Instalacja
@@ -58,19 +58,12 @@ sudo apt install -y i2c-tools
 # Git i build essentials dla C++
 sudo apt install -y git build-essential cmake libfftw3-dev libncurses5-dev
 
-# Raspberry Pi Pico SDK (opcjonalnie, jeśli kompilujesz z RPi)
+# Raspberry Pi Pico SDK (kompilacja z RPi2)
 cd /opt
 sudo git clone https://github.com/raspberrypi/pico-sdk.git
 cd pico-sdk
 git submodule update --init
 export PICO_SDK_PATH=/opt/pico-sdk
-
-# Alternatywnie: Arduino IDE z core RP2040
-wget https://downloads.arduino.cc/arduino-ide/arduino-ide_latest_Linux_64bit.tar.gz
-tar xzf arduino-ide_latest_Linux_64bit.tar.gz
-cd arduino-ide_*
-./install.sh
-# W Arduino IDE dodaj board "Raspberry Pi Pico" przez Board Manager
 ```
 
 #### 3. Klonowanie Repozytorium i Build
@@ -81,7 +74,7 @@ sudo git clone https://github.com/apiaryguard/apiaryguard-pro.git
 sudo chown -R pi:pi apiaryguard-pro
 cd apiaryguard-pro
 
-# Build firmware Raspberry Pi Pico (C++)
+# Build firmware Raspberry Pi Pico (C++ z Pico SDK)
 cd hardware/pico
 mkdir build && cd build
 cmake ..
@@ -89,10 +82,6 @@ make -j4
 # Wgranie przez USB (podłącz Pico z wciśniętym BOOTSEL)
 cp apiaryguard_firmware.uf2 /media/pi/RPI-RP2/
 cd ../..
-
-# Alternatywnie przez Arduino IDE (jeśli używasz)
-# Otwórz hardware/pico_arduino/apiaryguard.ino w Arduino IDE
-# Wybierz board "Raspberry Pi Pico" i kliknij Upload
 
 # Build aplikacji C++ TUI/GUI dla Raspberry Pi 2
 cd software/rpi_tui

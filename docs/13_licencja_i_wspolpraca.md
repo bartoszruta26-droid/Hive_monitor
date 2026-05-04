@@ -64,15 +64,15 @@ Projekt powstał dzięki wkładowi:
 - **Hardware Engineer**: [Imię]
 - **Beekeeping Advisors**: Pasieka "Złoty Plaster", Związek Pszczelarski RP
 - **Beta Testers**: 50+ pszczelarzy z całej Polski
-- **Open Source Libraries**: FFTW, .NET Foundation, Arduino Community
+- **Open Source Libraries**: FFTW, Raspberry Pi Foundation, RP2040 Community
 
 ---
 
 ## 📊 Statystyki Projektu
 
 ![Lines of Code](https://img.shields.io/badge/LOC-50,000+-blue)
-![Languages](https://img.shields.io/badge/Languages-C%23%20%7C%20C%2B%2B%20%7C%20Bash-orange)
-![Platforms](https://img.shields.io/badge/Platforms-RPi%20%7C%20Arduino-green)
+![Languages](https://img.shields.io/badge/Languages-C%2B%2B%20%7C%20Bash-orange)
+![Platforms](https://img.shields.io/badge/Platforms-RPi%202%20%7C%20RPi%20Pico-green)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 ![Build Status](https://img.shields.io/github/actions/workflow/status/apiaryguard/apiaryguard-pro/build.yml)
 ![Release](https://img.shields.io/github/v/release/apiaryguard/apiaryguard-pro)

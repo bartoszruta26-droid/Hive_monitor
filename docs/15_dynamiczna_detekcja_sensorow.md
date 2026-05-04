@@ -173,7 +173,7 @@ Jeśli aktualizujesz starszą wersję:
 
 - **Wsteczna**: Tak - system działa z mniejszą liczbą sensorów
 - **Sprzętowa**: Wszystkie sensory I2C, UART, ADC, GPIO
-- **Platforma**: Raspberry Pi Pico (RP2040), Arduino Core
+- **Platforma**: Raspberry Pi Pico (RP2040), Pico SDK
 
 ## Rozszerzenia w Przyszłości
 
