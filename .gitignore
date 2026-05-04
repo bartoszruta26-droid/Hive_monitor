@@ -1,30 +1,32 @@
 ```
-# Backup files
-*.bak
-
-# Executables
-apiary_collector
-
-# Build artifacts
+# Compiled and build artifacts
 *.o
 *.obj
 *.out
-build/
-dist/
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
+*.d
+*.i
+*.s
 
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+.pio/
+.platformio/
+lib/
+pioenvs/
+piolibdeps/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+*.bak
+*.~*
+*.orig
+*.rej
 
 # Environment
 .env
@@ -36,78 +38,28 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+tags
+cscope.*
+GTAGS
+GRTAGS
+GSYMS
+GPATH
+
+# Build directories
+build/
+dist/
+release/
+debug/
+.sconsign.dblite
+*.pyc
+__pycache__/
 
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# C/C++ specific
-*.o
-*.obj
-*.out
-*.a
-*.lib
-*.so
-*.dylib
-*.dll
-*.exe
-*.bin
-*.hex
-*.elf
-*.map
-*.sym
-*.lst
-*.srec
-*.hex
-*.bin
-*.out
-*.stackdump
-*.core
-*.gdb
-*.gch
-*.gcno
-*.gcda
-*.gcov
-*.info
-*.d
-*.dep
-*.orig
-*.rej
-*.bak
-*.~*
+ehthumbs.db
+Icon?
+.directory
+*.nib
 *~
-*.tmp
-*.temp
-*.log
-*.swp
-*.swo
-*#
-.\#*
 ```

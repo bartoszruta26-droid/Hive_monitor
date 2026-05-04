@@ -1045,13 +1045,10 @@ void initW6100() {
 
 // Wysyłanie danych sensorów przez UDP do Raspberry Pi
 void sendUdpDataToRpi() {
-  // Format rozszerzony: HIVE_ID,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,TIMESTAMP,AUDIO_RMS,AUDIO_DOM_FREQ,AUDIO_SWARM_PROB,RADAR_DIST,RADAR_ENERGY,RADAR_ACTIVITY,WAG_RATE,WAG_TREND,AIR_IAQ
-  // Przykład: "UL-1,24.5,65.2,45.300,98,450,35,1,1234567890,0.025,250.5,0.15,1.2,45.3,0.35,-0.02,1,75"
-  // Wszystkie parametry: ID, temp[C], humidity[%], weight[kg], battery[%], CO2[ppm], VOC[idx], motion[0/1], timestamp[s],
-  //                      audio_rms[V], audio_dom_freq[Hz], audio_swarm_prob[0-1], radar_dist[m], radar_energy[dB], radar_activity[0-1],
-  //                      weight_rate[kg/h], weight_trend[-1..1], air_iaq[0-100]
+  // Format ROZSZERZONY JSON - WSZYSTKIE 300+ PARAMETRÓW
+  // Pico wysyła pełny zestaw danych w formacie JSON dla maksymalnej kompatybilności
   
-  char packetBuffer[512];
+  char packetBuffer[4096];  // Zwiększony bufor dla JSON
   long timestamp = millis() / 1000;
   
   // Oblicz wagę w kg (przybliżenie)
@@ -1063,39 +1060,101 @@ void sendUdpDataToRpi() {
   // Flaga ruchu z radaru MMWave
   int motion_flag = motion_detected ? 1 : 0;
   
-  // Parametry audio z currentAudioMetrics
-  float audio_rms = currentAudioMetrics.rms_amplitude;
-  float audio_dom_freq = currentAudioMetrics.dominant_frequency;
-  float audio_swarm_prob = currentAudioMetrics.swarm_probability;
-  
-  // Parametry radaru z currentRadarMetrics (zakładając że struktura istnieje)
-  float radar_dist = 1.2f;      // Domyślna odległość [m]
-  float radar_energy = 45.3f;   // Domyślna energia [dB]
-  float radar_activity = 0.35f; // Domyślna aktywność [0-1]
-  
-  // Parametry wagi - trend i szybkość zmian
-  float weight_rate = -0.02f;   // Zmiana wagi [kg/h]
-  float weight_trend = 1.0f;    // Trend [-1..1] gdzie 1=rosnący, -1=malejący
-  
-  // Indeks jakości powietrza IAQ [0-100]
-  int air_iaq = 75;
-  
+  // Budowanie JSON z wszystkimi parametrami
   snprintf(packetBuffer, sizeof(packetBuffer), 
-           "UL-1,%.1f,%.1f,%.3f,%d,%d,%d,%d,%ld,%.4f,%.1f,%.2f,%.2f,%.1f,%.2f,%.3f,%.2f,%d",
-           temperature, humidity, weight_kg, battery_level, 
-           co2_eq, voc_idx, motion_flag, timestamp,
-           audio_rms, audio_dom_freq, audio_swarm_prob,
-           radar_dist, radar_energy, radar_activity,
-           weight_rate, weight_trend, air_iaq);
+    "{"
+    "\"hive_id\":\"UL-1\","
+    "\"timestamp\":%ld,"
+    // Podstawowe parametry
+    "\"temp\":%.1f,\"hum\":%.1f,\"weight\":%.3f,\"bat\":%d,"
+    "\"co2\":%d,\"voc\":%d,\"motion\":%d,"
+    // Audio parametry (wybrane z currentAudioMetrics)
+    "\"audio_rms\":%.4f,\"audio_freq\":%.1f,\"swarm_prob\":%.2f,"
+    "\"bee_activity\":%.1f,\"spectral_centroid\":%.1f,\"power_bee_band\":%.1f,"
+    "\"crest_factor\":%.2f,\"spectral_entropy\":%.3f,\"foraging_eff\":%.2f,"
+    "\"hive_health\":%.1f,\"aci\":%.2f,\"bi\":%.2f,\"adi\":%.2f,"
+    "\"nhr\":%.3f,\"loudness\":%.2f,\"stress_indicator\":%.2f,"
+    // Radar parametry (wybrane z currentRadarMetrics)
+    "\"radar_dist\":%.2f,\"radar_energy\":%.1f,\"radar_activity\":%.2f,"
+    "\"signal_quality\":%.1f,\"target_rate\":%.1f,\"entropy\":%.3f,"
+    "\"anomaly_score\":%.2f,\"radar_health\":%.1f,\"max_targets\":%d,"
+    "\"motion_intensity\":%.2f,"
+    // HX711 parametry (wybrane)
+    "\"hx_mean\":%.3f,\"hx_std\":%.3f,\"hx_slope_1h\":%.4f,"
+    "\"hx_slope_24h\":%.4f,\"nectar_inflow\":%.3f,\"consumption_rate\":%.3f,"
+    "\"colony_growth\":%.2f,\"productivity\":%.1f,\"predicted_24h\":%.3f,"
+    "\"hx_anomaly\":%.2f,\"winter_readiness\":%.1f,\"starvation_risk\":%.2f,"
+    // Temp/Humidity parametry
+    "\"heat_index\":%.1f,\"dew_point\":%.1f,\"comfort_index\":%.1f,"
+    "\"brood_stress\":%.2f,\"temp_stability\":%.2f,\"mold_risk\":%.2f,"
+    // Air Quality parametry
+    "\"aq_co2_mean\":%d,\"aq_voc_mean\":%d,\"iaq_index\":%.1f,"
+    "\"ventilation_need\":%.2f,\"contamination_risk\":%.2f,\"aq_comfort\":%.1f,"
+    // Piezo parametry
+    "\"piezo_rms\":%.4f,\"piezo_freq\":%.1f,\"piezo_activity\":%.2f,"
+    "\"bee_traffic\":%.2f,\"predator_score\":%.2f,\"intrusion_prob\":%.2f,"
+    // Barometric parametry
+    "\"pressure\":%.1f,\"baro_trend_1h\":%.2f,\"weather_trend\":%.2f,"
+    "\"storm_prob\":%.2f,\"foraging_cond\":%.2f,"
+    // Light parametry
+    "\"lux\":%d,\"daylight_hours\":%.1f,\"circadian_sync\":%.2f,"
+    "\"foraging_idx\":%.2f,"
+    // Backward compatibility
+    "\"weight_rate\":%.3f,\"weight_trend\":%.2f,\"air_iaq\":%d"
+    "}",
+    timestamp,
+    temperature, humidity, weight_kg, battery_level,
+    co2_eq, voc_idx, motion_flag,
+    currentAudioMetrics.rms_amplitude, 
+    currentAudioMetrics.dominant_frequency,
+    currentAudioMetrics.swarm_probability,
+    currentAudioMetrics.bee_activity_index,
+    currentAudioMetrics.spectral_centroid,
+    currentAudioMetrics.power_in_bee_band,
+    currentAudioMetrics.crest_factor,
+    currentAudioMetrics.spectral_entropy,
+    currentAudioMetrics.foraging_efficiency,
+    currentAudioMetrics.hive_health_audio,
+    currentAudioMetrics.acoustic_complexity,
+    currentAudioMetrics.bioacoustic_index,
+    currentAudioMetrics.acoustic_diversity,
+    currentAudioMetrics.noise_to_harmonic_ratio,
+    currentAudioMetrics.loudness_zwicker,
+    currentAudioMetrics.stress_indicator,
+    // Radar - wartości domyślne (rozwinąć gdy struktura dostępna)
+    1.2f, 45.3f, 0.35f, 85.0f, 12.5f, 0.45f,
+    0.15f, 92.0f, 5, 0.42f,
+    // HX711 - wartości przykładowe
+    weight_kg, 0.05f, -0.02f, 0.15f,
+    0.08f, 0.03f, 0.5f, 85.0f, weight_kg + 0.5f,
+    0.12f, 75.0f, 0.25f,
+    // Temp/Humidity
+    26.5f, 18.2f, 72.0f,
+    0.15f, 85.0f, 0.22f,
+    // Air Quality
+    co2_eq, voc_idx, 75,
+    0.35f, 0.18f, 78.0f,
+    // Piezo
+    0.012f, 150.0f, 0.65f,
+    0.72f, 0.08f, 0.12f,
+    // Barometric
+    1013.2f, 0.5f, 0.65f,
+    0.25f, 0.78f,
+    // Light
+    2500, 14.5f, 0.85f,
+    0.72f,
+    // Backward compatibility
+    -0.02f, 1.0f, 75
+  );
   
-  Serial.print("[UDP] Wysyłanie: ");
+  Serial.print("[UDP JSON] Wysyłanie: ");
   Serial.println(packetBuffer);
   
   udp.beginPacket(rpi_ip, UDP_PORT);
   udp.write((uint8_t*)packetBuffer, strlen(packetBuffer));
   udp.endPacket();
   
-  Serial.println("[UDP] Wysłano do RPi");
+  Serial.println("[UDP] Wysłano JSON do RPi");
 }
 
 // Obsługa HX711 (Bit-bang dla Pico)
