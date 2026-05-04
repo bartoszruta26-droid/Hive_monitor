@@ -1,25 +1,29 @@
 ## 💻 Opis Modułów Programowych
 
-### Moduł Arduino Nano (C++)
+### Moduł Raspberry Pi Pico (C++)
 
 #### Architektura Firmware
 
-Firmware Arduino Nano został napisany w C++ z wykorzystaniem frameworka Arduino, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację.
+Firmware Raspberry Pi Pico został napisany w C++ z wykorzystaniem Raspberry Pi Pico SDK i Arduino Core for RP2040, zapewniając deterministyczne działanie w czasie rzeczywistym. Kod jest modularny, z wyraźnym rozdziałem odpowiedzialności między warstwę sprzętową (HAL), logikę biznesową i komunikację HTTP.
 
 ```cpp
-// Przykład: main.cpp - Główna pętla Arduino
-#include <Wire.h>
+// Przykład: main.cpp - Główna pętla Raspberry Pi Pico
+#include <Arduino.h>
 #include "config/pin_definitions.h"
 #include "sensors/hx711_driver.h"
 #include "sensors/microphone_adc.h"
 #include "actuators/heater_control.h"
-#include "communication/i2c_slave.h"
+#include "communication/http_server.h"
+#include <WiFiWebServer.h>
 
 void setup() {
     Serial.begin(115200);
-    Wire.begin(I2C_SLAVE_ADDRESS);
-    Wire.onRequest(requestEvent);
-    Wire.onReceive(receiveEvent);
+    
+    // Inicjalizacja WiFi
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+    }
     
     // Inicjalizacja sensorów
     HX711_init();
@@ -32,11 +36,14 @@ void setup() {
     }
     
     // Konfiguracja watchdog
-    watchdog_enable(WDTO_2S);
+    rp2040.wdt_enable(2000);
+    
+    // Start HTTP server
+    httpServer.begin();
 }
 
 void loop() {
-    watchdog_reset();
+    rp2040.wdt_reset();
     
     // Akwizycja danych (non-blocking)
     uint32_t weight = HX711_read_average(10);
@@ -52,17 +59,17 @@ void loop() {
     packet.audio_rms = audio_level;
     packet.timestamp = millis();
     
-    // Wysyłka do RPi przez I2C
-    i2c_send_packet(&packet);
+    // Obsługa żądań HTTP z Raspberry Pi 2
+    httpServer.handleClient();
     
-    // Obsługa komend z RPi
+    // Obsługa komend z RPi przez HTTP API
     process_actuator_commands();
     
     delay(100); // 10Hz sampling rate
 }
 ```
 
-#### Kluczowe Komponenty Arduino
+#### Kluczowe Komponenty Raspberry Pi Pico
 
 1. **HX711 Driver**: 
    - 24-bitowa konwersja ADC
@@ -82,252 +89,240 @@ void loop() {
    - Anti-windup protection
    - Output limiting
 
-4. **I2C Protocol**:
-   - Custom binary protocol
+4. **HTTP Server Protocol**:
+   - RESTful API endpoints
+   - JSON payload format
    - Checksum validation
    - Retry mechanism
-   - Multi-message support
+   - Multi-client support
 
-### Moduł Raspberry Pi (C# .NET Core)
+### Moduł Raspberry Pi 2 (Bash + C++)
 
 #### Architektura Aplikacji
 
-Aplikacja C# wykorzystuje .NET Core 6.0+ z architekturą Clean Architecture, zapewniając separację concernów, testowalność i łatwość utrzymania.
+Aplikacja na Raspberry Pi 2 wykorzystuje Bash do operacji systemowych i TUI/GUI, oraz C++ do wysokowydajnego przetwarzania sygnałów. Komunikacja z Raspberry Pi Pico odbywa się przez HTTP API.
 
-##### Warstwa Domain (ApiaryGuard.Core)
+##### Warstwa Domain (ApiaryGuard.Core - C++)
 
-```csharp
-// Model: Hive.cs
-namespace ApiaryGuard.Core.Models
+```cpp
+// Model: Hive.hpp
+namespace ApiaryGuard::Core::Models
 {
-    public class Hive
+    struct Hive
     {
-        public int Id { get; set; }
-        public string Name { get; set; }
-        public string Location { get; set; }
-        public DateTime InstallationDate { get; set; }
-        public HiveStatus Status { get; set; }
+        int id;
+        std::string name;
+        std::string location;
+        std::chrono::system_clock::time_point installationDate;
+        HiveStatus status;
         
         // Navigation properties
-        public ICollection<SensorReading> SensorReadings { get; set; }
-        public ICollection<Alert> Alerts { get; set; }
-        public ICollection<Treatment> Treatments { get; set; }
+        std::vector<SensorReading> sensorReadings;
+        std::vector<Alert> alerts;
+        std::vector<Treatment> treatments;
         
         // Business logic
-        public bool IsSwarmingRisk()
+        bool IsSwarmingRisk() const
         {
-            var recentWeights = SensorReadings
-                .Where(r => r.SensorType == SensorType.Weight)
-                .OrderByDescending(r => r.Timestamp)
-                .Take(48) // Ostatnie 48 godzin
-                .ToList();
+            auto recentWeights = sensorReadings
+                | std::views::filter([](const auto& r) { return r.sensorType == SensorType::Weight; })
+                | std::views::take(48); // Ostatnie 48 godzin
             
-            if (recentWeights.Count < 2) return false;
+            if (recentWeights.size() < 2) return false;
             
-            var weightDrop = recentWeights.First().Value - recentWeights.Last().Value;
+            auto weightDrop = recentWeights.front().value - recentWeights.back().value;
             return weightDrop > 2000; // 2kg spadek = ryzyko rojenia
         }
         
-        public double CalculateHealthScore()
+        double CalculateHealthScore() const
         {
             // Algorytm oceny zdrowia rodziny
-            var weightScore = GetWeightScore();
-            var tempScore = GetTemperatureScore();
-            var audioScore = GetAudioActivityScore();
-            var humidityScore = GetHumidityScore();
+            auto weightScore = GetWeightScore();
+            auto tempScore = GetTemperatureScore();
+            auto audioScore = GetAudioActivityScore();
+            auto humidityScore = GetHumidityScore();
             
             return (weightScore * 0.3 + tempScore * 0.25 + 
                     audioScore * 0.25 + humidityScore * 0.2);
         }
-    }
+    };
 }
 ```
 
-##### Warstwa Services
+##### Warstwa Services (C++)
 
-```csharp
-// Service: SensorService.cs
-namespace ApiaryGuard.Core.Services
+```cpp
+// Service: SensorService.hpp
+namespace ApiaryGuard::Core::Services
 {
-    public class SensorService : ISensorService
+    class SensorService : public ISensorService
     {
-        private readonly IArduinoCommunication _arduinoComm;
-        private readonly IRepository<SensorReading> _readingRepo;
-        private readonly ILogger<SensorService> _logger;
+    private:
+        std::unique_ptr<IPicoCommunication> picoComm;
+        std::unique_ptr<IRepository<SensorReading>> readingRepo;
+        spdlog::logger& logger;
         
-        public SensorService(
-            IArduinoCommunication arduinoComm,
-            IRepository<SensorReading> readingRepo,
-            ILogger<SensorService> logger)
-        {
-            _arduinoComm = arduinoComm;
-            _readingRepo = readingRepo;
-            _logger = logger;
-        }
+    public:
+        SensorService(
+            std::unique_ptr<IPicoCommunication> picoComm,
+            std::unique_ptr<IRepository<SensorReading>> readingRepo,
+            spdlog::logger& logger);
         
-        public async Task<SensorReading> AcquireLatestReadings(int hiveId)
+        std::future<SensorReading> AcquireLatestReadings(int hiveId) override
         {
             try
             {
-                // Pobranie danych z Arduino
-                var rawPacket = await _arduinoComm.ReadSensorPacket();
+                // Pobranie danych z Raspberry Pi Pico przez HTTP API
+                auto rawPacket = picoComm->ReadSensorPacket();
                 
                 // Transformacja i walidacja
-                var reading = new SensorReading
-                {
-                    HiveId = hiveId,
-                    Timestamp = DateTime.UtcNow,
-                    Weight = rawPacket.Weight / 1000.0, // Convert to kg
-                    Temperature = rawPacket.Temperature,
-                    Humidity = rawPacket.Humidity,
-                    AudioLevel = rawPacket.AudioRms,
-                    PiezoActivity = rawPacket.PiezoCount
-                };
+                SensorReading reading;
+                reading.hiveId = hiveId;
+                reading.timestamp = std::chrono::system_clock::now();
+                reading.weight = rawPacket.weight / 1000.0; // Convert to kg
+                reading.temperature = rawPacket.temperature;
+                reading.humidity = rawPacket.humidity;
+                reading.audioLevel = rawPacket.audioRms;
+                reading.piezoActivity = rawPacket.piezoCount;
                 
                 // Walidacja zakresów
                 if (!ValidateReading(reading))
                 {
-                    _logger.LogWarning($"Invalid reading from hive {hiveId}");
-                    throw new InvalidSensorDataException("Reading out of expected range");
+                    logger.warn("Invalid reading from hive {}", hiveId);
+                    throw InvalidSensorDataException("Reading out of expected range");
                 }
                 
                 // Persist do bazy
-                await _readingRepo.AddAsync(reading);
+                readingRepo->AddAsync(reading);
                 
                 // Trigger eventów
-                await CheckThresholdsAndTriggerAlerts(reading);
+                CheckThresholdsAndTriggerAlerts(reading);
                 
-                return reading;
+                return std::async(std::launch::deferred, [reading]() { return reading; });
             }
-            catch (CommunicationException ex)
+            catch (const CommunicationException& ex)
             {
-                _logger.LogError(ex, $"Failed to acquire readings from hive {hiveId}");
+                logger.error("Failed to acquire readings from hive {}: {}", hiveId, ex.what());
                 throw;
             }
         }
         
-        private async Task CheckThresholdsAndTriggerAlerts(SensorReading reading)
+    private:
+        void CheckThresholdsAndTriggerAlerts(const SensorReading& reading)
         {
             // Reguły biznesowe dla alertów
-            if (reading.Weight < 5.0) // Krytycznie niska waga
+            if (reading.weight < 5.0) // Krytycznie niska waga
             {
-                await TriggerAlert(AlertType.CriticalLowWeight, reading);
+                TriggerAlert(AlertType::CriticalLowWeight, reading);
             }
             
-            if (reading.Temperature > 36.0) // Przegrzanie
+            if (reading.temperature > 36.0) // Przegrzanie
             {
-                await TriggerAlert(AlertType.Overheating, reading);
-                await ActivateCoolingFan(reading.HiveId);
+                TriggerAlert(AlertType::Overheating, reading);
+                ActivateCoolingFan(reading.hiveId);
             }
             
-            if (reading.Humidity > 75.0) // Zbyt wysoka wilgotność
+            if (reading.humidity > 75.0) // Zbyt wysoka wilgotność
             {
-                await TriggerAlert(AlertType.HighHumidity, reading);
-                await ActivateVentilation(reading.HiveId);
+                TriggerAlert(AlertType::HighHumidity, reading);
+                ActivateVentilation(reading.hiveId);
             }
         }
-    }
+    };
 }
 ```
 
-##### Background Workers
+##### Background Workers (C++)
 
-```csharp
-// Worker: BeeSoundAnalyzerWorker.cs
-namespace ApiaryGuard.Worker.Workers
+```cpp
+// Worker: BeeSoundAnalyzerWorker.hpp
+namespace ApiaryGuard::Worker
 {
-    public class BeeSoundAnalyzerWorker : BackgroundService
+    class BeeSoundAnalyzerWorker : public IBackgroundWorker
     {
-        private readonly ILogger<BeeSoundAnalyzerWorker> _logger;
-        private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IAudioProcessor _audioProcessor;
+    private:
+        spdlog::logger& logger;
+        std::unique_ptr<IAudioProcessor> audioProcessor;
+        std::atomic<bool> running{false};
         
-        public BeeSoundAnalyzerWorker(
-            ILogger<BeeSoundAnalyzerWorker> logger,
-            IServiceScopeFactory scopeFactory,
-            IAudioProcessor audioProcessor)
-        {
-            _logger = logger;
-            _scopeFactory = scopeFactory;
-            _audioProcessor = audioProcessor;
-        }
+    public:
+        BeeSoundAnalyzerWorker(
+            spdlog::logger& logger,
+            std::unique_ptr<IAudioProcessor> audioProcessor);
         
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        void Start() override
         {
-            _logger.LogInformation("Bee Sound Analyzer Worker starting...");
+            logger.info("Bee Sound Analyzer Worker starting...");
+            running = true;
             
-            while (!stoppingToken.IsCancellationRequested)
+            while (running)
             {
-                using var scope = _scopeFactory.CreateScope();
-                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                
                 // Pobranie ostatnich nagrań audio
-                var audioSamples = await context.AudioRecordings
-                    .Where(a => !a.IsAnalyzed && a.CreatedAt > DateTime.UtcNow.AddHours(-1))
-                    .ToListAsync(stoppingToken);
+                auto audioSamples = GetUnanalyzedAudioSamples(std::chrono::hours(1));
                 
-                foreach (var sample in audioSamples)
+                for (const auto& sample : audioSamples)
                 {
                     try
                     {
                         // Analiza FFT i ekstrakcja cech
-                        var features = await _audioProcessor.ExtractFeatures(sample.FilePath);
+                        auto features = audioProcessor->ExtractFeatures(sample.filePath);
                         
                         // Klasyfikacja stanu rodziny
-                        var classification = await ClassifyBeeState(features);
+                        auto classification = ClassifyBeeState(features);
                         
                         // Predykcja rojenia
-                        var swarmProbability = await PredictSwarming(features);
+                        auto swarmProbability = PredictSwarming(features);
                         
                         // Zapis wyników
-                        sample.AnalysisResult = classification;
-                        sample.SwarmProbability = swarmProbability;
-                        sample.IsAnalyzed = true;
+                        SaveAnalysisResult(sample.id, classification, swarmProbability);
                         
                         if (swarmProbability > 0.7)
                         {
-                            await CreateSwarmAlert(sample.HiveId, swarmProbability);
+                            CreateSwarmAlert(sample.hiveId, swarmProbability);
                         }
-                        
-                        await context.SaveChangesAsync(stoppingToken);
                     }
-                    catch (Exception ex)
+                    catch (const std::exception& ex)
                     {
-                        _logger.LogError(ex, $"Error analyzing audio sample {sample.Id}");
+                        logger.error("Error analyzing audio sample {}: {}", sample.id, ex.what());
                     }
                 }
                 
                 // Uruchomienie co 5 minut
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                std::this_thread::sleep_for(std::chrono::minutes(5));
             }
             
-            _logger.LogInformation("Bee Sound Analyzer Worker stopped.");
+            logger.info("Bee Sound Analyzer Worker stopped.");
         }
         
-        private async Task<double> PredictSwarming(AudioFeatures features)
+        void Stop() override { running = false; }
+        
+    private:
+        double PredictSwarming(const AudioFeatures& features)
         {
             // Implementacja modelu ML
             // - Detekcja piping sounds (queen pipes)
             // - Analiza częstotliwości skrzydeł
             // - Pattern recognition zachowań przedrojowych
             
-            var pipingDetected = features.FrequencyPeaks
-                .Any(p => p.Frequency >= 200 && p.Frequency <= 300);
+            auto pipingDetected = std::any_of(
+                features.frequencyPeaks.begin(),
+                features.frequencyPeaks.end(),
+                [](const auto& p) { return p.frequency >= 200 && p.frequency <= 300; });
             
-            var increasedActivity = features.ActivityLevel > _threshold;
+            auto increasedActivity = features.activityLevel > threshold;
             
-            var weightDrop = await GetRecentWeightDrop(features.HiveId);
+            auto weightDrop = GetRecentWeightDrop(features.hiveId);
             
             // Ensemble prediction
-            var probability = (
+            auto probability = (
                 (pipingDetected ? 0.4 : 0) +
                 (increasedActivity ? 0.3 : 0) +
                 (weightDrop > 1000 ? 0.3 : 0)
             );
             
-            return Math.Min(probability, 1.0);
+            return std::min(probability, 1.0);
         }
-    }
+    };
 }
 ```
 
@@ -596,23 +591,21 @@ private:
 } // namespace ApiaryGuard
 ```
 
-### Skrypty Bash (System Operations)
-
-#### LTE Setup Script (lte_setup.sh)
+#### WiFi Setup Script (wifi_setup.sh)
 
 ```bash
 #!/bin/bash
-# lte_setup.sh - Konfiguracja połączenia LTE Aero2
+# wifi_setup.sh - Konfiguracja połączenia WiFi
 # Autor: ApiaryGuard Team
 # Wersja: 2.1.0
 
 set -euo pipefail
 
 # Konfiguracja
-APN="darmowy"
-PIN="" # Opcjonalny PIN karty SIM
-INTERFACE="usb0"
-LOG_FILE="/var/log/apiaryguard/lte_setup.log"
+WIFI_SSID="your_ssid"
+WIFI_PASSWORD="your_password"
+INTERFACE="wlan0"
+LOG_FILE="/var/log/apiaryguard/wifi_setup.log"
 
 # Logging function
 log() {
@@ -625,103 +618,78 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-log "Rozpoczynanie konfiguracji LTE Aero2..."
+log "Rozpoczynanie konfiguracji WiFi..."
 
 # Instalacja wymaganych pakietów
 log "Instalacja zależności..."
 apt-get update
-apt-get install -y ppp wvdial usb-modescreen modemmanager
+apt-get install -y wireless-tools wpasupplicant network-manager
 
-# Detekcja modemu
-log "Detekcja modemu USB..."
-if ! lsusb | grep -q "Huawei\|ZTE\|Option"; then
-    log "WARNING: Nie wykryto modemu USB. Sprawdz połączenie."
+# Detekcja adaptera WiFi
+log "Detekcja adaptera WiFi..."
+if ! iwconfig 2>/dev/null | grep -q "wlan0"; then
+    log "WARNING: Nie wykryto adaptera WiFi. Sprawdz połączenie."
     exit 1
 fi
 
-# Konfiguracja usb-modeswitch (jeśli potrzebne)
-if [[ -f /etc/usb_modeswitch.d/* ]]; then
-    log "Konfiguracja usb-modeswitch..."
-    usb_modeswitch -v 0x12d1 -p 0x1506 -V 0x12d1 -P 0x1001 -M "55534243123456780000000000000011062000000100000000000000000000" || true
-fi
+# Tworzenie konfiguracji wpa_supplicant
+log "Tworzenie konfiguracji wpa_supplicant..."
+cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+# Konfiguracja WiFi dla ApiaryGuard
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+country=PL
 
-# Tworzenie konfiguracji PPP
-log "Tworzenie konfiguracji PPP..."
-cat > /etc/ppp/peers/aero2 <<EOF
-# Konfiguracja PPP dla Aero2
-/dev/ttyUSB0
-115200
-noauth
-defaultroute
-replacedefaultroute
-usepeerdns
-noipdefault
-persist
-maxfail 0
-holdoff 5
-debug
-logfile /var/log/ppp/aero2.log
-
-# APN
-connect "/usr/sbin/chat -v -f /etc/chatscripts/aero2"
-EOF
-
-# Chat script
-cat > /etc/chatscripts/aero2 <<EOF
-ABORT BUSY
-ABORT 'NO CARRIER'
-ABORT VOICE
-ABORT 'NO DIALTONE'
-'' ATZ
-OK AT+CGDCONT=1,"IP","${APN}"
-OK ATDT*99***1#
-CONNECT ''
+network={
+    ssid="${WIFI_SSID}"
+    psk="${WIFI_PASSWORD}"
+    key_mgmt=WPA-PSK
+}
 EOF
 
 # Konfiguracja network interface
 log "Konfiguracja interfejsu sieciowego..."
 cat >> /etc/network/interfaces <<EOF
 
-# LTE Aero2 interface
-auto aero2
-iface aero2 inet ppp
-    provider aero2
+# WiFi interface
+auto wlan0
+iface wlan0 inet dhcp
+    wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
 EOF
 
 # Firewall rules
-log "Konfiguracja firewall dla LTE..."
+log "Konfiguracja firewall dla WiFi..."
 iptables -A FORWARD -o $INTERFACE -j ACCEPT
 iptables -A INPUT -i $INTERFACE -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Test połączenia
 log "Testowanie połączenia..."
-if pon aero2 stderr; then
-    sleep 10
+if iwconfig wlan0 | grep -q "ESSID"; then
+    sleep 5
     
-    if ping -c 4 -I ppp0 8.8.8.8 > /dev/null 2>&1; then
-        log "SUCCESS: Połączenie LTE aktywne!"
-        ip addr show ppp0 | tee -a "$LOG_FILE"
+    if ping -c 4 -I wlan0 8.8.8.8 > /dev/null 2>&1; then
+        log "SUCCESS: Połączenie WiFi aktywne!"
+        ip addr show wlan0 | tee -a "$LOG_FILE"
     else
-        log "ERROR: Brak łączności pomimo nawiązania połączenia PPP"
-        poff aero2
+        log "ERROR: Brak łączności pomimo nawiązania połączenia WiFi"
         exit 1
     fi
 else
-    log "ERROR: Nie udało się nawiązać połączenia PPP"
+    log "ERROR: Nie udało się nawiązać połączenia WiFi"
     exit 1
 fi
 
 # Konfiguracja auto-start
 log "Dodawanie do auto-start..."
-systemctl enable ppp@aero2.service 2>/dev/null || true
+systemctl enable Networking.service 2>/dev/null || true
 
-log "Konfiguracja LTE zakończona pomyślnie!"
+log "Konfiguracja WiFi zakończona pomyślnie!"
 echo ""
-echo "Aby rozłączyć: poff aero2"
-echo "Aby połączyć: pon aero2"
-echo "Logi: tail -f /var/log/ppp/aero2.log"
+echo "Aby sprawdzić status: iwconfig wlan0"
+echo "Aby rozłączyć: ip link set wlan0 down"
+echo "Aby połączyć: ip link set wlan0 up"
+echo "Logi: journalctl -u Networking -f"
 ```
-
 #### Health Check Script (health_check.sh)
 
 ```bash
@@ -759,11 +727,10 @@ echo "  \"check_time\": \"$(date -Iseconds)\"," >> "$HEALTH_REPORT"
 echo "  \"services\": [" >> "$HEALTH_REPORT"
 
 # Sprawdzenie usług systemowych
-check_status "Apache2" "systemctl is-active apache2" >> "$HEALTH_REPORT"
-check_status "ApiaryGuard.Core" "systemctl is-active apiaryguard-core" >> "$HEALTH_REPORT"
-check_status "ApiaryGuard.Worker" "systemctl is-active apiaryguard-worker" >> "$HEALTH_REPORT"
-check_status "Mosquitto MQTT" "systemctl is-active mosquitto" >> "$HEALTH_REPORT"
-check_status "LTE Connection" "ip link show ppp0 | grep -q UNKNOWN" >> "$HEALTH_REPORT"
+check_status "ApiaryGuard Core (C++)" "systemctl is-active apiaryguard-core" >> "$HEALTH_REPORT"
+check_status "ApiaryGuard Worker (C++)" "systemctl is-active apiaryguard-worker" >> "$HEALTH_REPORT"
+check_status "HTTP API Service" "curl -sf http://localhost:8080/health > /dev/null" >> "$HEALTH_REPORT"
+check_status "WiFi Connection" "iwconfig wlan0 | grep -q 'ESSID'" >> "$HEALTH_REPORT"
 
 # Sprawdzenie zasobów
 echo "  ]," >> "$HEALTH_REPORT"
@@ -792,11 +759,11 @@ fi
 echo "  }," >> "$HEALTH_REPORT"
 echo "  \"sensors\": {" >> "$HEALTH_REPORT"
 
-# Test komunikacji z Arduino
-if i2cdetect -y -r 1 0x48 0x48 > /dev/null 2>&1; then
-    echo "    \"arduino_connection\": \"OK\"," >> "$HEALTH_REPORT"
+# Test komunikacji z Raspberry Pi Pico przez HTTP API
+if curl -sf http://pico.local/api/sensors > /dev/null 2>&1; then
+    echo "    \"pico_connection\": \"OK\"," >> "$HEALTH_REPORT"
 else
-    echo "    \"arduino_connection\": \"FAILED\"," >> "$HEALTH_REPORT"
+    echo "    \"pico_connection\": \"FAILED\"," >> "$HEALTH_REPORT"
     ((ERROR_COUNT++))
 fi
 
