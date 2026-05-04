@@ -12,6 +12,7 @@
 | GPIO | 40-pin header |
 | Power | 5V/2A microUSB lub PoE przez HAT |
 | OS | Raspberry Pi OS Lite (64-bit) |
+| Interface | GUI/TUI (Terminal User Interface) |
 
 ### Mikrokontroler: Raspberry Pi Pico (RP2040)
 
@@ -25,6 +26,7 @@
 | Power | 3.3V (USB lub VSYS 1.8-5.5V) |
 | GPIO | 26x wielofunkcyjne piny |
 | Temperatura | -20°C do +70°C |
+| Komunikacja z RPi2 | HTTP API (REST) |
 
 ### Moduł Łączności: LTE USB Dongle (Aero2)
 
@@ -159,7 +161,7 @@
   - RP2040 dual-core ARM Cortex-M0+ @ 133 MHz
   - 264 KB SRAM, 2MB Flash
   - 3x 12-bit ADC, extensive GPIO
-  - C++/MicroPython support
+  - C++ support (Arduino Core for RP2040 lub Pico SDK)
   - Łatwa programowalność przez USB
 - **Raspberry Pi Pico W** (opcja z WiFi):
   - Wszystkie cechy Pico + WiFi 802.11n
@@ -172,6 +174,7 @@
   - Większej pamięci na buffering danych sensorycznych
   - Lepszą wydajność przy niskim poborze energii
 - **Rekomendacja**: Raspberry Pi Pico jako główny MCU, Pico W dla jednostek wymagających WiFi
+- **Komunikacja**: HTTP REST API między Pico a Raspberry Pi 2 (zamiast I2C/MQTT)
 
 ##### e) Ochrona EMF Shield Protection
 - **Problem**: Radary MMWave, WiFi (Pico W) i transmisja LTE generują pole elektromagnetyczne
