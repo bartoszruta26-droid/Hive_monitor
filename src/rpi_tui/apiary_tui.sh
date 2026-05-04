@@ -262,7 +262,7 @@ fetch_hive_data() {
                 done <<< "$csv_data"
                 
                 if $data_fetched; then
-                    Logger::getInstance().info "Pobrano dane z ${#HIVES[@]} uli przez HTTP API" 2>/dev/null || true
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] TUI: Pobrano dane z ${#HIVES[@]} uli przez HTTP API" >> "$LOG_FILE" 2>/dev/null || true
                 fi
             fi
         fi
