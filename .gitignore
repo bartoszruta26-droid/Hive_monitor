@@ -1,1 +1,1 @@
-(docs/00_README_INTRO.md, docs/01_wstep_i_opis_projektu.md, docs/03_specyfikacja_sprzetowa.md, docs/05_opis_modulow_programowych.md, docs/08_instalacja_i_konfiguracja.md, docs/11_konserwacja_i_rozwiazywanie_problemow.md, docs/13_licencja_i_wspolpraca.md, docs/15_dynamiczna_detekcja_sensorow.md)
+Nothing should be ignored based on the provided file changes, as they only include source files (.md, .php, .js, .html) without any build artifacts, dependencies, or temporary files.
