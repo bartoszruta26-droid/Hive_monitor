@@ -17,7 +17,7 @@
                     │   Apache Server   │
                     │  (Raspberry Pi 2) │
                     │  - HTTP/HTTPS     │
-                    │  - MQTT Broker    │
+                    │  - GUI/TUI App    │
                     │  - Local Database │
                     └─────────┬─────────┘
                               │
@@ -30,10 +30,11 @@
 └───────────────┘   └─────────────────┘   └───────────────┘
                               │
                     ┌─────────▼─────────┐
-                    │   Arduino Nano    │
+                    │  Raspberry Pi Pico│
                     │   (Slave Device)  │
                     │   - Sensor Hub    │
                     │   - Actuator Ctrl │
+                    │   - HTTP Client   │
                     └─────────┬─────────┘
                               │
         ┌─────────────────────┼─────────────────────┐
@@ -44,7 +45,7 @@
 │   - Mic       │   │   - Fan         │   │   - SPI       │
 │   - DHT22     │   │   - Dispenser   │   │   - UART      │
 │   - Piezo     │   │   - Valves      │   │   - GPIO      │
-│   - Strain    │   │   - Relays      │   │               │
+│   - Strain    │   │   - Relays      │   │   - WiFi (opc)│
 └───────────────┘   └─────────────────┘   └───────────────┘
 ```
 
@@ -57,22 +58,25 @@
 - Odporność na wilgotność, temperaturę, wibracje
 
 #### Warstwa 2: Sterowania (Control Layer)
-- Arduino Nano jako lokalny kontroler
+- **Raspberry Pi Pico** jako lokalny kontroler
 - Real-time processing sygnałów
 - PWM sterowanie efektorem
 - Watchdog i safe-mode
+- Klient HTTP do komunikacji z RPi2
 
 #### Warstwa 3: Agregacji (Gateway Layer)
-- Raspberry Pi 2 jako bramka
+- **Raspberry Pi 2** jako bramka i serwer aplikacji
 - Apache2 server z bazą danych
+- Aplikacja GUI/TUI napisana w C++
 - Komunikacja LTE z chmurą
 - Local caching i offline operation
+- HTTP API dla komunikacji z Pico
 
 #### Warstwa 4: Aplikacyjna (Application Layer)
 - Web dashboard
 - Mobile applications
 - API dla integracji zewnętrznych
-- Machine Learning analytics
+- Machine Learning analytics (przyszłość)
 
 ---
 

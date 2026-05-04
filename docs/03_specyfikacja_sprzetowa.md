@@ -13,17 +13,18 @@
 | Power | 5V/2A microUSB lub PoE przez HAT |
 | OS | Raspberry Pi OS Lite (64-bit) |
 
-### Mikrokontroler: Arduino Nano V3.0
+### Mikrokontroler: Raspberry Pi Pico (RP2040)
 
 | Parametr | Specyfikacja |
 |----------|-------------|
-| MCU | ATmega328P @ 16 MHz |
-| Flash | 32 KB (2 KB bootloader) |
-| SRAM | 2 KB |
-| EEPROM | 1 KB |
-| ADC | 6x 10-bit |
-| Communication | UART, I2C, SPI |
-| Power | 5V (USB lub VIN 7-12V) |
+| MCU | RP2040 Dual-Core ARM Cortex-M0+ @ 133 MHz |
+| Flash | 2 MB QSPI (zewnętrzny) |
+| SRAM | 264 KB |
+| ADC | 3x 12-bit SAR ADC |
+| Communication | UART, I2C, SPI, USB 1.1 |
+| Power | 3.3V (USB lub VSYS 1.8-5.5V) |
+| GPIO | 26x wielofunkcyjne piny |
+| Temperatura | -20°C do +70°C |
 
 ### Moduł Łączności: LTE USB Dongle (Aero2)
 
@@ -152,30 +153,28 @@
   - Detekcja wzrokowa drapieżników i szkodników
   - Walidacja innych sensorów (korelacja wagowych spadków z wizją rojenia)
 
-##### d) Upgrade Mikrokontrolera: ESP32-WROOM-32 lub Raspberry Pi Pico W
-- **Problem Arduino Nano**: ATmega328P ma zbyt ograniczone zasoby (2KB RAM, 32KB Flash) dla nowych sensorów
-- **ESP32-WROOM-32**:
-  - Dual-core Tensilica LX6 @ 240 MHz
-  - 520 KB SRAM, 4MB Flash
-  - WiFi 802.11 b/g/n + Bluetooth 4.2 BR/EDR + BLE
-  - 18x 12-bit ADC, 10x touch sensor
-  - Hardware encryption for security
-- **Raspberry Pi Pico W** (opcja ostateczna z lepszym supportem):
+##### d) Upgrade Mikrokontrolera: Raspberry Pi Pico / Pico W
+- **Wybór Raspberry Pi Pico**: Zdecydowano się na RP2040 zamiast Arduino Nano ze względu na znacznie lepsze parametry
+- **Raspberry Pi Pico** (główny wybór):
   - RP2040 dual-core ARM Cortex-M0+ @ 133 MHz
   - 264 KB SRAM, 2MB Flash
-  - WiFi 802.11n (model W)
   - 3x 12-bit ADC, extensive GPIO
-  - MicroPython/C++ support
-- **UZASADNIENIE POTRZEBY**: Arduino Nano jest niewystarczające dla:
-  - Przetwarzania FFT audio w czasie rzeczywistym
-  - Obsługi wielu sensorów I2C jednocześnie (CO2+VOC+radar+kamera)
-  - Komunikacji WiFi dla lokalnego dashboardu
-  - Edge AI inference dla prostych modeli ML
+  - C++/MicroPython support
+  - Łatwa programowalność przez USB
+- **Raspberry Pi Pico W** (opcja z WiFi):
+  - Wszystkie cechy Pico + WiFi 802.11n
+  - Dodatkowa łączność lokalna dla dashboardu
+  - Możliwość pracy w trybie AP lub STA
+- **UZASADNIENIE POTRZEBY**: Raspberry Pi Pico zapewnia:
+  - Przetwarzanie FFT audio w czasie rzeczywistym
+  - Obsługę wielu sensorów I2C jednocześnie (CO2+VOC+radar+kamera)
+  - Komunikację HTTP z Raspberry Pi 2
   - Większej pamięci na buffering danych sensorycznych
-- **Rekomendacja**: ESP32 jako główny MCU, Pico W jako backup lub dla mniejszych jednostek satelitarnych
+  - Lepszą wydajność przy niskim poborze energii
+- **Rekomendacja**: Raspberry Pi Pico jako główny MCU, Pico W dla jednostek wymagających WiFi
 
 ##### e) Ochrona EMF Shield Protection
-- **Problem**: Radary MMWave, WiFi ESP32 i transmisja LTE generują pole elektromagnetyczne
+- **Problem**: Radary MMWave, WiFi (Pico W) i transmisja LTE generują pole elektromagnetyczne
 - **Ryzyko**: Potencjalny wpływ RF na orientację pszczół, zdrowie rodziny, produkcję miodu
 - **Rozwiązanie**:
   - **Mu-metal shielding**: Ekranowanie kierunkowe sensorów RF
@@ -266,7 +265,7 @@
   - IP66: Protection against powerful water jets
   - IP67: Immersion up to 1m for 30 minutes
   - IP68: Continuous immersion >1m (recommended for flood-prone areas)
-- **Dimensions**: 250x180x100 mm (RPi + ESP32/Pico + sensors + shielding)
+- **Dimensions**: 250x180x100 mm (RPi + Pico/Pico W + sensors + shielding)
 - **Mounting**: External bracket on hive back panel with vibration isolation
 - **Thermal**: Passive cooling with rain shield + thermal analysis for sensor placement
 - **Security**: Lockable enclosure with tamper switch + GPS anti-theft mount
@@ -278,7 +277,7 @@
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
 │  │  RF COMPARTMENT │  │ SENSOR COMPART. │  │ POWER UNIT  │ │
 │  │  (Faraday Cage) │  │  (Mu-metal)     │  │             │ │
-│  │  - ESP32 WiFi   │  │  - MMWave Radar │  │  - PoE      │ │
+│  │  - Pico W WiFi  │  │  - MMWave Radar │  │  - PoE      │ │
 │  │  - LTE Dongle   │  │  - Gas Sensors  │  │  - Battery  │ │
 │  │  - GPS Module   │  │  - Temp/Hum     │  │  - Relays   │ │
 │  │  Directional →  │  │  ← Shielded     │  │             │ │
