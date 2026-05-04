@@ -915,6 +915,18 @@ public:
         }
         return csv.str();
     }
+    // Eksport danych do pliku CSV
+    void exportToCSV(const std::string& filename) {
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            Logger::getInstance().error("Nie udało się otworzyć pliku CSV: " + filename);
+            return;
+        }
+        
+        file << getStatusCSV();
+        file.close();
+        Logger::getInstance().debug("Eksportowano dane do pliku: " + filename);
+    }
 };
 
 // Funkcja główna do samodzielnego uruchomienia jako demon
@@ -1023,6 +1035,8 @@ int main(int argc, char* argv[]) {
         static time_t last_log = 0;
         if (std::time(nullptr) - last_log >= 5) {
             last_log = std::time(nullptr);
+            // Eksportuj dane do pliku CSV dla TUI
+            collector.exportToCSV("/tmp/apiary_data.csv");
             // Można dodać okresowe logowanie statystyk
         }
     }

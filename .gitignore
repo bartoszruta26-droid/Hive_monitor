@@ -1,1 +1,24 @@
-Nothing should be ignored based on the provided file changes, as they only include source files (.md, .php, .js, .html) without any build artifacts, dependencies, or temporary files.
+```
+# Compiled files
+*.o
+*.obj
+*.out
+
+# Dependencies
+venv/
+.venv/
+__pycache__/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+```

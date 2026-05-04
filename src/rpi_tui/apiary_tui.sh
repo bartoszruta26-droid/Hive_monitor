@@ -152,9 +152,9 @@ stop_collector() {
     COLLECTOR_PID=""
 }
 
-# Pobierz dane z kolektora przez CSV export
+# Pobierz dane z kolektora przez HTTP API
 fetch_hive_data() {
-    # Reset tablic
+    # Reset tablic - wszystkie parametry
     HIVES=()
     HIVE_STATUS=()
     HIVE_TEMP=()
@@ -168,22 +168,170 @@ fetch_hive_data() {
     HIVE_AUDIO_RMS=()
     HIVE_AUDIO_FREQ=()
     HIVE_SWARM_PROB=()
+    HIVE_BEE_ACTIVITY=()
+    HIVE_SPECTRAL_CENTROID=()
+    HIVE_AUDIO_HEALTH=()
     HIVE_RADAR_DIST=()
     HIVE_RADAR_ENERGY=()
     HIVE_RADAR_ACT=()
+    HIVE_RADAR_HEALTH=()
+    HIVE_RADAR_ANOMALY=()
     HIVE_WAG_RATE=()
     HIVE_WAG_TREND=()
+    HIVE_HX_MEAN=()
+    HIVE_NECTAR_INFLOW=()
+    HIVE_COLONY_GROWTH=()
+    HIVE_PRODUCTIVITY=()
+    HIVE_HEAT_INDEX=()
+    HIVE_COMFORT_INDEX=()
+    HIVE_BROOD_STRESS=()
+    HIVE_IAQ_INDEX=()
+    HIVE_VENTILATION_NEED=()
+    HIVE_PIEZO_ACTIVITY=()
+    HIVE_PREDATOR_SCORE=()
+    HIVE_PRESSURE=()
+    HIVE_WEATHER_TREND=()
+    HIVE_FORAGING_COND=()
+    HIVE_LUX=()
+    HIVE_CIRCADIAN_SYNC=()
     
-    # Spróbuj pobrać dane z kolektora jeśli działa
-    if [ -n "$COLLECTOR_PID" ] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
-        # W wersji z FIFO/pipe - tutaj byłaby komunikacja IPC
-        # Na razie symulujemy dane które byłyby pobrane
-        :
+    local data_fetched=false
+    
+    # Spróbuj pobrać dane z kolektora przez HTTP API
+    if command -v curl &> /dev/null; then
+        # Sprawdź czy kolektor jest dostępny
+        if curl -s --connect-timeout 2 http://localhost:8080/health > /dev/null 2>&1; then
+            # Pobierz dane CSV z kolektora
+            local csv_data
+            csv_data=$(curl -s --connect-timeout 2 http://localhost:8080/api/csv 2>/dev/null)
+            
+            if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
+                # Parsuj CSV (pomijaj nagłówek)
+                local first_line=true
+                while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+                    if $first_line; then
+                        first_line=false
+                        continue
+                    fi
+                    
+                    # Ignoruj puste linie
+                    [ -z "$id" ] && continue
+                    
+                    HIVES+=("$id")
+                    HIVE_STATUS+=("$status")
+                    HIVE_TEMP+=("$temp")
+                    HIVE_HUM+=("$hum")
+                    HIVE_WEIGHT+=("$weight")
+                    HIVE_BAT+=("$bat")
+                    HIVE_CO2+=("$co2")
+                    HIVE_VOC+=("$voc")
+                    HIVE_MOTION+=("$motion")
+                    HIVE_IAQ+=("$air_iaq")
+                    HIVE_AUDIO_RMS+=("$audio_rms")
+                    HIVE_AUDIO_FREQ+=("$audio_freq")
+                    HIVE_SWARM_PROB+=("$swarm_prob")
+                    HIVE_RADAR_DIST+=("$radar_dist")
+                    HIVE_RADAR_ENERGY+=("$radar_energy")
+                    HIVE_RADAR_ACT+=("$radar_act")
+                    HIVE_WAG_RATE+=("$wag_rate")
+                    HIVE_WAG_TREND+=("$wag_trend")
+                    # Parametry domyślne dla rozszerzonych
+                    HIVE_BEE_ACTIVITY+=("0")
+                    HIVE_SPECTRAL_CENTROID+=("0")
+                    HIVE_AUDIO_HEALTH+=("0")
+                    HIVE_RADAR_HEALTH+=("0")
+                    HIVE_RADAR_ANOMALY+=("0")
+                    HIVE_HX_MEAN+=("$weight")
+                    HIVE_NECTAR_INFLOW+=("0")
+                    HIVE_COLONY_GROWTH+=("0")
+                    HIVE_PRODUCTIVITY+=("0")
+                    HIVE_HEAT_INDEX+=("0")
+                    HIVE_COMFORT_INDEX+=("0")
+                    HIVE_BROOD_STRESS+=("0")
+                    HIVE_IAQ_INDEX+=("$air_iaq")
+                    HIVE_VENTILATION_NEED+=("0")
+                    HIVE_PIEZO_ACTIVITY+=("0")
+                    HIVE_PREDATOR_SCORE+=("0")
+                    HIVE_PRESSURE+=("0")
+                    HIVE_WEATHER_TREND+=("0")
+                    HIVE_FORAGING_COND+=("0")
+                    HIVE_LUX+=("0")
+                    HIVE_CIRCADIAN_SYNC+=("0")
+                    
+                    data_fetched=true
+                done <<< "$csv_data"
+                
+                if $data_fetched; then
+                    Logger::getInstance().info "Pobrano dane z ${#HIVES[@]} uli przez HTTP API" 2>/dev/null || true
+                fi
+            fi
+        fi
     fi
     
-    # Jeśli brak danych z kolektora, użyj przykładowych (fallback)
-    if [ ${#HIVES[@]} -eq 0 ]; then
-        # Symulacja danych - w produkcji to będzie parsing outputu z kolektora
+    # Jeśli brak danych z kolektora, sprawdź plik CSV
+    if ! $data_fetched && [ -f "$COLLECTOR_DATA_FILE" ]; then
+        local csv_data
+        csv_data=$(cat "$COLLECTOR_DATA_FILE" 2>/dev/null)
+        
+        if [ -n "$csv_data" ]; then
+            local first_line=true
+            while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+                if $first_line; then
+                    first_line=false
+                    continue
+                fi
+                
+                [ -z "$id" ] && continue
+                
+                HIVES+=("$id")
+                HIVE_STATUS+=("$status")
+                HIVE_TEMP+=("$temp")
+                HIVE_HUM+=("$hum")
+                HIVE_WEIGHT+=("$weight")
+                HIVE_BAT+=("$bat")
+                HIVE_CO2+=("$co2")
+                HIVE_VOC+=("$voc")
+                HIVE_MOTION+=("$motion")
+                HIVE_IAQ+=("$air_iaq")
+                HIVE_AUDIO_RMS+=("$audio_rms")
+                HIVE_AUDIO_FREQ+=("$audio_freq")
+                HIVE_SWARM_PROB+=("$swarm_prob")
+                HIVE_RADAR_DIST+=("$radar_dist")
+                HIVE_RADAR_ENERGY+=("$radar_energy")
+                HIVE_RADAR_ACT+=("$radar_act")
+                HIVE_WAG_RATE+=("$wag_rate")
+                HIVE_WAG_TREND+=("$wag_trend")
+                # Parametry domyślne dla rozszerzonych
+                HIVE_BEE_ACTIVITY+=("0")
+                HIVE_SPECTRAL_CENTROID+=("0")
+                HIVE_AUDIO_HEALTH+=("0")
+                HIVE_RADAR_HEALTH+=("0")
+                HIVE_RADAR_ANOMALY+=("0")
+                HIVE_HX_MEAN+=("$weight")
+                HIVE_NECTAR_INFLOW+=("0")
+                HIVE_COLONY_GROWTH+=("0")
+                HIVE_PRODUCTIVITY+=("0")
+                HIVE_HEAT_INDEX+=("0")
+                HIVE_COMFORT_INDEX+=("0")
+                HIVE_BROOD_STRESS+=("0")
+                HIVE_IAQ_INDEX+=("$air_iaq")
+                HIVE_VENTILATION_NEED+=("0")
+                HIVE_PIEZO_ACTIVITY+=("0")
+                HIVE_PREDATOR_SCORE+=("0")
+                HIVE_PRESSURE+=("0")
+                HIVE_WEATHER_TREND+=("0")
+                HIVE_FORAGING_COND+=("0")
+                HIVE_LUX+=("0")
+                HIVE_CIRCADIAN_SYNC+=("0")
+                
+                data_fetched=true
+            done <<< "$csv_data"
+        fi
+    fi
+    
+    # Jeśli nadal brak danych, użyj przykładowych (fallback/demo mode)
+    if ! $data_fetched; then
+        # Symulacja danych - tryb demo gdy kolektor nie działa
         HIVES=("UL-001" "UL-002" "UL-003")
         HIVE_STATUS=("ONLINE" "ONLINE" "STALE")
         HIVE_TEMP=("24.5" "26.1" "23.8")
@@ -202,6 +350,35 @@ fetch_hive_data() {
         HIVE_RADAR_ACT=("0.35" "0.42" "0.28")
         HIVE_WAG_RATE=("-0.02" "0.05" "-0.01")
         HIVE_WAG_TREND=("1.0" "0.8" "0.5")
+        # Rozszerzone parametry - wartości domyślne
+        for i in "${!HIVES[@]}"; do
+            HIVE_BEE_ACTIVITY+=("0")
+            HIVE_SPECTRAL_CENTROID+=("0")
+            HIVE_AUDIO_HEALTH+=("0")
+            HIVE_RADAR_HEALTH+=("0")
+            HIVE_RADAR_ANOMALY+=("0")
+            HIVE_HX_MEAN+=("${HIVE_WEIGHT[$i]}")
+            HIVE_NECTAR_INFLOW+=("0")
+            HIVE_COLONY_GROWTH+=("0")
+            HIVE_PRODUCTIVITY+=("0")
+            HIVE_HEAT_INDEX+=("0")
+            HIVE_COMFORT_INDEX+=("0")
+            HIVE_BROOD_STRESS+=("0")
+            HIVE_IAQ_INDEX+=("${HIVE_IAQ[$i]}")
+            HIVE_VENTILATION_NEED+=("0")
+            HIVE_PIEZO_ACTIVITY+=("0")
+            HIVE_PREDATOR_SCORE+=("0")
+            HIVE_PRESSURE+=("0")
+            HIVE_WEATHER_TREND+=("0")
+            HIVE_FORAGING_COND+=("0")
+            HIVE_LUX+=("0")
+            HIVE_CIRCADIAN_SYNC+=("0")
+        done
+        
+        # Dodaj informację o trybie demo do logów
+        if [ "$AUTO_REFRESH" = true ]; then
+            echo -e "${COLOR_YELLOW}[TUI] Tryb demo - brak połączenia z apiary_collector${COLOR_RESET}" >&2
+        fi
     fi
 }
 
