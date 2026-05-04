@@ -1,34 +1,35 @@
 ```
-# Compiled and build artifacts
-*.pyc
-__pycache__/
+# Backup files
+*.bak
+
+# Executables
+apiary_collector
+
+# Build artifacts
 *.o
 *.obj
 *.out
-*.exe
-*.dll
-*.so
-*.a
+build/
+dist/
 
 # Dependencies
-.venv/
-venv/
 node_modules/
-dist/
-build/
-target/
-.gradle/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.swo
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -36,36 +37,77 @@ target/
 *.swp
 *.swo
 
-# System files
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Coverage
+# Coverage reports
 coverage/
 htmlcov/
 .coverage
 
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# C/C++ specific
+*.o
+*.obj
+*.out
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+*.hex
+*.elf
+*.map
+*.sym
+*.lst
+*.srec
+*.hex
+*.bin
+*.out
+*.stackdump
+*.core
+*.gdb
+*.gch
+*.gcno
+*.gcda
+*.gcov
+*.info
+*.d
+*.dep
+*.orig
+*.rej
+*.bak
+*.~*
+*~
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*#
+.\#*
 ```

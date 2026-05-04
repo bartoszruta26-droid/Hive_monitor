@@ -883,38 +883,125 @@ public:
         return json.str();
     }
     
-    // Prostszy format dla Bash (CSV) - wszystkie parametry
+    // Pelny format CSV - WSZYSTKIE 338+ PARAMETROW
     std::string getStatusCSV() {
         std::lock_guard<std::mutex> lock(data_mutex);
         std::stringstream csv;
-        csv << "ID,STATUS,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,AUDIO_RMS,AUDIO_FREQ,SWARM_PROB,RADAR_DIST,RADAR_ENERGY,RADAR_ACT,WAG_RATE,WAG_TREND,AIR_IAQ,TIME\n";
+        
+        csv << "ID,STATUS,TIMESTAMP,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,ONLINE,";
+        csv << "AUDIO_RMS,AUDIO_PEAK,AUDIO_PEAK_TO_PEAK,AUDIO_ZCR,AUDIO_ENERGY,AUDIO_MEAN_AMP,AUDIO_STD_AMP,AUDIO_CV_AMP,AUDIO_SKEWNESS,AUDIO_KURTOSIS,";
+        csv << "AUDIO_DOMINANT_FREQ,AUDIO_SPECTRAL_CENTROID,AUDIO_SPECTRAL_BANDWIDTH,AUDIO_SPECTRAL_FLATNESS,AUDIO_SPECTRAL_ROLLOFF,";
+        csv << "AUDIO_POWER_BEE_BAND,AUDIO_POWER_SWARM_BAND,AUDIO_POWER_LOW_FREQ,AUDIO_POWER_HIGH_FREQ,AUDIO_HARMONIC_RATIO,";
+        csv << "AUDIO_MFCC_ENERGY_0,AUDIO_MFCC_ENERGY_1,AUDIO_MFCC_ENERGY_2,AUDIO_MFCC_ENERGY_3,";
+        csv << "AUDIO_SPECTRAL_ENTROPY,AUDIO_SPECTRAL_CONTRAST,AUDIO_TONAL_STRENGTH,";
+        csv << "AUDIO_CREST_FACTOR,AUDIO_FORMANT_F1,AUDIO_FORMANT_F2,AUDIO_FUNDAMENTAL_FREQ,AUDIO_PITCH_STRENGTH,AUDIO_INHARMONICITY,";
+        csv << "AUDIO_SHIMMER,AUDIO_JITTER,AUDIO_NHR,AUDIO_HNR,AUDIO_AUTOCORR_PEAK,";
+        csv << "AUDIO_ATTACK_TIME,AUDIO_DECAY_TIME,AUDIO_SUSTAIN_LEVEL,AUDIO_TEMPORAL_CENTROID,AUDIO_LOUDNESS,";
+        csv << "AUDIO_SPECTRAL_FLUX,AUDIO_SPECTRAL_SLOPE,AUDIO_SPECTRAL_KURTOSIS,AUDIO_SPECTRAL_SKEWNESS,AUDIO_FUND_SALIENCY,";
+        csv << "AUDIO_POWER_BAND_0,AUDIO_POWER_BAND_1,AUDIO_POWER_BAND_2,AUDIO_POWER_BAND_3,AUDIO_POWER_BAND_4,AUDIO_POWER_BAND_5,AUDIO_POWER_BAND_6,AUDIO_POWER_BAND_7,";
+        csv << "AUDIO_LEQ,AUDIO_L10,AUDIO_L90,AUDIO_NOISE_FLOOR,AUDIO_SNR,";
+        csv << "AUDIO_ACI,AUDIO_BI,AUDIO_NDI,AUDIO_ADI,AUDIO_AEI,";
+        csv << "AUDIO_BEE_ACTIVITY,AUDIO_SWARM_PROB,AUDIO_STRESS_INDICATOR,AUDIO_HIVE_HEALTH,AUDIO_FORAGING_EFF,AUDIO_COLONY_COHERENCE,";
+        csv << "RADAR_DISTANCE,RADAR_ENERGY,RADAR_SPEED,RADAR_DISTANCE_STD,RADAR_ENERGY_STD,RADAR_SPEED_STD,";
+        csv << "RADAR_DISTANCE_MIN,RADAR_DISTANCE_MAX,RADAR_ENERGY_MIN,RADAR_ENERGY_MAX,";
+        csv << "RADAR_RANGE,RADAR_ENERGY_VARIANCE,RADAR_CV,RADAR_ACTIVITY,RADAR_IDLE_PERCENT,RADAR_MOTION_INTENSITY,";
+        csv << "RADAR_TARGET_RATE,RADAR_MAX_TARGETS,RADAR_TARGET_DENSITY,RADAR_SLOPE,RADAR_CORRELATION,RADAR_ACCELERATION,";
+        csv << "RADAR_SIGNAL_QUALITY,RADAR_ANOMALY_SCORE,RADAR_HIVE_HEALTH,RADAR_POWER_SPECTRUM,RADAR_ZCR,RADAR_ENTROPY,";
+        csv << "HX711_CURRENT,HX711_MEAN,HX711_STD,HX711_MIN,HX711_MAX,HX711_MEDIAN,HX711_RANGE,HX711_VARIANCE,HX711_CV,HX711_IQR,";
+        csv << "HX711_RATE,HX711_MEAN_RATE,HX711_MAX_POS_RATE,HX711_MAX_NEG_RATE,HX711_ACCELERATION,";
+        csv << "HX711_SLOPE_1H,HX711_SLOPE_4H,HX711_SLOPE_24H,HX711_CORR_1H,HX711_CORR_4H,HX711_CORR_24H,HX711_DIRECTION,";
+        csv << "HX711_NECTAR_INFLOW,HX711_NECTAR_ACCUM,HX711_FORAGING_EFF,HX711_BLOOM_INTENSITY,";
+        csv << "HX711_HONEY_PROD_IDX,HX711_NECTAR_QUALITY,";
+        csv << "HX711_CONSUMPTION_RATE,HX711_DAILY_CONSUMPTION,HX711_FOOD_RESERVE_DAYS,";
+        csv << "HX711_WINTER_READINESS,HX711_STARVATION_RISK,";
+        csv << "HX711_DAILY_AMPLITUDE,HX711_CIRCADIAN_STR,HX711_SEASONAL_TREND,";
+        csv << "HX711_SIGNAL_QUALITY,HX711_NOISE_LEVEL,HX711_DRIFT_RATE,HX711_STABILITY,";
+        csv << "HX711_ANOMALY_SCORE,HX711_SUDDEN_CHANGE,HX711_OSCILLATION_FREQ,";
+        csv << "HX711_COLONY_GROWTH,HX711_BROOD_ACTIVITY,HX711_POPULATION,HX711_HEALTH_WEIGHT,HX711_PRODUCTIVITY,";
+        csv << "HX711_PREDICTED_24H,HX711_FORECAST_CONF,HX711_EXPECTED_YIELD,";
+        csv << "TH_TEMP_MEAN,TH_TEMP_STD,TH_TEMP_MIN,TH_TEMP_MAX,TH_TEMP_RANGE,";
+        csv << "TH_HUM_MEAN,TH_HUM_STD,TH_HUM_MIN,TH_HUM_MAX,TH_HUM_RANGE,";
+        csv << "TH_HEAT_INDEX,TH_DEW_POINT,TH_VPD,TH_COMFORT_INDEX,TH_TEMP_STABILITY,TH_HUM_STABILITY,TH_ENV_VARIANCE,";
+        csv << "TH_TEMP_TREND_1H,TH_HUM_TREND_1H,TH_TEMP_HUM_CORR,TH_OVERHEAT_RISK,TH_CONDENSATION_RISK,TH_MOLD_RISK,TH_BROOD_STRESS,";
+        csv << "AQ_CO2,AQ_VOC,AQ_NOX,AQ_CO2_MEAN,AQ_VOC_MEAN,AQ_CO2_STD,AQ_VOC_STD,";
+        csv << "AQ_CO2_MIN,AQ_CO2_MAX,AQ_VOC_MIN,AQ_VOC_MAX,";
+        csv << "AQ_IAQ_INDEX,AQ_AIR_QUALITY_LEVEL,AQ_VENTILATION_NEED,AQ_STRESS_FROM_AIR,AQ_HIVE_COMFORT,";
+        csv << "AQ_VARIABILITY,AQ_STABILITY_SCORE,AQ_CHANGE_RATE,AQ_TH_CORRELATION,AQ_COMFORT_ZONE_PCT,";
+        csv << "AQ_CO2_WARNING,AQ_VOC_ALERT,AQ_COMBINED_RISK,AQ_CONTAMINATION_RISK,AQ_MOLD_RISK,";
+        csv << "PIEZO_RMS,PIEZO_PEAK,PIEZO_MEAN,PIEZO_STD,PIEZO_DOMINANT_FREQ,PIEZO_ENERGY,PIEZO_ZCR,";
+        csv << "PIEZO_ACTIVITY_IDX,PIEZO_BEE_TRAFFIC,PIEZO_PREDATOR_SCORE,PIEZO_INTRUSION_PROB,PIEZO_QUEEN_PIPING,";
+        csv << "PIEZO_SWARM_PREP,PIEZO_AGGRESSION,PIEZO_ALIEN_SPECIES,PIEZO_WIND_VIBRATION,PIEZO_IMPACT_DETECTED,";
+        csv << "PIEZO_CONTINUOUS_VIB,PIEZO_EVENT_COUNT,PIEZO_SEVERITY,PIEZO_SOURCE_CLASS,PIEZO_CONFIDENCE,";
+        csv << "BARO_PRESSURE,BARO_TEMP,BARO_ALTITUDE,BARO_MEAN,BARO_STD,";
+        csv << "BARO_TREND_1H,BARO_TREND_3H,BARO_TREND_6H,BARO_CHANGE_RATE,";
+        csv << "BARO_WEATHER_TREND,BARO_STORM_PROB,BARO_RAIN_PROB,BARO_IMPROVING,";
+        csv << "BARO_FORAGING_COND,BARO_BEE_ACTIVITY_PRED,BARO_SEVERITY_IDX,BARO_ALERT_LEVEL,BARO_RELIABILITY,";
+        csv << "LIGHT_LUX,LIGHT_IR,LIGHT_UV,LIGHT_FULL_SPEC,LIGHT_MEAN,LIGHT_STD,LIGHT_MIN,LIGHT_MAX,";
+        csv << "LIGHT_DAYLIGHT_HOURS,LIGHT_DARKNESS_HOURS,LIGHT_TWILIGHT,LIGHT_CIRCADIAN_SYNC,";
+        csv << "LIGHT_FORAGING_IDX,LIGHT_PHOTOPERIOD,LIGHT_SEASONAL_CHANGE,LIGHT_CLOUD_COVER_EST,LIGHT_SUNRISE_OFFSET,";
+        csv << "WEIGHT_RATE,WEIGHT_TREND,AIR_IAQ\n";
+        
         for (const auto& pair : hives_data) {
             const auto& d = pair.second;
             std::string status = d.is_online ? "ONLINE" : "OFFLINE";
-            if (d.is_online && (std::time(nullptr) - d.timestamp > 60)) status = "STALE"; // Brak danych > 60s
-            
-            csv << d.hive_id << "," 
-                << status << "," 
-                << d.temperature << "," 
-                << d.humidity << "," 
-                << d.weight << "," 
-                << d.battery_level << ","
-                << d.co2_eq << ","
-                << d.voc_idx << ","
-                << d.motion_detected << ","
-                << d.audio_rms << ","
-                << d.audio_dominant_freq << ","
-                << d.audio_swarm_prob << ","
-                << d.radar_distance << ","
-                << d.radar_energy << ","
-                << d.radar_activity << ","
-                << d.weight_rate << ","
-                << d.weight_trend << ","
-                << d.air_iaq << ","
-                << d.timestamp << "\n";
+            if (d.is_online && (std::time(nullptr) - d.timestamp > 60)) status = "STALE";
+            csv << d.hive_id << "," << status << "," << d.timestamp << ",";
+            csv << d.temperature << "," << d.humidity << "," << d.weight << "," << d.battery_level << "," << d.co2_eq << "," << d.voc_idx << "," << d.motion_detected << "," << (d.is_online ? 1 : 0) << ",";
+            csv << d.audio_rms << "," << d.audio_peak << "," << d.audio_peak_to_peak << "," << d.audio_zcr << "," << d.audio_energy << "," << d.audio_mean_amp << "," << d.audio_std_amp << "," << d.audio_cv_amp << "," << d.audio_skewness << "," << d.audio_kurtosis << ",";
+            csv << d.audio_dominant_freq << "," << d.audio_spectral_centroid << "," << d.audio_spectral_bandwidth << "," << d.audio_spectral_flatness << "," << d.audio_spectral_rolloff << ",";
+            csv << d.audio_power_bee_band << "," << d.audio_power_swarm_band << "," << d.audio_power_low_freq << "," << d.audio_power_high_freq << "," << d.audio_harmonic_ratio << ",";
+            csv << d.audio_mfcc_energy[0] << "," << d.audio_mfcc_energy[1] << "," << d.audio_mfcc_energy[2] << "," << d.audio_mfcc_energy[3] << ",";
+            csv << d.audio_spectral_entropy << "," << d.audio_spectral_contrast << "," << d.audio_tonal_strength << ",";
+            csv << d.audio_crest_factor << "," << d.audio_formant_f1 << "," << d.audio_formant_f2 << "," << d.audio_fundamental_freq << "," << d.audio_pitch_strength << "," << d.audio_inharmonicity << ",";
+            csv << d.audio_shimmer << "," << d.audio_jitter << "," << d.audio_nhr << "," << d.audio_hnr << "," << d.audio_autocorr_peak << ",";
+            csv << d.audio_attack_time << "," << d.audio_decay_time << "," << d.audio_sustain_level << "," << d.audio_temporal_centroid << "," << d.audio_loudness << ",";
+            csv << d.audio_spectral_flux << "," << d.audio_spectral_slope << "," << d.audio_spectral_kurtosis << "," << d.audio_spectral_skewness << "," << d.audio_fund_salience << ",";
+            csv << d.audio_power_band[0] << "," << d.audio_power_band[1] << "," << d.audio_power_band[2] << "," << d.audio_power_band[3] << "," << d.audio_power_band[4] << "," << d.audio_power_band[5] << "," << d.audio_power_band[6] << "," << d.audio_power_band[7] << ",";
+            csv << d.audio_leq << "," << d.audio_l10 << "," << d.audio_l90 << "," << d.audio_noise_floor << "," << d.audio_snr << ",";
+            csv << d.audio_aci << "," << d.audio_bi << "," << d.audio_ndi << "," << d.audio_adi << "," << d.audio_aei << ",";
+            csv << d.audio_bee_activity << "," << d.audio_swarm_prob << "," << d.audio_stress_indicator << "," << d.audio_hive_health << "," << d.audio_foraging_eff << "," << d.audio_colony_coherence << ",";
+            csv << d.radar_distance << "," << d.radar_energy << "," << d.radar_speed << "," << d.radar_distance_std << "," << d.radar_energy_std << "," << d.radar_speed_std << ",";
+            csv << d.radar_distance_min << "," << d.radar_distance_max << "," << d.radar_energy_min << "," << d.radar_energy_max << ",";
+            csv << d.radar_range << "," << d.radar_energy_variance << "," << d.radar_cv << "," << d.radar_activity << "," << d.radar_idle_percent << "," << d.radar_motion_intensity << ",";
+            csv << d.radar_target_rate << "," << d.radar_max_targets << "," << d.radar_target_density << "," << d.radar_slope << "," << d.radar_correlation << "," << d.radar_acceleration << ",";
+            csv << d.radar_signal_quality << "," << d.radar_anomaly_score << "," << d.radar_hive_health << "," << d.radar_power_spectrum << "," << d.radar_zcr << "," << d.radar_entropy << ",";
+            csv << d.hx711_current << "," << d.hx711_mean << "," << d.hx711_std << "," << d.hx711_min << "," << d.hx711_max << "," << d.hx711_median << "," << d.hx711_range << "," << d.hx711_variance << "," << d.hx711_cv << "," << d.hx711_iqr << ",";
+            csv << d.hx711_rate << "," << d.hx711_mean_rate << "," << d.hx711_max_pos_rate << "," << d.hx711_max_neg_rate << "," << d.hx711_acceleration << ",";
+            csv << d.hx711_slope_1h << "," << d.hx711_slope_4h << "," << d.hx711_slope_24h << "," << d.hx711_corr_1h << "," << d.hx711_corr_4h << "," << d.hx711_corr_24h << "," << d.hx711_direction << ",";
+            csv << d.hx711_nectar_inflow << "," << d.hx711_nectar_accum << "," << d.hx711_foraging_eff << "," << d.hx711_bloom_intensity << ",";
+            csv << d.hx711_honey_prod_idx << "," << d.hx711_nectar_quality << ",";
+            csv << d.hx711_consumption_rate << "," << d.hx711_daily_consumption << "," << d.hx711_food_reserve_days << ",";
+            csv << d.hx711_winter_readiness << "," << d.hx711_starvation_risk << ",";
+            csv << d.hx711_daily_amplitude << "," << d.hx711_circadian_str << "," << d.hx711_seasonal_trend << ",";
+            csv << d.hx711_signal_quality << "," << d.hx711_noise_level << "," << d.hx711_drift_rate << "," << d.hx711_stability << ",";
+            csv << d.hx711_anomaly_score << "," << d.hx711_sudden_change << "," << d.hx711_oscillation_freq << ",";
+            csv << d.hx711_colony_growth << "," << d.hx711_brood_activity << "," << d.hx711_population << "," << d.hx711_health_weight << "," << d.hx711_productivity << ",";
+            csv << d.hx711_predicted_24h << "," << d.hx711_forecast_conf << "," << d.hx711_expected_yield << ",";
+            csv << d.th_temp_mean << "," << d.th_temp_std << "," << d.th_temp_min << "," << d.th_temp_max << "," << d.th_temp_range << ",";
+            csv << d.th_hum_mean << "," << d.th_hum_std << "," << d.th_hum_min << "," << d.th_hum_max << "," << d.th_hum_range << ",";
+            csv << d.th_heat_index << "," << d.th_dew_point << "," << d.th_vpd << "," << d.th_comfort_index << "," << d.th_temp_stability << "," << d.th_hum_stability << "," << d.th_env_variance << ",";
+            csv << d.th_temp_trend_1h << "," << d.th_hum_trend_1h << "," << d.th_temp_hum_corr << "," << d.th_overheat_risk << "," << d.th_condensation_risk << "," << d.th_mold_risk << "," << d.th_brood_stress << ",";
+            csv << d.aq_co2 << "," << d.aq_voc << "," << d.aq_nox << "," << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_co2_std << "," << d.aq_voc_std << ",";
+            csv << d.aq_co2_min << "," << d.aq_co2_max << "," << d.aq_voc_min << "," << d.aq_voc_max << ",";
+            csv << d.aq_iaq_index << "," << d.aq_air_quality_level << "," << d.aq_ventilation_need << "," << d.aq_stress_from_air << "," << d.aq_hive_comfort << ",";
+            csv << d.aq_variability << "," << d.aq_stability_score << "," << d.aq_change_rate << "," << d.aq_th_correlation << "," << d.aq_comfort_zone_pct << ",";
+            csv << d.aq_co2_warning << "," << d.aq_voc_alert << "," << d.aq_combined_risk << "," << d.aq_contamination_risk << "," << d.aq_mold_risk << ",";
+            csv << d.piezo_rms << "," << d.piezo_peak << "," << d.piezo_mean << "," << d.piezo_std << "," << d.piezo_dominant_freq << "," << d.piezo_energy << "," << d.piezo_zcr << ",";
+            csv << d.piezo_activity_idx << "," << d.piezo_bee_traffic << "," << d.piezo_predator_score << "," << d.piezo_intrusion_prob << "," << d.piezo_queen_piping << ",";
+            csv << d.piezo_swarm_prep << "," << d.piezo_aggression << "," << d.piezo_alien_species << "," << d.piezo_wind_vibration << "," << d.piezo_impact_detected << ",";
+            csv << d.piezo_continuous_vib << "," << d.piezo_event_count << "," << d.piezo_severity << "," << d.piezo_source_class << "," << d.piezo_confidence << ",";
+            csv << d.baro_pressure << "," << d.baro_temp << "," << d.baro_altitude << "," << d.baro_mean << "," << d.baro_std << ",";
+            csv << d.baro_trend_1h << "," << d.baro_trend_3h << "," << d.baro_trend_6h << "," << d.baro_change_rate << ",";
+            csv << d.baro_weather_trend << "," << d.baro_storm_prob << "," << d.baro_rain_prob << "," << d.baro_improving << ",";
+            csv << d.baro_foraging_cond << "," << d.baro_bee_activity_pred << "," << d.baro_severity_idx << "," << d.baro_alert_level << "," << d.baro_reliability << ",";
+            csv << d.light_lux << "," << d.light_ir << "," << d.light_uv << "," << d.light_full_spec << "," << d.light_mean << "," << d.light_std << "," << d.light_min << "," << d.light_max << ",";
+            csv << d.light_daylight_hours << "," << d.light_darkness_hours << "," << d.light_twilight << "," << d.light_circadian_sync << ",";
+            csv << d.light_foraging_idx << "," << d.light_photoperiod << "," << d.light_seasonal_change << "," << d.light_cloud_cover_est << "," << d.light_sunrise_offset << ",";
+            csv << d.weight_rate << "," << d.weight_trend << "," << d.air_iaq << "\n";
         }
         return csv.str();
     }
+
     // Eksport danych do pliku CSV
     void exportToCSV(const std::string& filename) {
         std::ofstream file(filename);
