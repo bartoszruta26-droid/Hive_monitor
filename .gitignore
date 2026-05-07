@@ -3,30 +3,27 @@
 *.o
 *.obj
 *.out
-*.hex
 *.elf
+*.hex
 *.bin
 *.map
-*.lst
-*.d
-*.i
-*.s
 
 # Dependencies
 .pio/
 .platformio/
-lib/
-pioenvs/
-piolibdeps/
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
-*.bak
-*.~*
-*.orig
-*.rej
+*.swo
 
 # Environment
 .env
@@ -36,30 +33,18 @@ piolibdeps/
 # Editors
 .vscode/
 .idea/
-*.swp
-*.swo
-tags
-cscope.*
-GTAGS
-GRTAGS
-GSYMS
-GPATH
+*.iml
+*.ipr
+*.iws
 
-# Build directories
+# Build and distribution
 build/
 dist/
+target/
 release/
 debug/
-.sconsign.dblite
-*.pyc
-__pycache__/
 
 # OS generated files
 .DS_Store
 Thumbs.db
-ehthumbs.db
-Icon?
-.directory
-*.nib
-*~
 ```
