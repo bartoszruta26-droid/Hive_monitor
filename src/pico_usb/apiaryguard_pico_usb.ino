@@ -302,7 +302,7 @@ void initHX711() {
   Serial.println(weightOffset);
 }
 
-// Odczyt HX711 z timeoutem
+// Odczyt HX711 z timeoutem - wersja z odliczaniem offsetu (dla normalnych odczytów)
 long readHX711() {
   unsigned long timeout = millis();
   const unsigned long TIMEOUT_MS = 500;  // Zwiększony timeout dla HX711
@@ -332,6 +332,38 @@ long readHX711() {
   
   value -= weightOffset;
   return (long)(value * weightScale);
+}
+
+// Odczyt HX711 - surowa wartość bez odliczania offsetu (dla kalibracji)
+long readHX711Raw() {
+  unsigned long timeout = millis();
+  const unsigned long TIMEOUT_MS = 500;
+  
+  // Czekaj na gotowość z timeoutem
+  while (digitalRead(HX711_DT) && (millis() - timeout < TIMEOUT_MS)) {
+    yield();
+  }
+  
+  // Sprawdź timeout
+  if (digitalRead(HX711_DT)) {
+    Serial.println("HX711 timeout (raw)!");
+    return 0;
+  }
+  
+  long value = 0;
+  for (int i = 0; i < 24; i++) {
+    digitalWrite(HX711_SCK, HIGH);
+    value = value << 1;
+    if (digitalRead(HX711_DT)) value++;
+    digitalWrite(HX711_SCK, LOW);
+  }
+  
+  // 25 impuls dla następnego odczytu (gain 128)
+  digitalWrite(HX711_SCK, HIGH);
+  digitalWrite(HX711_SCK, LOW);
+  
+  // Zwróć surową wartość bez odejmowania offsetu
+  return value;
 }
 
 // Odczyt mikrofonu MEMS (RMS)
@@ -369,10 +401,15 @@ bool readRadar() {
     
     if (idx >= 8) {  // Minimalny pakiet
       // Sprawdź czy wykryto ruch (bajt 6-7 to odległość)
-      if (buffer[6] > 0 || buffer[7] > 0) {
+      bool motionDetected = (buffer[6] > 0 || buffer[7] > 0);
+      
+      // Zawsze resetuj indeks po przetworzeniu pełnej ramki, aby uniknąć przepełnienia
+      idx = 0;
+      
+      if (motionDetected) {
         return true;
       }
-      idx = 0;
+      // Jeśli brak ruchu, kontynuuj pętlę szukając kolejnej ramki
     }
   }
   return false;
@@ -469,8 +506,8 @@ void handleCommand(String cmd) {
     setPWM(PUMP_PWM, value);
     Serial.println("OK: Pump set to " + String(value));
   } else if (cmd.startsWith("CALIB_WEIGHT")) {
-    weightOffset = readHX711();
-    Serial.println("OK: Weight calibrated");
+    weightOffset = readHX711Raw();  // Użyj surowej wartości do kalibracji
+    Serial.println("OK: Weight calibrated (offset=" + String(weightOffset) + ")");
   } else if (cmd == "GET_STATUS" || cmd == "STATUS") {
     readAllSensors();
     sendStatusJSON();
@@ -621,9 +658,12 @@ void loop() {
     // Dodaj dane do bufora jakości powietrza (co 10 minut dla statystyk)
     static unsigned long lastAQAdd = 0;
     if (now - lastAQAdd >= 600000) {  // 10 minut
-      addAirQualityData(sensors.co2, sensors.voc, sensors.temperature, sensors.humidity);
-      calculateAirQualityMetrics();
-      checkAirQualityAlerts(currentAQMetrics);
+      // Dodaj dane tylko jeśli odczyty SGP41 są poprawne (nie -1)
+      if (sensors.co2 >= 0 && sensors.voc >= 0) {
+        addAirQualityData((uint16_t)sensors.co2, (uint16_t)sensors.voc, sensors.temperature, sensors.humidity);
+        calculateAirQualityMetrics();
+        checkAirQualityAlerts(currentAQMetrics);
+      }
       lastAQAdd = now;
     }
     
