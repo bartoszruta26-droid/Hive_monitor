@@ -3,16 +3,28 @@
 *.o
 *.obj
 *.out
+*.so
+*.a
+*.dll
+*.exe
 
 # Dependencies
-.venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+env/
 venv/
-node_modules/
+.venv/
+.ENV
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+*.swo
 
 # Environment
 .env
@@ -22,15 +34,16 @@ node_modules/
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
 
 # Build directories
 build/
 dist/
-target/
+*.egg-info/
 ```
