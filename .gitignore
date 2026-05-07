@@ -1,65 +1,29 @@
 ```
-# Compiled and build artifacts
-*.o
-*.obj
-*.out
+# Arduino build artifacts
 *.hex
 *.elf
 *.bin
 *.map
-*.lst
-*.d
-*.i
-*.s
-
-# Dependencies
-.pio/
-.platformio/
-lib/
-pioenvs/
-piolibdeps/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.bak
-*.~*
-*.orig
-*.rej
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-tags
-cscope.*
-GTAGS
-GRTAGS
-GSYMS
-GPATH
+*.sym
 
 # Build directories
 build/
 dist/
-release/
-debug/
-.sconsign.dblite
-*.pyc
-__pycache__/
 
-# OS generated files
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Icon?
-.directory
-*.nib
-*~
+# IDE files
+.vscode/
+.idea/
+
+# Temp files
+*.tmp
+*.swp
+*.log
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Dependencies
+node_modules/
 ```
