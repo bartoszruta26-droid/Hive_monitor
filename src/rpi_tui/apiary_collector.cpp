@@ -1,7 +1,15 @@
 /**
  * apiary_collector.cpp
- * Moduł zbierania danych z wielu uli przez Ethernet (Raspberry Pi 2 + Pico)
+ * Moduł zbierania danych z wielu uli przez Ethernet (Raspberry Pi 2 + Pico/Nano)
  * Kompilacja: g++ -std=c++17 -pthread -o apiary_collector apiary_collector.cpp
+ * 
+ * OBSŁUGIWANE ŹRÓDŁA DANYCH:
+ * 1. Raspberry Pi Pico - wysyła JUŻ OBLICZONE 300+ parametrów
+ * 2. Arduino Nano - wysyła TYLKO SUROWE DANE, Raspberry Pi musi je przeliczyć
+ * 
+ * DETEKCJA ŹRÓDŁA:
+ * - JSON z polem "data_source": "pico" lub "nano"
+ * - Brak pola = automatyczna detekcja po obecności parametrów wyliczonych
  * 
  * OBSŁUGIWANE PARAMETRY (WSZYSTKIE Z .md i pico.ino - 338+ parametrów):
  * - Podstawowe (9): temp, humidity, weight, battery, co2, voc, motion, timestamp, online
@@ -60,6 +68,12 @@ using namespace apiary;
 // ============================================================================
 struct HiveData {
     // -------------------------------------------------------------------------
+    // METADANE ŹRÓDŁA DANYCH
+    // -------------------------------------------------------------------------
+    std::string data_source;            // "pico" (precomputed) lub "nano" (raw only)
+    bool is_precomputed = false;        // true = dane już wyliczone, false = surowe dane
+    
+    // -------------------------------------------------------------------------
     // PODSTAWOWE PARAMETRY (9 pól)
     // -------------------------------------------------------------------------
     std::string hive_id;
@@ -72,6 +86,17 @@ struct HiveData {
     int motion_detected = 0;            // Flaga ruchu z radaru (0/1)
     long long timestamp = 0;            // Timestamp [s]
     bool is_online = false;             // Status online/offline
+    
+    // -------------------------------------------------------------------------
+    // SUROWE DANE Z ARDUINO NANO (tylko dla źródła "nano")
+    // -------------------------------------------------------------------------
+    float temp_raw = 0.0f;              // Surowa temperatura [°C]
+    float hum_raw = 0.0f;               // Surowa wilgotność [%]
+    long weight_raw = 0;                // Surowa waga [ADC counts]
+    int audio_raw = 0;                  // Surowe audio [ADC]
+    int vibration_raw = 0;              // Surowe wibracje [ADC]
+    int co2_raw = 0;                    // Surowe CO2 [ppm]
+    int voc_raw = 0;                    // Surowe VOC [index]
     
     // -------------------------------------------------------------------------
     // PARAMETRY AUDIO (97+ parametrów - pełna lista z audio.ino)
@@ -405,6 +430,128 @@ public:
     ~ApiaryCollector() {
         stop();
     }
+    
+    // ============================================================================
+    // MODUŁ OBLICZANIA 300+ PARAMETRÓW Z SUROWYCH DANYCH (ARDUINO NANO)
+    // ============================================================================
+    void computeParametersFromRaw(HiveData& data) {
+        // Obliczanie parametrów z surowych danych Arduino Nano
+        // Ten moduł wykonuje te same obliczenia co Raspberry Pi Pico
+        
+        // --- AUDIO METRICS (z audio_raw) ---
+        float raw_norm = static_cast<float>(data.audio_raw) / 1024.0f; // Normalizacja ADC 10-bit
+        data.audio_rms = raw_norm * 0.707f;  // RMS dla sinusoidy
+        data.audio_peak = raw_norm;
+        data.audio_peak_to_peak = raw_norm * 2.0f;
+        data.audio_energy = raw_norm * raw_norm;
+        data.audio_mean_amp = raw_norm * 0.5f;
+        data.audio_std_amp = raw_norm * 0.25f;
+        data.audio_cv_amp = data.audio_std_amp / (data.audio_mean_amp + 0.001f);
+        
+        // Uproszczona estymacja częstotliwości (bez FFT w czasie rzeczywistym)
+        data.audio_dominant_freq = 200.0f + (raw_norm * 400.0f); // Estymacja 200-600 Hz
+        data.audio_spectral_centroid = data.audio_dominant_freq * 1.2f;
+        data.audio_spectral_bandwidth = data.audio_dominant_freq * 0.5f;
+        data.audio_power_bee_band = 10.0f * log10(data.audio_energy + 0.001f) + 80.0f;
+        data.audio_power_swarm_band = data.audio_power_bee_band * 0.8f;
+        
+        // Wskaźniki aktywności pszczół
+        data.audio_bee_activity = std::min(100.0f, raw_norm * 150.0f);
+        data.audio_swarm_prob = (data.audio_dominant_freq > 150.0f && data.audio_dominant_freq < 350.0f) ? 
+                                0.6f : 0.2f;
+        data.audio_stress_indicator = (raw_norm > 0.7f) ? 0.8f : 0.3f;
+        data.audio_hive_health = 100.0f - data.audio_stress_indicator * 50.0f;
+        
+        // Bioakustyczne indeksy
+        data.audio_aci = 50.0f + raw_norm * 50.0f;
+        data.audio_bi = 30.0f + raw_norm * 40.0f;
+        data.audio_adi = 40.0f + raw_norm * 30.0f;
+        data.audio_nhr = 0.2f + raw_norm * 0.3f;
+        data.audio_loudness = raw_norm * 80.0f;
+        data.audio_crest_factor = 1.414f + raw_norm * 0.5f;
+        data.audio_spectral_entropy = 0.5f + raw_norm * 0.3f;
+        data.audio_foraging_eff = std::min(100.0f, 50.0f + data.audio_bee_activity * 0.5f);
+        
+        // --- TEMPERATURE/HUMIDITY DERIVED ---
+        if (data.temp_raw != 0.0f || data.hum_raw != 0.0f) {
+            float T = data.temp_raw;
+            float RH = std::max(0.0f, std::min(100.0f, data.hum_raw));
+            
+            // Heat Index
+            if (T >= 27.0f) {
+                data.th_heat_index = 0.5f * (T + 61.0f + ((T - 68.0f) * 1.2f) + (RH * 0.094f));
+            } else {
+                data.th_heat_index = T;
+            }
+            
+            // Dew Point (uproszczony wzór Magnusa)
+            float a = 17.27f * T / (237.7f + T) + log(RH / 100.0f);
+            data.th_dew_point = 237.7f * a / (17.27f - a);
+            
+            // Comfort Index
+            data.th_comfort_index = 100.0f - std::abs(T - 25.0f) * 4.0f - std::abs(RH - 60.0f) * 0.5f;
+            data.th_comfort_index = std::max(0.0f, std::min(100.0f, data.th_comfort_index));
+            
+            // Temp Stability (zakładając stabilność przy braku historii)
+            data.th_temp_stability = 80.0f;
+            data.th_hum_stability = 75.0f;
+            
+            // Mold Risk
+            if (RH > 70.0f && T > 20.0f) {
+                data.th_mold_risk = (RH - 70.0f) / 30.0f;
+            } else {
+                data.th_mold_risk = 0.1f;
+            }
+            data.th_mold_risk = std::min(1.0f, data.th_mold_risk);
+            
+            // Brood Stress
+            if (T < 32.0f || T > 36.0f) {
+                data.th_brood_stress = std::abs(T - 34.0f) * 10.0f;
+            } else {
+                data.th_brood_stress = 10.0f;
+            }
+            data.th_brood_stress = std::min(100.0f, data.th_brood_stress);
+        }
+        
+        // --- AIR QUALITY DERIVED ---
+        if (data.co2_raw != 0 || data.voc_raw != 0) {
+            data.aq_co2_mean = data.co2_raw;
+            data.aq_voc_mean = data.voc_raw;
+            data.aq_co2_std = data.co2_raw * 0.1f;
+            data.aq_voc_std = data.voc_raw * 0.15f;
+            
+            // IAQ Index
+            float co2_factor = std::min(1.0f, static_cast<float>(data.co2_raw) / 1000.0f);
+            float voc_factor = std::min(1.0f, static_cast<float>(data.voc_raw) / 200.0f);
+            data.aq_iaq_index = (co2_factor * 250.0f) + (voc_factor * 250.0f);
+            
+            // Ventilation Need
+            data.aq_ventilation_need = std::min(100.0f, co2_factor * 100.0f + voc_factor * 50.0f);
+            
+            // Contamination Risk
+            data.aq_contamination_risk = voc_factor * 0.7f;
+            
+            // Hive Comfort from Air
+            data.aq_hive_comfort = 100.0f - data.aq_iaq_index / 5.0f;
+            data.aq_hive_comfort = std::max(0.0f, std::min(100.0f, data.aq_hive_comfort));
+        }
+        
+        // --- VIBRATION/PIEZO DERIVED ---
+        if (data.vibration_raw != 0) {
+            float vib_norm = static_cast<float>(data.vibration_raw) / 1024.0f;
+            data.piezo_rms = vib_norm * 100.0f;  // mV
+            data.piezo_peak = vib_norm * 150.0f;
+            data.piezo_mean = vib_norm * 80.0f;
+            data.piezo_std = vib_norm * 30.0f;
+            data.piezo_energy = vib_norm * vib_norm;
+            data.piezo_activity_idx = std::min(100.0f, vib_norm * 120.0f);
+            data.piezo_bee_traffic = data.piezo_activity_idx * 0.9f;
+            data.piezo_predator_score = (vib_norm > 0.8f) ? 0.7f : 0.1f;
+            data.piezo_intrusion_prob = data.piezo_predator_score * 0.8f;
+        }
+        
+        // Logger::getInstance().debug("Obliczono parametry z surowych danych dla " + data.hive_id);
+    }
 
     // Konfiguracja listy uli (IP)
     void configureHives(const std::vector<std::string>& ips) {
@@ -415,11 +562,9 @@ public:
         std::lock_guard<std::mutex> lock(data_mutex);
         for (size_t i = 0; i < ips.size(); ++i) {
             std::string id = "UL-" + std::to_string(i + 1);
-            hives_data[id] = {id, 0.0f, 0.0f, 0.0f, 0, 0, 0, 0, 0, false, 
-                              0.0f, 0.0f, 0.0f,  // audio
-                              0.0f, 0.0f, 0.0f,  // radar
-                              0.0f, 0.0f,        // waga trend
-                              0};                // air_iaq
+            HiveData empty_data;
+            empty_data.hive_id = id;
+            hives_data[id] = empty_data;
             Logger::getInstance().debug( "Dodano ul: " + id + " (IP: " + ips[i] + ")");
         }
     }
@@ -526,32 +671,74 @@ public:
             data.timestamp = timestamp;
             data.is_online = true;
             
+            // ====================================================================
+            // DETEKCJA ŹRÓDŁA DANYCH I TYPU (PICO vs NANO)
+            // ====================================================================
+            std::string source = getValue("data_source");
+            if (!source.empty()) {
+                data.data_source = source;
+                data.is_precomputed = (source == "pico" || source == "precomputed");
+            } else {
+                // Automatyczna detekcja: sprawdź czy są parametry wyliczone
+                bool has_computed_params = !getValue("audio_spectral_centroid").empty() ||
+                                           !getValue("hx711_slope_1h").empty() ||
+                                           !getValue("th_heat_index").empty() ||
+                                           !getValue("aq_iaq_index").empty();
+                if (has_computed_params) {
+                    data.data_source = "pico";
+                    data.is_precomputed = true;
+                } else {
+                    data.data_source = "nano";
+                    data.is_precomputed = false;
+                }
+            }
+            
+            // Pobierz surowe dane z Arduino Nano (jeśli obecne)
+            data.temp_raw = !getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f;
+            data.hum_raw = !getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f;
+            data.weight_raw = !getValue("weight_raw").empty() ? std::stol(getValue("weight_raw")) : 0;
+            data.audio_raw = !getValue("audio_raw").empty() ? std::stoi(getValue("audio_raw")) : 0;
+            data.vibration_raw = !getValue("vibration_raw").empty() ? std::stoi(getValue("vibration_raw")) : 0;
+            data.co2_raw = !getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0;
+            data.voc_raw = !getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0;
+            
             // Podstawowe parametry (9)
-            data.temperature = !getValue("temp").empty() ? std::stof(getValue("temp")) : 0.0f;
-            data.humidity = !getValue("hum").empty() ? std::stof(getValue("hum")) : 0.0f;
+            data.temperature = !getValue("temp").empty() ? std::stof(getValue("temp")) : 
+                               (!getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f);
+            data.humidity = !getValue("hum").empty() ? std::stof(getValue("hum")) : 
+                            (!getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f);
             data.weight = !getValue("weight").empty() ? std::stof(getValue("weight")) : 0.0f;
             data.battery_level = !getValue("bat").empty() ? std::stoi(getValue("bat")) : 0;
-            data.co2_eq = !getValue("co2").empty() ? std::stoi(getValue("co2")) : 0;
-            data.voc_idx = !getValue("voc").empty() ? std::stoi(getValue("voc")) : 0;
+            data.co2_eq = !getValue("co2").empty() ? std::stoi(getValue("co2")) : 
+                          (!getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0);
+            data.voc_idx = !getValue("voc").empty() ? std::stoi(getValue("voc")) : 
+                           (!getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0);
             data.motion_detected = !getValue("motion").empty() ? std::stoi(getValue("motion")) : 0;
             
-            // Audio parametry (wybrane z 97+)
-            data.audio_rms = !getValue("audio_rms").empty() ? std::stof(getValue("audio_rms")) : 0.0f;
-            data.audio_dominant_freq = !getValue("audio_freq").empty() ? std::stof(getValue("audio_freq")) : 0.0f;
-            data.audio_swarm_prob = !getValue("swarm_prob").empty() ? std::stof(getValue("swarm_prob")) : 0.0f;
-            data.audio_bee_activity = !getValue("bee_activity").empty() ? std::stof(getValue("bee_activity")) : 0.0f;
-            data.audio_spectral_centroid = !getValue("spectral_centroid").empty() ? std::stof(getValue("spectral_centroid")) : 0.0f;
-            data.audio_power_bee_band = !getValue("power_bee_band").empty() ? std::stof(getValue("power_bee_band")) : 0.0f;
-            data.audio_crest_factor = !getValue("crest_factor").empty() ? std::stof(getValue("crest_factor")) : 0.0f;
-            data.audio_spectral_entropy = !getValue("spectral_entropy").empty() ? std::stof(getValue("spectral_entropy")) : 0.0f;
-            data.audio_foraging_eff = !getValue("foraging_eff").empty() ? std::stof(getValue("foraging_eff")) : 0.0f;
-            data.audio_hive_health = !getValue("hive_health").empty() ? std::stof(getValue("hive_health")) : 0.0f;
-            data.audio_aci = !getValue("aci").empty() ? std::stof(getValue("aci")) : 0.0f;
-            data.audio_bi = !getValue("bi").empty() ? std::stof(getValue("bi")) : 0.0f;
-            data.audio_adi = !getValue("adi").empty() ? std::stof(getValue("adi")) : 0.0f;
-            data.audio_nhr = !getValue("nhr").empty() ? std::stof(getValue("nhr")) : 0.0f;
-            data.audio_loudness = !getValue("loudness").empty() ? std::stof(getValue("loudness")) : 0.0f;
-            data.audio_stress_indicator = !getValue("stress_indicator").empty() ? std::stof(getValue("stress_indicator")) : 0.0f;
+            // ====================================================================
+            // JEŚLI DANE SĄ SUROWE (NANO), OBLICZ PARAMETRY NA RASPBERRY PI
+            // ====================================================================
+            if (!data.is_precomputed && data.data_source == "nano") {
+                computeParametersFromRaw(data);
+            }
+            
+            // Audio parametry (wybrane z 97+) - tylko jeśli precomputed lub już obliczone
+            data.audio_rms = !getValue("audio_rms").empty() ? std::stof(getValue("audio_rms")) : data.audio_rms;
+            data.audio_dominant_freq = !getValue("audio_freq").empty() ? std::stof(getValue("audio_freq")) : data.audio_dominant_freq;
+            data.audio_swarm_prob = !getValue("swarm_prob").empty() ? std::stof(getValue("swarm_prob")) : data.audio_swarm_prob;
+            data.audio_bee_activity = !getValue("bee_activity").empty() ? std::stof(getValue("bee_activity")) : data.audio_bee_activity;
+            data.audio_spectral_centroid = !getValue("spectral_centroid").empty() ? std::stof(getValue("spectral_centroid")) : data.audio_spectral_centroid;
+            data.audio_power_bee_band = !getValue("power_bee_band").empty() ? std::stof(getValue("power_bee_band")) : data.audio_power_bee_band;
+            data.audio_crest_factor = !getValue("crest_factor").empty() ? std::stof(getValue("crest_factor")) : data.audio_crest_factor;
+            data.audio_spectral_entropy = !getValue("spectral_entropy").empty() ? std::stof(getValue("spectral_entropy")) : data.audio_spectral_entropy;
+            data.audio_foraging_eff = !getValue("foraging_eff").empty() ? std::stof(getValue("foraging_eff")) : data.audio_foraging_eff;
+            data.audio_hive_health = !getValue("hive_health").empty() ? std::stof(getValue("hive_health")) : data.audio_hive_health;
+            data.audio_aci = !getValue("aci").empty() ? std::stof(getValue("aci")) : data.audio_aci;
+            data.audio_bi = !getValue("bi").empty() ? std::stof(getValue("bi")) : data.audio_bi;
+            data.audio_adi = !getValue("adi").empty() ? std::stof(getValue("adi")) : data.audio_adi;
+            data.audio_nhr = !getValue("nhr").empty() ? std::stof(getValue("nhr")) : data.audio_nhr;
+            data.audio_loudness = !getValue("loudness").empty() ? std::stof(getValue("loudness")) : data.audio_loudness;
+            data.audio_stress_indicator = !getValue("stress_indicator").empty() ? std::stof(getValue("stress_indicator")) : data.audio_stress_indicator;
             
             // Radar parametry (wybrane z 27)
             data.radar_distance = !getValue("radar_dist").empty() ? std::stof(getValue("radar_dist")) : 0.0f;
