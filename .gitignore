@@ -4,26 +4,41 @@
 *.elf
 *.bin
 *.map
-*.sym
+*.d
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
 
 # Build directories
 build/
 dist/
+output/
 
 # IDE files
 .vscode/
 .idea/
-
-# Temp files
-*.tmp
 *.swp
+*.swo
+*.tmp
+
+# Logs
 *.log
 
-# Environment files
+# Environment
 .env
 .env.local
 *.env.*
 
 # Dependencies
 node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
 ```

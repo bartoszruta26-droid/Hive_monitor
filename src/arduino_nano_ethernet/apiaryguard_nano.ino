@@ -50,6 +50,13 @@ DHT dht(DHT_PIN, DHT22);
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 1000;  // 1 sekunda
 
+// Stan PWM do raportowania (nie można odczytać z pinów PWM)
+struct PWMState {
+  uint8_t heater;
+  uint8_t fan;
+  uint8_t pump;
+} pwm_state = {0, 0, 0};
+
 // Surowe dane z sensorów
 struct RawSensorData {
   float temp_raw;           // Temperatura [°C]
@@ -59,9 +66,9 @@ struct RawSensorData {
   int vibration_raw;        // Wibracje [ADC]
   int co2_raw;              // CO2 [ppm]
   int voc_raw;              // VOC Index
-  uint8_t heater_pwm;       // 0-255
-  uint8_t fan_pwm;          // 0-255
-  uint8_t pump_pwm;         // 0-255
+  uint8_t heater_pwm;       // 0-255 (zapisane wartości)
+  uint8_t fan_pwm;          // 0-255 (zapisane wartości)
+  uint8_t pump_pwm;         // 0-255 (zapisane wartości)
   uint8_t relay1_state;     // 0/1
   uint8_t relay2_state;     // 0/1
   unsigned long timestamp;  // ms since boot
@@ -85,13 +92,20 @@ bool initEthernet() {
     Serial.println("Ethernet: Nie wykryto W5100!");
     return false;
   }
-  if (Ethernet.begin(mac, ip)) {
-    Serial.print("Ethernet IP: ");
-    Serial.println(Ethernet.localIP());
-    return true;
+  
+  // Konfiguracja Ethernet (statyczne IP - begin zwraca void)
+  Ethernet.begin(mac, ip);
+  delay(1000); // Czekaj na inicjalizację sprzętu
+  
+  // Sprawdź fizyczne połączenie
+  if (Ethernet.linkStatus() == LinkOFF) {
+    Serial.println("Ethernet: Brak połączenia fizycznego (kabla)!");
+    return false;
   }
-  Serial.println("Ethernet: Błąd IP");
-  return false;
+  
+  Serial.print("Ethernet IP: ");
+  Serial.println(Ethernet.localIP());
+  return true;
 }
 
 void initHX711() {
@@ -123,11 +137,11 @@ long readHX711() {
 }
 
 int readMic() {
-  int sum = 0;
+  long sum = 0;  // 32-bit accumulator to avoid overflow
   int samples = 64;
   for (int i = 0; i < samples; i++) {
     int val = analogRead(MIC_PIN);
-    int diff = val - 512;
+    long diff = val - 512;  // Use long for multiplication
     sum += diff * diff;
     delayMicroseconds(200);
   }
@@ -138,12 +152,31 @@ int readPiezo() {
   return analogRead(PIEZO_PIN);
 }
 
-void setPWM(int pin, int value) {
-  analogWrite(pin, constrain(value, 0, 255));
+void setPWM(int pin, int value, int pwmType) {
+  uint8_t constrainedValue = constrain(value, 0, 255);
+  analogWrite(pin, constrainedValue);
+  
+  // Zapisz stan do raportowania
+  if (pwmType == 0) {
+    pwm_state.heater = constrainedValue;
+    sensors.heater_pwm = constrainedValue;
+  } else if (pwmType == 1) {
+    pwm_state.fan = constrainedValue;
+    sensors.fan_pwm = constrainedValue;
+  } else if (pwmType == 2) {
+    pwm_state.pump = constrainedValue;
+    sensors.pump_pwm = constrainedValue;
+  }
 }
 
 void setRelay(int relay, bool state) {
   digitalWrite(relay, state ? HIGH : LOW);
+  // Aktualizuj stan przekaźników
+  if (relay == RELAY_1) {
+    sensors.relay1_state = state ? 1 : 0;
+  } else if (relay == RELAY_2) {
+    sensors.relay2_state = state ? 1 : 0;
+  }
 }
 
 // Odczyt SGP30/SGP41 przez I2C (lub symulacja)
@@ -156,10 +189,11 @@ bool readSGP() {
   
   // Rzeczywisty odczyt I2C dla SGP30
   Wire.beginTransmission(0x58);
-  Wire.write(0x20, 0x08);  // Measure eCO2 & TVOC
+  Wire.write((uint8_t)0x20);  // Command byte 1
+  Wire.write((uint8_t)0x08);  // Command byte 2
   if (Wire.endTransmission() == 0) {
     delay(50);
-    Wire.requestFrom(0x58, 6);
+    Wire.requestFrom(0x58, (uint8_t)6);
     if (Wire.available() >= 6) {
       uint8_t data[6];
       for (int i = 0; i < 6; i++) data[i] = Wire.read();
@@ -194,12 +228,10 @@ void readAllSensors() {
   sensors.timestamp = millis();
   sensors.free_ram = getFreeRam();
   
-  // Stan efektorów
-  sensors.heater_pwm = analogRead(HEATER_PWM) >> 2;  // Konwersja PWM na 0-255
-  sensors.fan_pwm = analogRead(FAN_PWM) >> 2;
-  sensors.pump_pwm = analogRead(PUMP_PWM) >> 2;
-  sensors.relay1_state = digitalRead(RELAY_1);
-  sensors.relay2_state = digitalRead(RELAY_2);
+  // Stan efektorów - użyj zapisanych wartości, nie odczytuj z pinów
+  // (analogRead na pinach PWM daje błędne wyniki)
+  // Wartości heater_pwm, fan_pwm, pump_pwm są już aktualizowane w setPWM()
+  // Wartości relay1_state, relay2_state są już aktualizowane w setRelay()
 }
 
 // Wysyłanie JSON z surowymi danymi
@@ -253,13 +285,13 @@ void sendResponse(EthernetClient& client, const char* contentType, const String&
 void handleCommand(String cmd) {
   if (cmd.startsWith("SET_HEATER:")) {
     int val = cmd.substring(11).toInt();
-    setPWM(HEATER_PWM, val);
+    setPWM(HEATER_PWM, val, 0);  // 0 = heater
   } else if (cmd.startsWith("SET_FAN:")) {
     int val = cmd.substring(8).toInt();
-    setPWM(FAN_PWM, val);
+    setPWM(FAN_PWM, val, 1);  // 1 = fan
   } else if (cmd.startsWith("SET_PUMP:")) {
     int val = cmd.substring(9).toInt();
-    setPWM(PUMP_PWM, val);
+    setPWM(PUMP_PWM, val, 2);  // 2 = pump
   } else if (cmd.startsWith("SET_RELAY1:")) {
     setRelay(RELAY_1, cmd.substring(11).toInt());
   } else if (cmd.startsWith("SET_RELAY2:")) {
@@ -283,22 +315,22 @@ void handleServer() {
   
   // Sterowanie
   if (request.indexOf("/heater/on") >= 0) {
-    setPWM(HEATER_PWM, 255);
+    setPWM(HEATER_PWM, 255, 0);
     sendResponse(client, "text/plain", "Heater ON");
   } else if (request.indexOf("/heater/off") >= 0) {
-    setPWM(HEATER_PWM, 0);
+    setPWM(HEATER_PWM, 0, 0);
     sendResponse(client, "text/plain", "Heater OFF");
   } else if (request.indexOf("/fan/on") >= 0) {
-    setPWM(FAN_PWM, 255);
+    setPWM(FAN_PWM, 255, 1);
     sendResponse(client, "text/plain", "Fan ON");
   } else if (request.indexOf("/fan/off") >= 0) {
-    setPWM(FAN_PWM, 0);
+    setPWM(FAN_PWM, 0, 1);
     sendResponse(client, "text/plain", "Fan OFF");
   } else if (request.indexOf("/pump/on") >= 0) {
-    setPWM(PUMP_PWM, 255);
+    setPWM(PUMP_PWM, 255, 2);
     sendResponse(client, "text/plain", "Pump ON");
   } else if (request.indexOf("/pump/off") >= 0) {
-    setPWM(PUMP_PWM, 0);
+    setPWM(PUMP_PWM, 0, 2);
     sendResponse(client, "text/plain", "Pump OFF");
   }
   // Surowe dane
