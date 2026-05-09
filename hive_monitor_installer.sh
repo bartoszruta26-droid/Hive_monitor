@@ -2424,12 +2424,16 @@ visualize_data() {
     local count=0
     while IFS= read -r val; do
         if [[ -n "$val" ]]; then
-            # Calculate bar length (scale to 0-40 characters)
-            local range=$((max_val - min_val))
-            if [[ "$range" -eq 0 ]]; then
-                range=1
-            fi
-            local bar_len=$(( (val - min_val) * 40 / range ))
+            # Calculate bar length using awk for float-safe math (scale to 0-40 characters)
+            local bar_len
+            bar_len=$(awk -v val="$val" -v min="$min_val" -v max="$max_val" 'BEGIN {
+                range = max - min
+                if (range == 0) range = 1
+                bar_len = int((val - min) * 40 / range + 0.5)
+                if (bar_len < 0) bar_len = 0
+                if (bar_len > 40) bar_len = 40
+                print bar_len
+            }')
             local bar=""
             for ((i=0; i<bar_len; i++)); do
                 bar+="█"

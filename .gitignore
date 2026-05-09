@@ -1,4 +1,4 @@
-# Environment and config files
+# Environment and config
 .env
 .env.local
 *.env.*
@@ -8,40 +8,40 @@
 *.tmp
 *.swp
 
-# Editors and IDE
+# Editors
 .vscode/
 .idea/
 
 # Dependencies
+node_modules/
 .venv/
 venv/
-node_modules/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
 
 # Build artifacts
 dist/
 build/
 target/
 *.pyc
-__pycache__/
-*.class
 *.o
 *.obj
+*.class
 *.exe
 *.dll
 *.so
 *.a
 *.out
 
-# System files
+# OS files
 .DS_Store
 Thumbs.db
 
-# Coverage and testing
-.coverage
+# Coverage
 coverage/
 htmlcov/
-.mypy_cache/
-.pytest_cache/
+.coverage
 
 # Compressed files
 *.zip
