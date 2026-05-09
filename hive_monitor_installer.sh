@@ -407,23 +407,697 @@ option_backup_config() {
     wait_for_key
 }
 
-option_configure_app() {
-    print_header "${LANG[MENU_5]}"
-    echo "Application Configuration Menu"
-    echo "================================"
-    echo "1) Set API endpoints"
-    echo "2) Configure database settings"
-    echo "3) Set update intervals"
-    echo "4) Configure notifications"
-    echo "5) Set data retention policy"
-    echo "6) Network settings"
-    echo "7) User preferences"
-    echo "8) Advanced options"
-    echo "0) Back to main menu"
+# ============================================================================
+# CONFIGURATION SUB-MENU FUNCTIONS
+# ============================================================================
+
+configure_api_endpoints() {
+    print_header "Configure API Endpoints"
+    
+    local config_file="${CONFIG_DIR}/api_endpoints.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    LOCAL_API_URL="${LOCAL_API_URL:-http://localhost:8080/api}"
+    REMOTE_API_URL="${REMOTE_API_URL:-https://hive-monitor.example.com/api}"
+    MQTT_BROKER="${MQTT_BROKER:-localhost}"
+    MQTT_PORT="${MQTT_PORT:-1883}"
+    
+    echo "Current API Configuration:"
+    echo "--------------------------"
+    echo "Local API URL: $LOCAL_API_URL"
+    echo "Remote API URL: $REMOTE_API_URL"
+    echo "MQTT Broker: $MQTT_BROKER"
+    echo "MQTT Port: $MQTT_PORT"
     echo ""
-    echo "[STUB] Configuration submenu logic will be implemented here."
-    log_message "INFO" "Application configuration requested"
+    
+    read -p "Enter Local API URL [$LOCAL_API_URL]: " new_local
+    [[ -n "$new_local" ]] && LOCAL_API_URL="$new_local"
+    
+    read -p "Enter Remote API URL [$REMOTE_API_URL]: " new_remote
+    [[ -n "$new_remote" ]] && REMOTE_API_URL="$new_remote"
+    
+    read -p "Enter MQTT Broker [$MQTT_BROKER]: " new_broker
+    [[ -n "$new_broker" ]] && MQTT_BROKER="$new_broker"
+    
+    read -p "Enter MQTT Port [$MQTT_PORT]: " new_port
+    [[ -n "$new_port" ]] && MQTT_PORT="$new_port"
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor API Endpoints Configuration
+LOCAL_API_URL="$LOCAL_API_URL"
+REMOTE_API_URL="$REMOTE_API_URL"
+MQTT_BROKER="$MQTT_BROKER"
+MQTT_PORT="$MQTT_PORT"
+EOF
+    
+    echo ""
+    echo -e "${GREEN}API endpoints configuration saved!${NC}"
+    log_message "INFO" "API endpoints configured"
     wait_for_key
+}
+
+configure_database() {
+    print_header "Configure Database Settings"
+    
+    local config_file="${CONFIG_DIR}/database.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    DB_TYPE="${DB_TYPE:-sqlite}"
+    DB_HOST="${DB_HOST:-localhost}"
+    DB_PORT="${DB_PORT:-5432}"
+    DB_NAME="${DB_NAME:-hive_monitor}"
+    DB_USER="${DB_USER:-hiveuser}"
+    DB_PASSWORD="${DB_PASSWORD:-}"
+    DB_PATH="${DB_PATH:-${CONFIG_DIR}/data/hive_monitor.db}"
+    
+    echo "Current Database Configuration:"
+    echo "--------------------------------"
+    echo "Database Type: $DB_TYPE"
+    echo "Host: $DB_HOST"
+    echo "Port: $DB_PORT"
+    echo "Database Name: $DB_NAME"
+    echo "Username: $DB_USER"
+    echo "Password: ${DB_PASSWORD:0:3}***"
+    echo "Path (for SQLite): $DB_PATH"
+    echo ""
+    
+    echo "Select database type:"
+    echo "1) SQLite (default, file-based)"
+    echo "2) PostgreSQL"
+    echo "3) MySQL/MariaDB"
+    read -p "Choice [1]: " db_choice
+    
+    case $db_choice in
+        2) DB_TYPE="postgresql" ;;
+        3) DB_TYPE="mysql" ;;
+        *) DB_TYPE="sqlite" ;;
+    esac
+    
+    if [[ "$DB_TYPE" != "sqlite" ]]; then
+        read -p "Enter database host [$DB_HOST]: " new_host
+        [[ -n "$new_host" ]] && DB_HOST="$new_host"
+        
+        read -p "Enter database port [$DB_PORT]: " new_port
+        [[ -n "$new_port" ]] && DB_PORT="$new_port"
+        
+        read -p "Enter database name [$DB_NAME]: " new_name
+        [[ -n "$new_name" ]] && DB_NAME="$new_name"
+        
+        read -p "Enter database username [$DB_USER]: " new_user
+        [[ -n "$new_user" ]] && DB_USER="$new_user"
+        
+        read -sp "Enter database password: " new_pass
+        echo ""
+        [[ -n "$new_pass" ]] && DB_PASSWORD="$new_pass"
+    else
+        read -p "Enter database file path [$DB_PATH]: " new_path
+        [[ -n "$new_path" ]] && DB_PATH="$new_path"
+    fi
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Database Configuration
+DB_TYPE="$DB_TYPE"
+DB_HOST="$DB_HOST"
+DB_PORT="$DB_PORT"
+DB_NAME="$DB_NAME"
+DB_USER="$DB_USER"
+DB_PASSWORD="$DB_PASSWORD"
+DB_PATH="$DB_PATH"
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Database configuration saved!${NC}"
+    
+    # Create directory for SQLite database if needed
+    if [[ "$DB_TYPE" == "sqlite" ]]; then
+        mkdir -p "$(dirname "$DB_PATH")"
+    fi
+    
+    log_message "INFO" "Database configured: $DB_TYPE"
+    wait_for_key
+}
+
+configure_intervals() {
+    print_header "Configure Update Intervals"
+    
+    local config_file="${CONFIG_DIR}/intervals.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded (values in seconds)
+    SENSOR_INTERVAL="${SENSOR_INTERVAL:-30}"
+    DISPLAY_INTERVAL="${DISPLAY_INTERVAL:-5}"
+    LOG_INTERVAL="${LOG_INTERVAL:-300}"
+    SYNC_INTERVAL="${SYNC_INTERVAL:-3600}"
+    BACKUP_INTERVAL="${BACKUP_INTERVAL:-86400}"
+    
+    echo "Current Update Intervals (in seconds):"
+    echo "---------------------------------------"
+    echo "Sensor reading interval: $SENSOR_INTERVAL s"
+    echo "Display refresh interval: $DISPLAY_INTERVAL s"
+    echo "Log write interval: $LOG_INTERVAL s"
+    echo "Cloud sync interval: $SYNC_INTERVAL s"
+    echo "Auto-backup interval: $BACKUP_INTERVAL s"
+    echo ""
+    
+    read -p "Enter sensor reading interval (5-300) [$SENSOR_INTERVAL]: " new_sensor
+    if [[ -n "$new_sensor" && "$new_sensor" =~ ^[0-9]+$ && "$new_sensor" -ge 5 && "$new_sensor" -le 300 ]]; then
+        SENSOR_INTERVAL="$new_sensor"
+    elif [[ -n "$new_sensor" ]]; then
+        echo -e "${YELLOW}Warning: Value out of range, using default${NC}"
+    fi
+    
+    read -p "Enter display refresh interval (1-60) [$DISPLAY_INTERVAL]: " new_display
+    if [[ -n "$new_display" && "$new_display" =~ ^[0-9]+$ && "$new_display" -ge 1 && "$new_display" -le 60 ]]; then
+        DISPLAY_INTERVAL="$new_display"
+    fi
+    
+    read -p "Enter log write interval (60-3600) [$LOG_INTERVAL]: " new_log
+    if [[ -n "$new_log" && "$new_log" =~ ^[0-9]+$ && "$new_log" -ge 60 && "$new_log" -le 3600 ]]; then
+        LOG_INTERVAL="$new_log"
+    fi
+    
+    read -p "Enter cloud sync interval (300-86400) [$SYNC_INTERVAL]: " new_sync
+    if [[ -n "$new_sync" && "$new_sync" =~ ^[0-9]+$ && "$new_sync" -ge 300 && "$new_sync" -le 86400 ]]; then
+        SYNC_INTERVAL="$new_sync"
+    fi
+    
+    read -p "Enter auto-backup interval (3600-604800) [$BACKUP_INTERVAL]: " new_backup
+    if [[ -n "$new_backup" && "$new_backup" =~ ^[0-9]+$ && "$new_backup" -ge 3600 && "$new_backup" -le 604800 ]]; then
+        BACKUP_INTERVAL="$new_backup"
+    fi
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Update Intervals Configuration (seconds)
+SENSOR_INTERVAL=$SENSOR_INTERVAL
+DISPLAY_INTERVAL=$DISPLAY_INTERVAL
+LOG_INTERVAL=$LOG_INTERVAL
+SYNC_INTERVAL=$SYNC_INTERVAL
+BACKUP_INTERVAL=$BACKUP_INTERVAL
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Update intervals configuration saved!${NC}"
+    log_message "INFO" "Update intervals configured"
+    wait_for_key
+}
+
+configure_notifications() {
+    print_header "Configure Notifications"
+    
+    local config_file="${CONFIG_DIR}/notifications.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    EMAIL_ENABLED="${EMAIL_ENABLED:-false}"
+    EMAIL_ADDRESS="${EMAIL_ADDRESS:-}"
+    SMTP_SERVER="${SMTP_SERVER:-smtp.gmail.com}"
+    SMTP_PORT="${SMTP_PORT:-587}"
+    PUSH_ENABLED="${PUSH_ENABLED:-false}"
+    PUSH_TOKEN="${PUSH_TOKEN:-}"
+    TEMP_THRESHOLD_HIGH="${TEMP_THRESHOLD_HIGH:-35}"
+    TEMP_THRESHOLD_LOW="${TEMP_THRESHOLD_LOW:-10}"
+    HUMIDITY_THRESHOLD="${HUMIDITY_THRESHOLD:-80}"
+    
+    echo "Current Notification Settings:"
+    echo "-------------------------------"
+    echo "Email notifications: $EMAIL_ENABLED"
+    [[ -n "$EMAIL_ADDRESS" ]] && echo "Email address: $EMAIL_ADDRESS"
+    echo "Push notifications: $PUSH_ENABLED"
+    echo ""
+    echo "Alert Thresholds:"
+    echo "Temperature high: ${TEMP_THRESHOLD_HIGH}°C"
+    echo "Temperature low: ${TEMP_THRESHOLD_LOW}°C"
+    echo "Humidity high: ${HUMIDITY_THRESHOLD}%"
+    echo ""
+    
+    echo "Enable email notifications?"
+    read -p "(y/N): " email_choice
+    if [[ "$email_choice" =~ ^[Yy]$ ]]; then
+        EMAIL_ENABLED="true"
+        read -p "Enter email address: " EMAIL_ADDRESS
+        read -p "Enter SMTP server [$SMTP_SERVER]: " new_smtp
+        [[ -n "$new_smtp" ]] && SMTP_SERVER="$new_smtp"
+        read -p "Enter SMTP port [$SMTP_PORT]: " new_smtp_port
+        [[ -n "$new_smtp_port" ]] && SMTP_PORT="$new_smtp_port"
+    else
+        EMAIL_ENABLED="false"
+    fi
+    
+    echo ""
+    echo "Enable push notifications?"
+    read -p "(y/N): " push_choice
+    if [[ "$push_choice" =~ ^[Yy]$ ]]; then
+        PUSH_ENABLED="true"
+        read -p "Enter push notification token: " PUSH_TOKEN
+    else
+        PUSH_ENABLED="false"
+    fi
+    
+    echo ""
+    echo "Set alert thresholds:"
+    read -p "Temperature high threshold (°C) [$TEMP_THRESHOLD_HIGH]: " new_temp_high
+    [[ -n "$new_temp_high" ]] && TEMP_THRESHOLD_HIGH="$new_temp_high"
+    
+    read -p "Temperature low threshold (°C) [$TEMP_THRESHOLD_LOW]: " new_temp_low
+    [[ -n "$new_temp_low" ]] && TEMP_THRESHOLD_LOW="$new_temp_low"
+    
+    read -p "Humidity threshold (%) [$HUMIDITY_THRESHOLD]: " new_humidity
+    [[ -n "$new_humidity" ]] && HUMIDITY_THRESHOLD="$new_humidity"
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Notifications Configuration
+EMAIL_ENABLED=$EMAIL_ENABLED
+EMAIL_ADDRESS="$EMAIL_ADDRESS"
+SMTP_SERVER="$SMTP_SERVER"
+SMTP_PORT="$SMTP_PORT"
+PUSH_ENABLED=$PUSH_ENABLED
+PUSH_TOKEN="$PUSH_TOKEN"
+TEMP_THRESHOLD_HIGH=$TEMP_THRESHOLD_HIGH
+TEMP_THRESHOLD_LOW=$TEMP_THRESHOLD_LOW
+HUMIDITY_THRESHOLD=$HUMIDITY_THRESHOLD
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Notifications configuration saved!${NC}"
+    log_message "INFO" "Notifications configured"
+    wait_for_key
+}
+
+configure_data_retention() {
+    print_header "Configure Data Retention Policy"
+    
+    local config_file="${CONFIG_DIR}/retention.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded (values in days)
+    RAW_DATA_RETENTION="${RAW_DATA_RETENTION:-30}"
+    HOURLY_DATA_RETENTION="${HOURLY_DATA_RETENTION:-365}"
+    DAILY_DATA_RETENTION="${DAILY_DATA_RETENTION:-730}"
+    ENABLE_COMPRESSION="${ENABLE_COMPRESSION:-true}"
+    COMPRESSION_AFTER_DAYS="${COMPRESSION_AFTER_DAYS:-7}"
+    
+    echo "Current Data Retention Policy:"
+    echo "-------------------------------"
+    echo "Raw data retention: $RAW_DATA_RETENTION days"
+    echo "Hourly aggregated data: $HOURLY_DATA_RETENTION days"
+    echo "Daily aggregated data: $DAILY_DATA_RETENTION days"
+    echo "Enable compression: $ENABLE_COMPRESSION"
+    echo "Compress after: $COMPRESSION_AFTER_DAYS days"
+    echo ""
+    
+    read -p "Raw data retention days (7-365) [$RAW_DATA_RETENTION]: " new_raw
+    if [[ -n "$new_raw" && "$new_raw" =~ ^[0-9]+$ && "$new_raw" -ge 7 && "$new_raw" -le 365 ]]; then
+        RAW_DATA_RETENTION="$new_raw"
+    fi
+    
+    read -p "Hourly data retention days (30-1095) [$HOURLY_DATA_RETENTION]: " new_hourly
+    if [[ -n "$new_hourly" && "$new_hourly" =~ ^[0-9]+$ && "$new_hourly" -ge 30 && "$new_hourly" -le 1095 ]]; then
+        HOURLY_DATA_RETENTION="$new_hourly"
+    fi
+    
+    read -p "Daily data retention days (365-3650) [$DAILY_DATA_RETENTION]: " new_daily
+    if [[ -n "$new_daily" && "$new_daily" =~ ^[0-9]+$ && "$new_daily" -ge 365 && "$new_daily" -le 3650 ]]; then
+        DAILY_DATA_RETENTION="$new_daily"
+    fi
+    
+    echo ""
+    echo "Enable data compression?"
+    read -p "(Y/n): " compress_choice
+    if [[ "$compress_choice" =~ ^[Nn]$ ]]; then
+        ENABLE_COMPRESSION="false"
+    else
+        ENABLE_COMPRESSION="true"
+        read -p "Compress data after days (1-30) [$COMPRESSION_AFTER_DAYS]: " new_compress
+        if [[ -n "$new_compress" && "$new_compress" =~ ^[0-9]+$ ]]; then
+            COMPRESSION_AFTER_DAYS="$new_compress"
+        fi
+    fi
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Data Retention Configuration (days)
+RAW_DATA_RETENTION=$RAW_DATA_RETENTION
+HOURLY_DATA_RETENTION=$HOURLY_DATA_RETENTION
+DAILY_DATA_RETENTION=$DAILY_DATA_RETENTION
+ENABLE_COMPRESSION=$ENABLE_COMPRESSION
+COMPRESSION_AFTER_DAYS=$COMPRESSION_AFTER_DAYS
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Data retention policy saved!${NC}"
+    log_message "INFO" "Data retention policy configured"
+    wait_for_key
+}
+
+configure_network() {
+    print_header "Configure Network Settings"
+    
+    local config_file="${CONFIG_DIR}/network.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    DEVICE_HOSTNAME="${DEVICE_HOSTNAME:-hive-monitor}"
+    USE_STATIC_IP="${USE_STATIC_IP:-false}"
+    STATIC_IP="${STATIC_IP:-192.168.1.100}"
+    STATIC_NETMASK="${STATIC_NETMASK:-255.255.255.0}"
+    STATIC_GATEWAY="${STATIC_GATEWAY:-192.168.1.1}"
+    STATIC_DNS="${STATIC_DNS:-8.8.8.8}"
+    WIFI_SSID="${WIFI_SSID:-}"
+    ENABLE_WEBSERVER="${ENABLE_WEBSERVER:-true}"
+    WEBSERVER_PORT="${WEBSERVER_PORT:-8080}"
+    
+    echo "Current Network Settings:"
+    echo "-------------------------"
+    echo "Hostname: $DEVICE_HOSTNAME"
+    echo "Static IP: $USE_STATIC_IP"
+    [[ "$USE_STATIC_IP" == "true" ]] && echo "  IP: $STATIC_IP"
+    [[ "$USE_STATIC_IP" == "true" ]] && echo "  Netmask: $STATIC_NETMASK"
+    [[ "$USE_STATIC_IP" == "true" ]] && echo "  Gateway: $STATIC_GATEWAY"
+    [[ "$USE_STATIC_IP" == "true" ]] && echo "  DNS: $STATIC_DNS"
+    echo "Web server enabled: $ENABLE_WEBSERVER"
+    [[ "$ENABLE_WEBSERVER" == "true" ]] && echo "Web server port: $WEBSERVER_PORT"
+    echo ""
+    
+    read -p "Enter device hostname [$DEVICE_HOSTNAME]: " new_hostname
+    [[ -n "$new_hostname" ]] && DEVICE_HOSTNAME="$new_hostname"
+    
+    echo ""
+    echo "Use static IP address?"
+    read -p "(y/N): " static_choice
+    if [[ "$static_choice" =~ ^[Yy]$ ]]; then
+        USE_STATIC_IP="true"
+        read -p "Enter static IP address [$STATIC_IP]: " new_ip
+        [[ -n "$new_ip" ]] && STATIC_IP="$new_ip"
+        read -p "Enter netmask [$STATIC_NETMASK]: " new_netmask
+        [[ -n "$new_netmask" ]] && STATIC_NETMASK="$new_netmask"
+        read -p "Enter gateway [$STATIC_GATEWAY]: " new_gateway
+        [[ -n "$new_gateway" ]] && STATIC_GATEWAY="$new_gateway"
+        read -p "Enter DNS server [$STATIC_DNS]: " new_dns
+        [[ -n "$new_dns" ]] && STATIC_DNS="$new_dns"
+    else
+        USE_STATIC_IP="false"
+    fi
+    
+    echo ""
+    echo "Enable built-in web server?"
+    read -p "(Y/n): " web_choice
+    if [[ "$web_choice" =~ ^[Nn]$ ]]; then
+        ENABLE_WEBSERVER="false"
+    else
+        ENABLE_WEBSERVER="true"
+        read -p "Enter web server port (1024-65535) [$WEBSERVER_PORT]: " new_port
+        if [[ -n "$new_port" && "$new_port" =~ ^[0-9]+$ && "$new_port" -ge 1024 && "$new_port" -le 65535 ]]; then
+            WEBSERVER_PORT="$new_port"
+        fi
+    fi
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Network Configuration
+DEVICE_HOSTNAME="$DEVICE_HOSTNAME"
+USE_STATIC_IP=$USE_STATIC_IP
+STATIC_IP="$STATIC_IP"
+STATIC_NETMASK="$STATIC_NETMASK"
+STATIC_GATEWAY="$STATIC_GATEWAY"
+STATIC_DNS="$STATIC_DNS"
+ENABLE_WEBSERVER=$ENABLE_WEBSERVER
+WEBSERVER_PORT=$WEBSERVER_PORT
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Network settings saved!${NC}"
+    echo -e "${YELLOW}Note: Network changes may require a reboot to take effect.${NC}"
+    log_message "INFO" "Network settings configured"
+    wait_for_key
+}
+
+configure_user_preferences() {
+    print_header "Configure User Preferences"
+    
+    local config_file="${CONFIG_DIR}/user_prefs.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    PREFERRED_LANG="${PREFERRED_LANG:-en}"
+    TEMP_UNIT="${TEMP_UNIT:-celsius}"
+    DATE_FORMAT="${DATE_FORMAT:-YYYY-MM-DD}"
+    TIME_FORMAT="${TIME_FORMAT:-24h}"
+    THEME="${THEME:-dark}"
+    SHOW_GRAPHS="${SHOW_GRAPHS:-true}"
+    AUTO_REFRESH="${AUTO_REFRESH:-true}"
+    
+    echo "Current User Preferences:"
+    echo "-------------------------"
+    echo "Language: $PREFERRED_LANG"
+    echo "Temperature unit: $TEMP_UNIT"
+    echo "Date format: $DATE_FORMAT"
+    echo "Time format: $TIME_FORMAT"
+    echo "Theme: $THEME"
+    echo "Show graphs: $SHOW_GRAPHS"
+    echo "Auto-refresh: $AUTO_REFRESH"
+    echo ""
+    
+    echo "Select language:"
+    echo "1) English"
+    echo "2) Polski"
+    read -p "Choice [1]: " lang_choice
+    case $lang_choice in
+        2) PREFERRED_LANG="pl" ;;
+        *) PREFERRED_LANG="en" ;;
+    esac
+    
+    echo ""
+    echo "Temperature unit:"
+    echo "1) Celsius"
+    echo "2) Fahrenheit"
+    read -p "Choice [1]: " temp_choice
+    case $temp_choice in
+        2) TEMP_UNIT="fahrenheit" ;;
+        *) TEMP_UNIT="celsius" ;;
+    esac
+    
+    echo ""
+    echo "Date format:"
+    echo "1) YYYY-MM-DD (ISO)"
+    echo "2) DD/MM/YYYY"
+    echo "3) MM/DD/YYYY"
+    read -p "Choice [1]: " date_choice
+    case $date_choice in
+        2) DATE_FORMAT="DD/MM/YYYY" ;;
+        3) DATE_FORMAT="MM/DD/YYYY" ;;
+        *) DATE_FORMAT="YYYY-MM-DD" ;;
+    esac
+    
+    echo ""
+    echo "Time format:"
+    echo "1) 24-hour"
+    echo "2) 12-hour (AM/PM)"
+    read -p "Choice [1]: " time_choice
+    case $time_choice in
+        2) TIME_FORMAT="12h" ;;
+        *) TIME_FORMAT="24h" ;;
+    esac
+    
+    echo ""
+    echo "Theme:"
+    echo "1) Dark"
+    echo "2) Light"
+    read -p "Choice [1]: " theme_choice
+    case $theme_choice in
+        2) THEME="light" ;;
+        *) THEME="dark" ;;
+    esac
+    
+    echo ""
+    echo "Show graphs in interface?"
+    read -p "(Y/n): " graph_choice
+    [[ "$graph_choice" =~ ^[Nn]$ ]] && SHOW_GRAPHS="false" || SHOW_GRAPHS="true"
+    
+    echo "Enable auto-refresh?"
+    read -p "(Y/n): " refresh_choice
+    [[ "$refresh_choice" =~ ^[Nn]$ ]] && AUTO_REFRESH="false" || AUTO_REFRESH="true"
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor User Preferences
+PREFERRED_LANG="$PREFERRED_LANG"
+TEMP_UNIT="$TEMP_UNIT"
+DATE_FORMAT="$DATE_FORMAT"
+TIME_FORMAT="$TIME_FORMAT"
+THEME="$THEME"
+SHOW_GRAPHS=$SHOW_GRAPHS
+AUTO_REFRESH=$AUTO_REFRESH
+EOF
+    
+    echo ""
+    echo -e "${GREEN}User preferences saved!${NC}"
+    log_message "INFO" "User preferences configured"
+    wait_for_key
+}
+
+configure_advanced() {
+    print_header "Advanced Configuration Options"
+    
+    local config_file="${CONFIG_DIR}/advanced.conf"
+    mkdir -p "$CONFIG_DIR"
+    
+    # Load existing config or use defaults
+    if [[ -f "$config_file" ]]; then
+        source "$config_file" 2>/dev/null || true
+    fi
+    
+    # Set defaults if not loaded
+    DEBUG_MODE="${DEBUG_MODE:-false}"
+    VERBOSE_LOGGING="${VERBOSE_LOGGING:-false}"
+    MAX_LOG_SIZE="${MAX_LOG_SIZE:-10}"
+    LOG_ROTATION_COUNT="${LOG_ROTATION_COUNT:-5}"
+    WATCHDOG_ENABLED="${WATCHDOG_ENABLED:-true}"
+    WATCHDOG_TIMEOUT="${WATCHDOG_TIMEOUT:-30}"
+    SAFE_MODE="${SAFE_MODE:-false}"
+    
+    echo "Current Advanced Settings:"
+    echo "--------------------------"
+    echo "Debug mode: $DEBUG_MODE"
+    echo "Verbose logging: $VERBOSE_LOGGING"
+    echo "Max log size (MB): $MAX_LOG_SIZE"
+    echo "Log rotation count: $LOG_ROTATION_COUNT"
+    echo "Watchdog enabled: $WATCHDOG_ENABLED"
+    echo "Watchdog timeout (sec): $WATCHDOG_TIMEOUT"
+    echo "Safe mode: $SAFE_MODE"
+    echo ""
+    
+    echo "Enable debug mode? (for development)"
+    read -p "(y/N): " debug_choice
+    [[ "$debug_choice" =~ ^[Yy]$ ]] && DEBUG_MODE="true" || DEBUG_MODE="false"
+    
+    echo "Enable verbose logging?"
+    read -p "(y/N): " verbose_choice
+    [[ "$verbose_choice" =~ ^[Yy]$ ]] && VERBOSE_LOGGING="true" || VERBOSE_LOGGING="false"
+    
+    read -p "Max log file size in MB (1-100) [$MAX_LOG_SIZE]: " new_max_log
+    if [[ -n "$new_max_log" && "$new_max_log" =~ ^[0-9]+$ && "$new_max_log" -ge 1 && "$new_max_log" -le 100 ]]; then
+        MAX_LOG_SIZE="$new_max_log"
+    fi
+    
+    read -p "Number of log files to keep (1-20) [$LOG_ROTATION_COUNT]: " new_rotation
+    if [[ -n "$new_rotation" && "$new_rotation" =~ ^[0-9]+$ && "$new_rotation" -ge 1 && "$new_rotation" -le 20 ]]; then
+        LOG_ROTATION_COUNT="$new_rotation"
+    fi
+    
+    echo ""
+    echo "Enable hardware watchdog?"
+    read -p "(Y/n): " watchdog_choice
+    if [[ "$watchdog_choice" =~ ^[Nn]$ ]]; then
+        WATCHDOG_ENABLED="false"
+    else
+        WATCHDOG_ENABLED="true"
+        read -p "Watchdog timeout in seconds (10-120) [$WATCHDOG_TIMEOUT]: " new_timeout
+        if [[ -n "$new_timeout" && "$new_timeout" =~ ^[0-9]+$ && "$new_timeout" -ge 10 && "$new_timeout" -le 120 ]]; then
+            WATCHDOG_TIMEOUT="$new_timeout"
+        fi
+    fi
+    
+    echo ""
+    echo "Enable safe mode? (disables non-critical features)"
+    read -p "(y/N): " safe_choice
+    [[ "$safe_choice" =~ ^[Yy]$ ]] && SAFE_MODE="true" || SAFE_MODE="false"
+    
+    # Save configuration
+    cat > "$config_file" << EOF
+# Hive Monitor Advanced Configuration
+DEBUG_MODE=$DEBUG_MODE
+VERBOSE_LOGGING=$VERBOSE_LOGGING
+MAX_LOG_SIZE=$MAX_LOG_SIZE
+LOG_ROTATION_COUNT=$LOG_ROTATION_COUNT
+WATCHDOG_ENABLED=$WATCHDOG_ENABLED
+WATCHDOG_TIMEOUT=$WATCHDOG_TIMEOUT
+SAFE_MODE=$SAFE_MODE
+EOF
+    
+    echo ""
+    echo -e "${GREEN}Advanced settings saved!${NC}"
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        echo -e "${YELLOW}Warning: Debug mode is enabled. This may impact performance.${NC}"
+    fi
+    log_message "INFO" "Advanced settings configured"
+    wait_for_key
+}
+
+option_configure_app() {
+    while true; do
+        print_header "${LANG[MENU_5]}"
+        echo "Application Configuration Menu"
+        echo "================================"
+        echo "1) Set API endpoints"
+        echo "2) Configure database settings"
+        echo "3) Set update intervals"
+        echo "4) Configure notifications"
+        echo "5) Set data retention policy"
+        echo "6) Network settings"
+        echo "7) User preferences"
+        echo "8) Advanced options"
+        echo "0) Back to main menu"
+        echo ""
+        
+        read -p "Select option (0-8): " config_choice
+        
+        case $config_choice in
+            1) configure_api_endpoints ;;
+            2) configure_database ;;
+            3) configure_intervals ;;
+            4) configure_notifications ;;
+            5) configure_data_retention ;;
+            6) configure_network ;;
+            7) configure_user_preferences ;;
+            8) configure_advanced ;;
+            0) break ;;
+            *)
+                echo -e "${RED}Invalid option${NC}"
+                wait_for_key
+                ;;
+        esac
+    done
 }
 
 option_live_data() {
