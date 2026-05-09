@@ -1194,19 +1194,758 @@ option_configure_app() {
 
 option_live_data() {
     print_header "${LANG[MENU_6]}"
-    echo "Live Microcontroller Data Reader"
-    echo "================================="
-    echo "Available ports: /dev/ttyUSB*, /dev/ttyACM*"
-    echo ""
-    echo "1) Auto-detect microcontroller"
-    echo "2) Select port manually"
-    echo "3) View raw data stream"
-    echo "4) Start/Stop monitoring"
-    echo "0) Back to main menu"
-    echo ""
-    echo "[STUB] Live data reading logic will be implemented here."
-    log_message "INFO" "Live microcontroller data access requested"
-    wait_for_key
+    
+    # ============================================================================
+    # LIVE MICROCONTROLLER DATA READER - ROZBUDOWANA IMPLEMENTACJA
+    # ============================================================================
+    
+    local selected_port=""
+    local baud_rate="9600"
+    local monitoring_active=false
+    local monitor_pid=""
+    local raw_mode=false
+    
+    # Funkcja pomocnicza: Wykrywanie dostępnych portów szeregowych
+    detect_serial_ports() {
+        local ports=()
+        
+        # Sprawdź porty USB CDC (Arduino, Pico, itp.)
+        for port in /dev/ttyUSB* /dev/ttyACM*; do
+            if [[ -e "$port" ]]; then
+                ports+=("$port")
+            fi
+        done
+        
+        # Sprawdź porty GPIO UART (Raspberry Pi)
+        if [[ -e "/dev/serial0" ]]; then
+            ports+=("/dev/serial0")
+        fi
+        if [[ -e "/dev/ttyAMA0" ]] && [[ ! " ${ports[*]} " =~ " /dev/ttyAMA0 " ]]; then
+            ports+=("/dev/ttyAMA0")
+        fi
+        
+        # Sprawdź porty Bluetooth HCI UART
+        if [[ -e "/dev/ttyS0" ]] && [[ ! " ${ports[*]} " =~ " /dev/ttyS0 " ]]; then
+            ports+=("/dev/ttyS0")
+        fi
+        
+        echo "${ports[@]}"
+    }
+    
+    # Funkcja pomocnicza: Pobierz informacje o porcie
+    get_port_info() {
+        local port="$1"
+        if [[ -e "$port" ]]; then
+            local driver=$(udevadm info --query=property --name="$port" 2>/dev/null | grep -E "ID_VENDOR|ID_MODEL|PRODUCT" | head -3 | tr '\n' ' ')
+            echo "$port ${driver:-[Unknown device]}"
+        else
+            echo "$port [Not found]"
+        fi
+    }
+    
+    # Funkcja pomocnicza: Automatyczna detekcja mikrokontrolera
+    auto_detect_microcontroller() {
+        print_header "${LANG[MENU_6]} - Auto Detection"
+        echo "Scanning for connected microcontrollers..."
+        echo ""
+        
+        local ports=($(detect_serial_ports))
+        
+        if [[ ${#ports[@]} -eq 0 ]]; then
+            echo -e "${YELLOW}No serial ports detected.${NC}"
+            echo ""
+            echo "Troubleshooting tips:"
+            echo "  1. Check USB cable connection"
+            echo "  2. Ensure the device is powered on"
+            echo "  3. Try a different USB port"
+            echo "  4. Install required drivers:"
+            echo "     sudo apt-get install modemmanager"
+            echo ""
+            return 1
+        fi
+        
+        echo "Found ${#ports[@]} serial port(s):"
+        echo ""
+        
+        local i=1
+        local detected_devices=()
+        for port in "${ports[@]}"; do
+            echo "  [$i] $(get_port_info "$port")"
+            detected_devices+=("$port")
+            ((i++))
+        done
+        echo ""
+        
+        # Spróbuj zidentyfikować typ mikrokontrolera
+        echo "Attempting to identify device type..."
+        for port in "${detected_devices[@]}"; do
+            local vendor_id=""
+            local product_id=""
+            
+            # Pobierz ID urządzenia z udev
+            if command -v udevadm &> /dev/null; then
+                vendor_id=$(udevadm info --query=property --name="$port" 2>/dev/null | grep "ID_VENDOR_ID" | cut -d'=' -f2)
+                product_id=$(udevadm info --query=property --name="$port" 2>/dev/null | grep "ID_MODEL_ID" | cut -d'=' -f2)
+            fi
+            
+            # Identyfikacja na podstawie VID/PID
+            local device_type="Unknown"
+            case "$vendor_id:$product_id" in
+                2341:*|2a03:*)
+                    device_type="Arduino (Atmel)"
+                    ;;
+                0403:*)
+                    device_type="FTDI USB-Serial"
+                    ;;
+                1a86:*)
+                    device_type="CH340/CH341 USB-Serial"
+                    ;;
+                10c4:*)
+                    device_type="Silicon Labs CP210x"
+                    ;;
+                2e8a:*)
+                    device_type="Raspberry Pi Pico"
+                    ;;
+                0483:*)
+                    device_type="STM32"
+                    ;;
+                *)
+                    # Spróbuj odczytać nazwę z sysfs
+                    if [[ -e "/sys/class/tty/$(basename $port)/device/../product" ]]; then
+                        local product_name=$(cat "/sys/class/tty/$(basename $port)/device/../product" 2>/dev/null)
+                        if [[ -n "$product_name" ]]; then
+                            device_type="$product_name"
+                        fi
+                    fi
+                    ;;
+            esac
+            
+            echo -e "  ${GREEN}✓${NC} $port: ${CYAN}$device_type${NC}"
+        done
+        echo ""
+        
+        # Wybierz pierwszy wykryty port lub pozwól użytkownikowi wybrać
+        if [[ ${#detected_devices[@]} -eq 1 ]]; then
+            selected_port="${detected_devices[0]}"
+            echo -e "${GREEN}Auto-selected: $selected_port${NC}"
+        else
+            read -p "Select port number (1-${#detected_devices[@]}) or 0 to cancel: " port_choice
+            if [[ $port_choice -gt 0 ]] && [[ $port_choice -le ${#detected_devices[@]} ]]; then
+                selected_port="${detected_devices[$((port_choice-1))]}"
+            else
+                echo "Selection cancelled."
+                return 1
+            fi
+        fi
+        
+        return 0
+    }
+    
+    # Funkcja pomocnicza: Ręczny wybór portu
+    manual_select_port() {
+        print_header "${LANG[MENU_6]} - Manual Selection"
+        echo "Available serial ports:"
+        echo ""
+        
+        local ports=($(detect_serial_ports))
+        
+        if [[ ${#ports[@]} -eq 0 ]]; then
+            echo -e "${YELLOW}No serial ports found.${NC}"
+            echo ""
+            echo "You can still enter a port path manually (e.g., /dev/ttyUSB0)"
+        else
+            local i=1
+            for port in "${ports[@]}"; do
+                echo "  [$i] $(get_port_info "$port")"
+                ((i++))
+            done
+            echo "  [${#ports[@]}+1] Enter custom path"
+        fi
+        echo "  [0] Cancel"
+        echo ""
+        
+        read -p "Select port: " port_choice
+        
+        if [[ $port_choice -eq 0 ]]; then
+            return 1
+        elif [[ $port_choice -gt 0 ]] && [[ $port_choice -le ${#ports[@]} ]]; then
+            selected_port="${ports[$((port_choice-1))]}"
+        else
+            read -p "Enter custom port path: " custom_path
+            if [[ -e "$custom_path" ]]; then
+                selected_port="$custom_path"
+            else
+                echo -e "${RED}Port $custom_path does not exist${NC}"
+                return 1
+            fi
+        fi
+        
+        # Wybór prędkości transmisji
+        echo ""
+        echo "Select baud rate:"
+        echo "  1) 9600"
+        echo "  2) 19200"
+        echo "  3) 38400"
+        echo "  4) 57600"
+        echo "  5) 115200 (default for most devices)"
+        echo "  6) 230400"
+        echo "  7) 250000"
+        echo "  8) 500000"
+        echo "  9) 921600"
+        echo "  10) Custom"
+        echo ""
+        read -p "Baud rate option: " baud_choice
+        
+        case $baud_choice in
+            1) baud_rate="9600" ;;
+            2) baud_rate="19200" ;;
+            3) baud_rate="38400" ;;
+            4) baud_rate="57600" ;;
+            5) baud_rate="115200" ;;
+            6) baud_rate="230400" ;;
+            7) baud_rate="250000" ;;
+            8) baud_rate="500000" ;;
+            9) baud_rate="921600" ;;
+            10) 
+                read -p "Enter custom baud rate: " baud_rate
+                if ! [[ "$baud_rate" =~ ^[0-9]+$ ]]; then
+                    echo -e "${RED}Invalid baud rate${NC}"
+                    return 1
+                fi
+                ;;
+            *)
+                baud_rate="115200"
+                ;;
+        esac
+        
+        echo ""
+        echo -e "${GREEN}Selected: $selected_port @ $baud_rate baud${NC}"
+        return 0
+    }
+    
+    # Funkcja pomocnicza: Odczyt surowych danych z portu szeregowego
+    read_raw_data() {
+        local port="$1"
+        local rate="$2"
+        local duration="${3:-10}"  # Domyślnie 10 sekund
+        
+        if ! command -v python3 &> /dev/null; then
+            echo -e "${RED}Error: python3 is required for serial communication${NC}"
+            return 1
+        fi
+        
+        # Sprawdź czy pyserial jest dostępny
+        if ! python3 -c "import serial" 2>/dev/null; then
+            echo -e "${YELLOW}Warning: pyserial not installed. Installing...${NC}"
+            pip3 install pyserial --quiet 2>/dev/null || {
+                echo -e "${RED}Failed to install pyserial. Please run:${NC}"
+                echo "  pip3 install pyserial"
+                return 1
+            }
+        fi
+        
+        print_header "${LANG[MENU_6]} - Raw Data Stream"
+        echo "Reading from: $port @ $rate baud"
+        echo "Press Ctrl+C to stop"
+        echo "Duration: ${duration}s (or until interrupted)"
+        echo "================================================================"
+        echo ""
+        
+        # Skrypt Python do odczytu danych szeregowych
+        python3 << EOF
+import serial
+import sys
+import time
+from datetime import datetime
+
+try:
+    ser = serial.Serial(
+        port='$port',
+        baudrate=$rate,
+        timeout=1,
+        write_timeout=1
+    )
+    print(f"Connected to {ser.portstr}")
+    print(f"Baud rate: {ser.baudrate}")
+    print("-" * 64)
+    
+    start_time = time.time()
+    line_count = 0
+    
+    while True:
+        try:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='replace').strip()
+                timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                
+                # Analiza podstawowych formatów danych
+                if line:
+                    line_count += 1
+                    
+                    # Wykryj format danych
+                    if ',' in line and line.replace(',', '').replace('.', '').replace('-', '').isdigit():
+                        # Dane CSV/numeryczne
+                        values = line.split(',')
+                        print(f"[{timestamp}] CSV[{len(values)}]: {line}")
+                    elif '=' in line:
+                        # Dane w formacie key=value
+                        pairs = line.split()
+                        print(f"[{timestamp}] KEY-VALUE: {line}")
+                    elif line.startswith('{') and line.endswith('}'):
+                        # JSON
+                        print(f"[{timestamp}] JSON: {line}")
+                    elif line.startswith('<') and line.endswith('>'):
+                        # XML lub tagowany format
+                        print(f"[{timestamp}] TAGGED: {line}")
+                    else:
+                        # Tekst ogólny
+                        print(f"[{timestamp}] TEXT: {line}")
+                        
+        except KeyboardInterrupt:
+            print("\\nInterrupted by user")
+            break
+        except Exception as e:
+            print(f"Error reading: {e}", file=sys.stderr)
+            break
+            
+        # Sprawdź limit czasu
+        if time.time() - start_time > $duration:
+            print(f"\\nTimeout after {duration}s")
+            break
+    
+    ser.close()
+    print(f"Total lines received: {line_count}")
+    
+except serial.SerialException as e:
+    print(f"Serial error: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
+    }
+    
+    # Funkcja pomocnicza: Ciągłe monitorowanie z wyświetlaniem parsed danych
+    start_monitoring() {
+        local port="$1"
+        local rate="$2"
+        
+        if ! command -v python3 &> /dev/null; then
+            echo -e "${RED}Error: python3 is required${NC}"
+            return 1
+        fi
+        
+        print_header "${LANG[MENU_6]} - Live Monitoring"
+        echo "Monitoring: $port @ $rate baud"
+        echo "Press Ctrl+C to stop"
+        echo ""
+        
+        # Utwórz tymczasowy plik na dane
+        local temp_data_file="/tmp/hive_monitor_live_${$}.csv"
+        
+        # Skrypt Python do monitorowania i parsowania danych
+        python3 << EOF
+import serial
+import sys
+import time
+import os
+from datetime import datetime
+from collections import deque
+
+# Konfiguracja
+PORT = '$port'
+BAUD = $rate
+DATA_FILE = '$temp_data_file'
+MAX_HISTORY = 100  # Liczba ostatnich odczytów do przechowywania
+
+# Bufory na dane
+sensor_history = deque(maxlen=MAX_HISTORY)
+last_values = {}
+
+def parse_sensor_data(line):
+    """Parsuje różne formaty danych sensorów"""
+    data = {}
+    
+    # Format 1: CSV z nagłówkiem lub bez
+    if ',' in line:
+        parts = line.strip().split(',')
+        # Spróbuj zidentyfikować kolumny
+        known_fields = ['temp', 'humidity', 'pressure', 'co2', 'voc', 
+                       'weight', 'battery', 'motion', 'lux', 'sound']
+        
+        for i, val in enumerate(parts):
+            try:
+                num_val = float(val)
+                field_name = known_fields[i] if i < len(known_fields) else f'sensor_{i}'
+                data[field_name] = num_val
+            except ValueError:
+                pass
+    
+    # Format 2: key=value pairs
+    elif '=' in line:
+        for pair in line.strip().split():
+            if '=' in pair:
+                key, val = pair.split('=', 1)
+                try:
+                    data[key.lower()] = float(val)
+                except ValueError:
+                    data[key.lower()] = val
+    
+    # Format 3: JSON
+    elif line.strip().startswith('{'):
+        import json
+        try:
+            data = json.loads(line.strip())
+        except:
+            pass
+    
+    return data
+
+def display_dashboard(data):
+    """Wyświetla dashboard z danymi"""
+    os.system('clear')
+    
+    print("=" * 70)
+    print("  HIVE MONITOR - LIVE DASHBOARD")
+    print("=" * 70)
+    print(f"Port: {PORT} | Baud: {BAUD} | Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("-" * 70)
+    
+    # Sekcja: Temperatura i Wilgotność
+    if 'temp' in data or 'temperature' in data:
+        temp = data.get('temp', data.get('temperature', 'N/A'))
+        unit = '°C' if isinstance(temp, (int, float)) else ''
+        print(f"  Temperature:   {temp:>8}{unit}")
+    
+    if 'humidity' in data or 'hum' in data:
+        hum = data.get('humidity', data.get('hum', 'N/A'))
+        unit = '%' if isinstance(hum, (int, float)) else ''
+        print(f"  Humidity:      {hum:>8}{unit}")
+    
+    # Sekcja: Jakość powietrza
+    if 'co2' in data:
+        co2 = data['co2']
+        status = "Good" if co2 < 800 else "Moderate" if co2 < 1200 else "Poor"
+        print(f"  CO2:           {co2:>8} ppm ({status})")
+    
+    if 'voc' in data:
+        voc = data['voc']
+        print(f"  VOC:           {voc:>8} ppb")
+    
+    # Sekcja: Waga i Aktywność
+    if 'weight' in data:
+        weight = data['weight']
+        unit = 'kg' if isinstance(weight, (int, float)) else ''
+        print(f"  Weight:        {weight:>8}{unit}")
+    
+    if 'motion' in data or 'activity' in data:
+        motion = data.get('motion', data.get('activity', 'N/A'))
+        print(f"  Motion:        {motion:>8}")
+    
+    # Sekcja: Zasilanie
+    if 'battery' in data or 'vbat' in data:
+        battery = data.get('battery', data.get('vbat', 'N/A'))
+        unit = 'V' if isinstance(battery, (int, float)) else ''
+        print(f"  Battery:       {battery:>8}{unit}")
+    
+    # Sekcja: Światło
+    if 'lux' in data or 'light' in data:
+        lux = data.get('lux', data.get('light', 'N/A'))
+        unit = 'lx' if isinstance(lux, (int, float)) else ''
+        print(f"  Light:         {lux:>8}{unit}")
+    
+    # Sekcja: Ciśnienie
+    if 'pressure' in data or 'press' in data:
+        press = data.get('pressure', data.get('press', 'N/A'))
+        unit = 'hPa' if isinstance(press, (int, float)) else ''
+        print(f"  Pressure:      {press:>8}{unit}")
+    
+    # Sekcja: Audio/Dźwięk
+    if 'sound' in data or 'audio' in data or 'rms' in data:
+        sound = data.get('sound', data.get('audio', data.get('rms', 'N/A')))
+        print(f"  Sound Level:   {sound:>8}")
+    
+    print("-" * 70)
+    
+    # Ostatnie wartości
+    if last_values:
+        print("\\n  Last readings:")
+        for key, val in list(last_values.items())[:5]:
+            print(f"    {key}: {val}")
+    
+    print("\\n" + "=" * 70)
+    print("  Press Ctrl+C to exit")
+    print("=" * 70)
+
+try:
+    ser = serial.Serial(PORT, BAUD, timeout=0.5)
+    print(f"Connected to {ser.portstr}")
+    time.sleep(2)  # Czekaj na stabilizację połączenia
+    
+    # Wyczyść bufor
+    ser.reset_input_buffer()
+    
+    last_display_update = 0
+    display_interval = 1  # Aktualizuj dashboard co 1 sekundę
+    
+    while True:
+        try:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='replace').strip()
+                
+                if line:
+                    # Parsuj dane
+                    parsed = parse_sensor_data(line)
+                    
+                    if parsed:
+                        # Aktualizuj ostatnie wartości
+                        last_values.update(parsed)
+                        
+                        # Dodaj do historii z timestampem
+                        sensor_history.append({
+                            'time': datetime.now(),
+                            'data': parsed
+                        })
+                        
+                        # Zapisz do pliku CSV
+                        with open(DATA_FILE, 'a') as f:
+                            timestamp = datetime.now().isoformat()
+                            values = [timestamp] + [str(parsed.get(k, '')) for k in sorted(parsed.keys())]
+                            f.write(','.join(values) + '\\n')
+                        
+                        # Aktualizuj wyświetlacz
+                        current_time = time.time()
+                        if current_time - last_display_update > display_interval:
+                            display_dashboard(last_values)
+                            last_display_update = current_time
+                            
+        except KeyboardInterrupt:
+            print("\\nStopping monitor...")
+            break
+        except Exception as e:
+            print(f"Read error: {e}", file=sys.stderr)
+            time.sleep(1)
+    
+    ser.close()
+    
+    # Podsumowanie
+    print(f"\\nSession summary:")
+    print(f"  Total readings: {len(sensor_history)}")
+    print(f"  Data saved to: {DATA_FILE}")
+    
+    # Pokaż statystyki
+    if sensor_history:
+        print("\\n  Final sensor values:")
+        for key, val in last_values.items():
+            print(f"    {key}: {val}")
+    
+except serial.SerialException as e:
+    print(f"Serial connection failed: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
+finally:
+    # Cleanup
+    if os.path.exists(DATA_FILE):
+        print(f"\\nData file available at: {DATA_FILE}")
+EOF
+    }
+    
+    # Funkcja pomocnicza: Symulacja danych (do testów bez sprzętu)
+    simulate_data() {
+        print_header "${LANG[MENU_6]} - Simulation Mode"
+        echo "No physical device connected. Running simulation..."
+        echo ""
+        
+        python3 << 'EOF'
+import random
+import time
+from datetime import datetime
+import os
+
+print("SIMULATED HIVE SENSOR DATA")
+print("=" * 70)
+
+base_temp = 35.0
+base_humidity = 55.0
+base_weight = 45.0
+base_co2 = 600
+
+start_time = time.time()
+
+try:
+    while True:
+        elapsed = time.time() - start_time
+        
+        # Symuluj zmiany parametrów
+        temp = base_temp + random.gauss(0, 2) + 3 * (elapsed / 3600)
+        humidity = base_humidity + random.gauss(0, 5) - 2 * (elapsed / 3600)
+        weight = base_weight + random.gauss(0, 0.1)
+        co2 = base_co2 + random.gauss(0, 100) + 50 * (elapsed / 3600)
+        voc = 200 + random.gauss(0, 50)
+        battery = 4.2 - 0.001 * elapsed + random.gauss(0, 0.05)
+        motion = random.choice([0, 1, 1, 1, 2])
+        lux = max(0, 500 + 300 * (elapsed % 86400) / 43200) + random.gauss(0, 50)
+        pressure = 1013.25 + random.gauss(0, 5)
+        sound = 45 + random.gauss(0, 10)
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Wyświetl w formacie key=value
+        print(f"{timestamp} | "
+              f"temp={temp:.1f}C | "
+              f"hum={humidity:.1f}% | "
+              f"weight={weight:.2f}kg | "
+              f"co2={co2:.0f}ppm | "
+              f"voc={voc:.0f}ppb | "
+              f"bat={battery:.2f}V | "
+              f"motion={motion} | "
+              f"lux={lux:.0f} | "
+              f"press={pressure:.1f}hPa | "
+              f"sound={sound:.1f}dB")
+        
+        time.sleep(2)
+        
+except KeyboardInterrupt:
+    print("\\nSimulation stopped.")
+EOF
+    }
+    
+    # ========================================================================
+    # GŁÓWNE MENU OPCJI 6
+    # ========================================================================
+    
+    while true; do
+        clear_screen
+        echo -e "${GREEN}>>> ${LANG[MENU_6]}${NC}"
+        echo ""
+        echo "Current selection: ${CYAN}${selected_port:-Not selected}${NC}"
+        echo "Baud rate: ${CYAN}${baud_rate}${NC}"
+        echo ""
+        echo "  1) Auto-detect microcontroller"
+        echo "  2) Select port manually"
+        echo "  3) View raw data stream (10s sample)"
+        echo "  4) Start live monitoring dashboard"
+        echo "  5) Run simulation mode (no hardware required)"
+        echo "  6) Configure serial settings"
+        echo "  7) Save captured data to file"
+        echo "  8) Check system serial permissions"
+        echo ""
+        echo "  0) Back to main menu"
+        echo ""
+        
+        read -p "Select option: " choice
+        
+        case $choice in
+            1)
+                if auto_detect_microcontroller; then
+                    echo ""
+                    read -p "Start monitoring now? (y/N): " start_now
+                    if [[ $start_now =~ ^[Yy]$ ]]; then
+                        start_monitoring "$selected_port" "$baud_rate"
+                    fi
+                fi
+                wait_for_key
+                ;;
+            2)
+                if manual_select_port; then
+                    echo ""
+                    read -p "Test connection now? (y/N): " test_conn
+                    if [[ $test_conn =~ ^[Yy]$ ]]; then
+                        read_raw_data "$selected_port" "$baud_rate" 5
+                    fi
+                fi
+                wait_for_key
+                ;;
+            3)
+                if [[ -z "$selected_port" ]]; then
+                    echo -e "${YELLOW}No port selected. Please select a port first.${NC}"
+                    wait_for_key
+                    continue
+                fi
+                read_raw_data "$selected_port" "$baud_rate" 10
+                wait_for_key
+                ;;
+            4)
+                if [[ -z "$selected_port" ]]; then
+                    echo -e "${YELLOW}No port selected. Please select a port first.${NC}"
+                    wait_for_key
+                    continue
+                fi
+                start_monitoring "$selected_port" "$baud_rate"
+                wait_for_key
+                ;;
+            5)
+                simulate_data
+                wait_for_key
+                ;;
+            6)
+                echo "Serial Settings Configuration"
+                echo "=============================="
+                echo ""
+                read -p "Enter new baud rate (current: $baud_rate): " new_baud
+                if [[ -n "$new_baud" ]] && [[ "$new_baud" =~ ^[0-9]+$ ]]; then
+                    baud_rate="$new_baud"
+                    echo -e "${GREEN}Baud rate updated to $baud_rate${NC}"
+                fi
+                echo ""
+                echo "Additional settings (flow control, parity, etc.)"
+                echo "can be configured in the monitoring function."
+                wait_for_key
+                ;;
+            7)
+                local data_files=(/tmp/hive_monitor_live_*.csv)
+                if [[ -e "${data_files[0]}" ]]; then
+                    echo "Available data files:"
+                    ls -lh "${data_files[@]}" 2>/dev/null
+                    echo ""
+                    read -p "Export latest file to current directory? (y/N): " export_choice
+                    if [[ $export_choice =~ ^[Yy]$ ]]; then
+                        cp "${data_files[-1]}" "./hive_data_$(date +%Y%m%d_%H%M%S).csv"
+                        echo -e "${GREEN}File exported successfully${NC}"
+                    fi
+                else
+                    echo -e "${YELLOW}No data files found${NC}"
+                fi
+                wait_for_key
+                ;;
+            8)
+                echo "Checking serial permissions..."
+                echo ""
+                
+                # Sprawdź czy użytkownik jest w grupie dialout/uucp
+                if groups | grep -qE "(dialout|uucp)"; then
+                    echo -e "${GREEN}✓ User has serial port permissions${NC}"
+                else
+                    echo -e "${YELLOW}✗ User lacks serial port permissions${NC}"
+                    echo ""
+                    echo "To fix this, run:"
+                    echo "  sudo usermod -a -G dialout \$USER"
+                    echo "Then log out and log back in."
+                fi
+                
+                echo ""
+                echo "Available serial devices:"
+                ls -la /dev/ttyUSB* /dev/ttyACM* /dev/serial* 2>/dev/null || echo "  None found"
+                
+                echo ""
+                echo "USB devices:"
+                lsusb 2>/dev/null | grep -iE "(serial|arduino|pico|ftdi|ch340|cp210)" || echo "  No USB serial devices detected"
+                
+                wait_for_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}Invalid option${NC}"
+                wait_for_key
+                ;;
+        esac
+    done
+    
+    log_message "INFO" "Live microcontroller data session ended"
 }
 
 option_historical_data() {
