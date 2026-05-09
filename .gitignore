@@ -1,21 +1,13 @@
-```bash
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Logs and temporary files
-*.log
-*.tmp
-*.swp
-
-# Editors
-.vscode/
-.idea/
+```
+# Compiled and binary files
+*.o
+*.obj
+*.out
 
 # Dependencies
-.venv/
+node_modules/
 venv/
+.venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
@@ -24,84 +16,31 @@ build/
 target/
 .gradle/
 
-# Compiled files
-*.pyc
-*.class
-*.o
-*.exe
-*.dll
-*.so
-*.a
-*.obj
-*.out
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # System files
 .DS_Store
 Thumbs.db
-```
 
-Wait, I need to reconsider this. The only modified file is `hive_monitor_installer.sh` which is a shell script. There are no build artifacts, dependency directories, or other files that would typically need to be ignored based on the provided change list. The current .gitignore appears to be empty, so I should output nothing since there are no files that need to be ignored based on the changes shown.
-
-```bash
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Logs and temporary files
-*.log
-*.tmp
-*.swp
-
-# Editors
-.vscode/
-.idea/
-
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Build artifacts
-dist/
-build/
-target/
-*.o
-*.obj
-*.out
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-.eggs/
-.coverage
+# Coverage
+coverage/
 htmlcov/
-.mypy_cache/
-.pytest_cache/
-.tox/
+.coverage
 
-# Java
-*.class
-*.jar
-*.war
-*.ear
-*.so
-*.dll
-*.dylib
-.gradle/
-build/
-target/
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Compression
+# Compressed files
 *.zip
 *.gz
 *.tar
@@ -120,7 +59,4 @@ yarn-error.log*
 *.Z
 *.lz
 *.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+```
