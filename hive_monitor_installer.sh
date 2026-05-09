@@ -3,7 +3,8 @@
 # Hive Monitor Installer & Configurator
 # Shell script with TUI menu system
 
-set -e
+# Note: We don't use set -e because we handle errors manually in critical sections
+# This allows proper error handling and user feedback instead of abrupt exits
 
 # ============================================================================
 # GLOBAL VARIABLES
@@ -150,20 +151,54 @@ option_install_dependencies() {
         echo -e "${YELLOW}Note: You may be prompted for sudo password${NC}"
     fi
     
+    # Helper function to run commands with proper privilege handling
+    run_cmd() {
+        if [[ $EUID -eq 0 ]]; then
+            eval "$@"
+        else
+            sudo "$@"
+        fi
+    }
+    
     # Detect package manager and install dependencies
     if command -v apt-get &> /dev/null; then
         echo "Detected Debian/Ubuntu package manager (apt-get)"
-        sudo apt-get update
-        sudo apt-get install -y git curl wget python3-pip python3-serial python3-dev build-essential
+        run_cmd apt-get update || {
+            echo -e "${RED}Failed to update package lists${NC}"
+            log_message "ERROR" "Failed to update apt package lists"
+            wait_for_key
+            return 1
+        }
+        run_cmd apt-get install -y git curl wget python3-pip python3-serial python3-dev build-essential || {
+            echo -e "${RED}Failed to install dependencies${NC}"
+            log_message "ERROR" "Failed to install dependencies via apt-get"
+            wait_for_key
+            return 1
+        }
     elif command -v yum &> /dev/null; then
         echo "Detected RHEL/CentOS package manager (yum)"
-        sudo yum install -y git curl wget python3-pip python3-serial python3-devel gcc make
+        run_cmd yum install -y git curl wget python3-pip python3-serial python3-devel gcc make || {
+            echo -e "${RED}Failed to install dependencies${NC}"
+            log_message "ERROR" "Failed to install dependencies via yum"
+            wait_for_key
+            return 1
+        }
     elif command -v dnf &> /dev/null; then
         echo "Detected Fedora package manager (dnf)"
-        sudo dnf install -y git curl wget python3-pip python3-serial python3-devel gcc make
+        run_cmd dnf install -y git curl wget python3-pip python3-serial python3-devel gcc make || {
+            echo -e "${RED}Failed to install dependencies${NC}"
+            log_message "ERROR" "Failed to install dependencies via dnf"
+            wait_for_key
+            return 1
+        }
     elif command -v pacman &> /dev/null; then
         echo "Detected Arch Linux package manager (pacman)"
-        sudo pacman -Sy --noconfirm git curl wget python python-pip python-serial base-devel
+        run_cmd pacman -Sy --noconfirm git curl wget python python-pip python-serial base-devel || {
+            echo -e "${RED}Failed to install dependencies${NC}"
+            log_message "ERROR" "Failed to install dependencies via pacman"
+            wait_for_key
+            return 1
+        }
     else
         echo -e "${RED}Error: Unsupported package manager. Please install dependencies manually.${NC}"
         echo "Required packages: git, curl, wget, python3-pip, python3-serial"
@@ -210,7 +245,14 @@ option_install_software() {
             1)
                 echo "Updating existing installation..."
                 cd "$INSTALL_DIR"
-                git pull origin main || git pull origin master
+                if ! git pull origin main 2>/dev/null; then
+                    if ! git pull origin master 2>/dev/null; then
+                        echo -e "${RED}Failed to update repository${NC}"
+                        log_message "ERROR" "Failed to update repository from GitHub"
+                        wait_for_key
+                        return 1
+                    fi
+                fi
                 echo -e "${GREEN}Update completed!${NC}"
                 log_message "INFO" "Software updated from GitHub"
                 ;;
@@ -218,7 +260,12 @@ option_install_software() {
                 echo "Removing existing installation..."
                 rm -rf "$INSTALL_DIR"
                 echo "Cloning repository..."
-                git clone "$GITHUB_REPO" "$INSTALL_DIR"
+                if ! git clone "$GITHUB_REPO" "$INSTALL_DIR"; then
+                    echo -e "${RED}Failed to clone repository${NC}"
+                    log_message "ERROR" "Failed to clone repository from GitHub during reinstall"
+                    wait_for_key
+                    return 1
+                fi
                 echo -e "${GREEN}Installation completed!${NC}"
                 log_message "INFO" "Software reinstalled from GitHub"
                 ;;
@@ -236,35 +283,38 @@ option_install_software() {
         esac
     else
         echo "Cloning repository..."
-        git clone "$GITHUB_REPO" "$INSTALL_DIR"
-        
-        if [[ $? -eq 0 ]]; then
-            echo ""
-            echo -e "${GREEN}Repository cloned successfully to $INSTALL_DIR${NC}"
-            echo ""
-            
-            # Check if there's an install script
-            if [[ -f "$INSTALL_DIR/install.sh" ]]; then
-                echo "Found install.sh script. Would you like to run it?"
-                read -p "Run install script? (y/N): " run_install
-                if [[ $run_install =~ ^[Yy]$ ]]; then
-                    chmod +x "$INSTALL_DIR/install.sh"
-                    cd "$INSTALL_DIR" && ./install.sh
-                fi
-            fi
-            
-            # Install Python dependencies if requirements.txt exists
-            if [[ -f "$INSTALL_DIR/requirements.txt" ]]; then
-                echo ""
-                echo "Installing Python dependencies..."
-                pip3 install -r "$INSTALL_DIR/requirements.txt"
-            fi
-            
-            log_message "INFO" "Software installation from GitHub completed"
-        else
+        if ! git clone "$GITHUB_REPO" "$INSTALL_DIR"; then
             echo -e "${RED}Failed to clone repository${NC}"
             log_message "ERROR" "Failed to clone repository from GitHub"
+            wait_for_key
+            return 1
         fi
+        
+        echo ""
+        echo -e "${GREEN}Repository cloned successfully to $INSTALL_DIR${NC}"
+        echo ""
+        
+        # Check if there's an install script
+        if [[ -f "$INSTALL_DIR/install.sh" ]]; then
+            echo "Found install.sh script. Would you like to run it?"
+            read -p "Run install script? (y/N): " run_install
+            if [[ $run_install =~ ^[Yy]$ ]]; then
+                chmod +x "$INSTALL_DIR/install.sh"
+                cd "$INSTALL_DIR" && ./install.sh
+            fi
+        fi
+        
+        # Install Python dependencies if requirements.txt exists
+        if [[ -f "$INSTALL_DIR/requirements.txt" ]]; then
+            echo ""
+            echo "Installing Python dependencies..."
+            pip3 install -r "$INSTALL_DIR/requirements.txt" || {
+                echo -e "${YELLOW}Warning: Some Python dependencies may have failed to install${NC}"
+                log_message "WARN" "Some Python dependencies failed to install"
+            }
+        fi
+        
+        log_message "INFO" "Software installation from GitHub completed"
     fi
     
     wait_for_key
@@ -283,25 +333,29 @@ option_backup_config() {
     # Create backup directory if it doesn't exist
     mkdir -p "$BACKUP_DIR"
     
-    # Define config files to backup
-    CONFIG_FILES=(
-        "${CONFIG_DIR}/config.ini"
-        "${CONFIG_DIR}/settings.json"
-        "${CONFIG_DIR}/database.conf"
-        "${CONFIG_DIR}/api_keys.conf"
-        "${HOME}/hive_monitor/config.ini"
-        "${HOME}/hive_monitor/.env"
+    # Define config files to backup with their relative paths for preservation
+    declare -A CONFIG_FILES_MAP=(
+        ["${CONFIG_DIR}/config.ini"]="config_ini"
+        ["${CONFIG_DIR}/settings.json"]="settings_json"
+        ["${CONFIG_DIR}/database.conf"]="database_conf"
+        ["${CONFIG_DIR}/api_keys.conf"]="api_keys_conf"
+        ["${HOME}/hive_monitor/config.ini"]="hive_monitor_config_ini"
+        ["${HOME}/hive_monitor/.env"]="hive_monitor_env"
     )
     
-    # Create temporary directory for backup
+    # Create temporary directory for backup preserving structure
     TEMP_BACKUP_DIR=$(mktemp -d)
     FILES_FOUND=0
     
     echo "Searching for configuration files..."
-    for file in "${CONFIG_FILES[@]}"; do
+    for file in "${!CONFIG_FILES_MAP[@]}"; do
         if [[ -f "$file" ]]; then
             echo "  Found: $file"
-            cp "$file" "$TEMP_BACKUP_DIR/"
+            # Use unique name to avoid overwrites from files with same basename
+            unique_name="${CONFIG_FILES_MAP[$file]}"
+            cp "$file" "$TEMP_BACKUP_DIR/$unique_name"
+            # Also store original path for reference
+            echo "$file" > "$TEMP_BACKUP_DIR/${unique_name}.original_path"
             FILES_FOUND=$((FILES_FOUND + 1))
         fi
     done
@@ -310,6 +364,13 @@ option_backup_config() {
     if [[ -d "$CONFIG_DIR" ]]; then
         echo "  Backing up entire config directory: $CONFIG_DIR"
         cp -r "$CONFIG_DIR" "$TEMP_BACKUP_DIR/config_dir_backup"
+        FILES_FOUND=$((FILES_FOUND + 1))
+    fi
+    
+    # Backup hive_monitor directory if it exists and is different from CONFIG_DIR
+    if [[ -d "${HOME}/hive_monitor" ]] && [[ "${HOME}/hive_monitor" != "$CONFIG_DIR" ]]; then
+        echo "  Backing up hive_monitor directory: ${HOME}/hive_monitor"
+        cp -r "${HOME}/hive_monitor" "$TEMP_BACKUP_DIR/hive_monitor_backup"
         FILES_FOUND=$((FILES_FOUND + 1))
     fi
     

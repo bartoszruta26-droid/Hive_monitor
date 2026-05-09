@@ -18,13 +18,9 @@
 venv/
 node_modules/
 
-# Build artifacts
-dist/
-build/
-target/
+# Compiled and build artifacts
 *.pyc
 __pycache__/
-*.class
 *.o
 *.obj
 *.exe
@@ -32,15 +28,18 @@ __pycache__/
 *.so
 *.a
 *.out
+dist/
+build/
+target/
+.mypy_cache/
+.pytest_cache/
+coverage/
+htmlcov/
+.coverage
 
 # System files
 .DS_Store
 Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
 
 # Compressed files
 *.zip
