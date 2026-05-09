@@ -1,14 +1,12 @@
-```
-# Compiled and binary files
-*.o
-*.obj
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Environment files
-.env
-.env.local
-*.env.*
-```
+# Documentation builds and outputs
+doc/_build/
+doc/build/
+doc/api/
+doc/reference/
+doc/source/generated/
+doc/habibi/*.pdf
+doc/habibi/*.html
+doc/habibi/*.epub
+doc/habibi/*.tex
+doc/habibi/_static/
+doc/habibi/_templates/
