@@ -1,5 +1,4 @@
-```bash
-# Environment files
+# Environment and config
 .env
 .env.local
 *.env.*
@@ -36,7 +35,7 @@ target/
 *.obj
 *.out
 
-# System files
+# OS files
 .DS_Store
 Thumbs.db
 
@@ -68,4 +67,3 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```
