@@ -578,7 +578,7 @@ public:
             data.th_temp_hum_corr = -0.3f; // Typowa ujemna korelacja
             
             // Ryzyka
-            data.th_overheat_risk = (T > 35.0f) ? (T - 35.0f) / 5.0f : 0.0f;
+            data.th_overheat_risk = (T > 35.0f) ? std::min(1.0f, (T - 35.0f) / 5.0f) : 0.0f;
             data.th_condensation_risk = (data.th_dew_point > T - 2.0f) ? 0.7f : 0.2f;
             
             if (RH > 70.0f && T > 20.0f) {
@@ -683,7 +683,7 @@ public:
         // --- RADAR MMWAVE DERIVED (27 parametrów) ---
         // =========================================================================
         // Surowe dane z radaru (motion_detected jako baza)
-        float radar_base = static_cast<float>(data.motion_detected) * 0.5f + 0.25f;
+        float radar_base = static_cast<float>(data.motion_detected) * 0.5f;
         
         data.radar_distance = 0.5f + radar_base * 1.5f;  // 0.5-2.0m
         data.radar_energy = -60.0f + radar_base * 30.0f; // -60 do -30 dBm
