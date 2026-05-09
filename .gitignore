@@ -1,10 +1,22 @@
-```bash
-# Environment files
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+target/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
 .env
 .env.local
-*.env.*
+.env.*
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
 *.swp
@@ -13,7 +25,7 @@
 .vscode/
 .idea/
 
-# System files
+# OS generated files
 .DS_Store
 Thumbs.db
 
@@ -23,42 +35,12 @@ htmlcov/
 .coverage
 
 # Python specific
-__pycache__/
 *.pyc
+__pycache__/
 *.pyo
 *.pyd
 .Python
 *.so
-*.egg-info/
-.eggs/
-.mypy_cache/
-.pytest_cache/
-.tox/
-.coverage*
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-
-# Virtual environments
-venv/
-.venv/
-env/
-ENV/
-.ENV/
-env.bak/
-venv.bak/
-
-# Build and distribution artifacts
-dist/
-build/
-*.egg
-*.pyc
-*.pyo
-*.pyd
-*.db
-*.sqlite
-*.sqlite3
 
 # Compressed files
 *.zip

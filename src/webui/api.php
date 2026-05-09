@@ -49,8 +49,15 @@ $endpoints = [
     'effectors' => '/api/effectors',
     'history' => '/api/history',
     'logs' => '/api/logs',
-    'csv' => '/api/csv'
+    'csv' => '/api/csv',
+    'config' => '/api/config'
 ];
+
+// Ścieżka do plików konfiguracyjnych
+$configDir = getenv('HOME') ? rtrim(getenv('HOME'), '/') . '/.hive_monitor' : '/root/.hive_monitor';
+if (!is_dir($configDir)) {
+    mkdir($configDir, 0755, true);
+}
 
 // Demo dane gdy kolektor nie odpowiada
 function getDemoData() {
@@ -103,6 +110,95 @@ function getDemoData() {
         'effectors' => [],
         'mode' => 'demo'
     ];
+}
+
+// Funkcja do wczytywania konfiguracji z plików .conf
+function loadConfig() {
+    global $configDir;
+    $config = [];
+    
+    $configFiles = [
+        'api_endpoints.conf' => 'api',
+        'database_settings.conf' => 'database',
+        'update_intervals.conf' => 'intervals',
+        'notifications.conf' => 'notifications',
+        'data_retention.conf' => 'retention',
+        'network_settings.conf' => 'network',
+        'user_preferences.conf' => 'preferences',
+        'advanced_options.conf' => 'advanced'
+    ];
+    
+    foreach ($configFiles as $file => $section) {
+        $filePath = $configDir . '/' . $file;
+        if (file_exists($filePath)) {
+            $lines = file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if (empty($line) || $line[0] === '#') continue;
+                
+                if (strpos($line, '=') !== false) {
+                    list($key, $value) = explode('=', $line, 2);
+                    $key = trim($key);
+                    $value = trim($value, " \"'");
+                    
+                    // Konwertuj wartości na odpowiednie typy
+                    if ($value === 'true' || $value === 'false') {
+                        $value = ($value === 'true');
+                    } elseif (is_numeric($value)) {
+                        $value = floatval($value);
+                        if (floor($value) == $value) {
+                            $value = intval($value);
+                        }
+                    }
+                    
+                    $config[$section][$key] = $value;
+                }
+            }
+        }
+    }
+    
+    return $config;
+}
+
+// Funkcja do zapisywania konfiguracji
+function saveConfig($configData) {
+    global $configDir;
+    
+    if (!is_dir($configDir)) {
+        mkdir($configDir, 0755, true);
+    }
+    
+    $sectionMap = [
+        'api' => 'api_endpoints.conf',
+        'database' => 'database_settings.conf',
+        'intervals' => 'update_intervals.conf',
+        'notifications' => 'notifications.conf',
+        'retention' => 'data_retention.conf',
+        'network' => 'network_settings.conf',
+        'preferences' => 'user_preferences.conf',
+        'advanced' => 'advanced_options.conf'
+    ];
+    
+    $results = [];
+    foreach ($configData as $section => $values) {
+        if (!isset($sectionMap[$section])) continue;
+        
+        $filePath = $configDir . '/' . $sectionMap[$section];
+        $content = "# Hive Monitor Configuration - {$section}\n";
+        $content .= "# Generated: " . date('Y-m-d H:i:s') . "\n\n";
+        
+        foreach ($values as $key => $value) {
+            if (is_bool($value)) {
+                $value = $value ? 'true' : 'false';
+            }
+            $content .= "{$key}={$value}\n";
+        }
+        
+        $success = file_put_contents($filePath, $content);
+        $results[$section] = ($success !== false);
+    }
+    
+    return $results;
 }
 
 // Funkcja do komunikacji z kolektorem
@@ -234,6 +330,35 @@ try {
                 ['level' => 'error', 'message' => 'Utracono połączenie z UL-003', 'timestamp' => date('Y-m-d H:i:s', time() - 240)]
             ];
             $response = ['logs' => $logs];
+            break;
+            
+        case 'config':
+            // Obsługa konfiguracji - odczyt i zapis
+            if ($method === 'GET') {
+                // Pobierz całą konfigurację
+                $config = loadConfig();
+                $response = ['config' => $config, 'source' => 'files'];
+            } elseif ($method === 'POST') {
+                // Zapisz konfigurację
+                $input = json_decode(file_get_contents('php://input'), true);
+                if ($input && isset($input['config'])) {
+                    $results = saveConfig($input['config']);
+                    $response = ['success' => true, 'saved' => $results, 'message' => 'Konfiguracja zapisana'];
+                } else {
+                    http_response_code(400);
+                    $response = ['error' => 'Invalid config data'];
+                }
+            } elseif ($method === 'PUT') {
+                // Aktualizuj wybraną sekcję konfiguracji
+                $input = json_decode(file_get_contents('php://input'), true);
+                if ($input) {
+                    $results = saveConfig($input);
+                    $response = ['success' => true, 'saved' => $results, 'message' => 'Konfiguracja zaktualizowana'];
+                } else {
+                    http_response_code(400);
+                    $response = ['error' => 'Invalid config data'];
+                }
+            }
             break;
             
         default:

@@ -611,19 +611,99 @@
                         <h2 class="card-title">⚙️ Konfiguracja systemu</h2>
                     </div>
                     <form id="settingsForm">
+                        <h3 style="margin-bottom: 1rem; color: var(--text-color);">📊 Ustawienia podstawowe</h3>
                         <div class="form-group">
                             <label for="refreshInterval">Częstotliwość odświeżania (sekundy)</label>
                             <input type="number" class="form-control" id="refreshInterval" value="10" min="5" max="300">
                         </div>
                         <div class="form-group">
-                            <label for="apiEndpoint">API Endpoint</label>
-                            <input type="text" class="form-control" id="apiEndpoint" value="/api">
-                        </div>
-                        <div class="form-group">
                             <label for="alertThreshold">Próg alarmowy temperatury (°C)</label>
                             <input type="number" class="form-control" id="alertThreshold" value="35" step="0.5">
                         </div>
-                        <button type="submit" class="btn btn-primary">💾 Zapisz ustawienia</button>
+                        
+                        <h3 style="margin: 1.5rem 0 1rem; color: var(--text-color);">🌐 Preferencje użytkownika</h3>
+                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="language">Język</label>
+                                <select class="form-control" id="language">
+                                    <option value="pl">Polski</option>
+                                    <option value="en">English</option>
+                                    <option value="de">Deutsch</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="theme">Motyw</label>
+                                <select class="form-control" id="theme">
+                                    <option value="light">Jasny</option>
+                                    <option value="dark">Ciemny</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="temperatureUnit">Jednostka temperatury</label>
+                                <select class="form-control" id="temperatureUnit">
+                                    <option value="C">°C</option>
+                                    <option value="F">°F</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dateFormat">Format daty</label>
+                                <select class="form-control" id="dateFormat">
+                                    <option value="DD.MM.YYYY">DD.MM.RRRR</option>
+                                    <option value="MM/DD/YYYY">MM/DD/RRRR</option>
+                                    <option value="YYYY-MM-DD">RRRR-MM-DD</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="timeFormat">Format czasu</label>
+                                <select class="form-control" id="timeFormat">
+                                    <option value="24h">24h</option>
+                                    <option value="12h">12h</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <h3 style="margin: 1.5rem 0 1rem; color: var(--text-color);">🔔 Powiadomienia</h3>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="enableNotifications" checked> Włącz powiadomienia
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="emailNotifications"> Powiadomienia e-mail
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                <input type="checkbox" id="pushNotifications"> Powiadomienia push
+                            </label>
+                        </div>
+                        
+                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                            <div class="form-group">
+                                <label for="tempMinAlert">Minimalna temperatura alert (°C)</label>
+                                <input type="number" class="form-control" id="tempMinAlert" value="10" step="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="tempMaxAlert">Maksymalna temperatura alert (°C)</label>
+                                <input type="number" class="form-control" id="tempMaxAlert" value="35" step="0.5">
+                            </div>
+                        </div>
+                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="humidityMinAlert">Minimalna wilgotność alert (%)</label>
+                                <input type="number" class="form-control" id="humidityMinAlert" value="40" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="humidityMaxAlert">Maksymalna wilgotność alert (%)</label>
+                                <input type="number" class="form-control" id="humidityMaxAlert" value="70" step="1">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">💾 Zapisz ustawienia</button>
                     </form>
                 </div>
 
