@@ -2617,16 +2617,30 @@ option_system_status() {
         printf "  %-20s : %s\n" "Load Average (15m)" "$load15"
         printf "  %-20s : %s cores\n" "CPU Cores" "$cpu_count"
         
-        # Load status indicator using bc for floating point comparison
-        local load_status_check=$(echo "$load1 < $cpu_count * 0.7" | bc -l 2>/dev/null)
-        local load_status_warn=$(echo "$load1 < $cpu_count" | bc -l 2>/dev/null)
-        if [[ "$load_status_check" == "1" ]]; then
-            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_OK"
-        elif [[ "$load_status_warn" == "1" ]]; then
-            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_WARN"
+        # Load status indicator with fallback if bc is not available
+        local load_status="UNKNOWN"
+        if command -v bc &>/dev/null; then
+            local load_status_check=$(echo "$load1 < $cpu_count * 0.7" | bc -l 2>/dev/null)
+            local load_status_warn=$(echo "$load1 < $cpu_count" | bc -l 2>/dev/null)
+            if [[ "$load_status_check" == "1" ]]; then
+                load_status="$STATUS_OK"
+            elif [[ "$load_status_warn" == "1" ]]; then
+                load_status="$STATUS_WARN"
+            else
+                load_status="$STATUS_ERROR"
+            fi
         else
-            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_ERROR"
+            # Fallback: simple integer comparison (less accurate but works without bc)
+            local load1_int=${load1%.*}
+            if [[ $load1_int -lt $((cpu_count * 7 / 10)) ]]; then
+                load_status="$STATUS_OK"
+            elif [[ $load1_int -lt $cpu_count ]]; then
+                load_status="$STATUS_WARN"
+            else
+                load_status="$STATUS_ERROR"
+            fi
         fi
+        printf "  %-20s : %s\n" "CPU Load Status" "$load_status"
     else
         echo "  CPU load information not available"
     fi
@@ -2636,7 +2650,10 @@ option_system_status() {
     local cpu_temp="N/A"
     if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
         cpu_temp=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
-        cpu_temp="${cpu_temp%.*}°C"  # Remove decimal part if exists
+        # Convert millidegrees to degrees (e.g., 42000 -> 42°C)
+        if [[ -n "$cpu_temp" && "$cpu_temp" =~ ^[0-9]+$ ]]; then
+            cpu_temp="$((cpu_temp / 1000))°C"
+        fi
     elif command -v vcgencmd &>/dev/null; then
         # Raspberry Pi specific
         cpu_temp=$(vcgencmd measure_temp 2>/dev/null | cut -d"'" -f2 || echo "N/A")
@@ -2752,7 +2769,8 @@ option_system_status() {
         local interfaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -v lo)
         
         for iface in $interfaces; do
-            iface=$(echo "$iface" | tr -d '@')
+            # Strip @... suffix from interface names (e.g., eth0@if2 -> eth0)
+            iface="${iface%%@*}"
             local state=$(ip link show "$iface" 2>/dev/null | grep -oE 'state [A-Z]+' | awk '{print $2}')
             local mac=$(ip link show "$iface" 2>/dev/null | grep -oE 'link/[a-z]+ [0-9a-f:]+' | awk '{print $2}')
             
