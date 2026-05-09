@@ -423,8 +423,6 @@ private:
 public:
     ApiaryCollector() {
         server_socket = -1;
-        // Inicjalizacja loggera przez getInstance
-        Logger::getInstance().initialize(LoggerConfig{});
     }
 
     ~ApiaryCollector() {
