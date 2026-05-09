@@ -1,15 +1,15 @@
 ```bash
-# Environment files
+# Environment
 .env
 .env.local
-.env.*
+*.env.*
 
-# Logs and temporary files
+# Logs and temp files
 *.log
 *.tmp
 *.swp
 
-# Editors and IDEs
+# Editors
 .vscode/
 .idea/
 
@@ -18,21 +18,50 @@
 venv/
 node_modules/
 
-# Build artifacts
-dist/
-build/
-target/
+# Compiled and build artifacts
 *.pyc
 __pycache__/
 *.o
 *.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+dist/
+build/
+target/
+.mypy_cache/
+.pytest_cache/
+coverage/
+htmlcov/
+.coverage
 
 # System files
 .DS_Store
 Thumbs.db
 
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
