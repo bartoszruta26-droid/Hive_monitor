@@ -75,18 +75,20 @@ public:
     }
     
     void initialize(const LoggerConfig& config) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        config_ = config;
-        
-        // Utwórz katalogi jeśli nie istnieją
-        createDirectories(config_.log_file);
-        createDirectories(config_.debug_file);
-        
-        // Start worker thread
-        running_ = true;
-        worker_thread_ = std::thread(&Logger::workerFunction, this);
-        
-        log(LogLevel::INFO, "Logger", "System logowania uruchomiony");
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            config_ = config;
+
+            // Utwórz katalogi jeśli nie istnieją
+            createDirectories(config_.log_file);
+            createDirectories(config_.debug_file);
+
+            // Start worker thread
+            running_ = true;
+            worker_thread_ = std::thread(&Logger::workerFunction, this);
+        }
+
+        log(LogLevel::INFO, "System logowania uruchomiony", "Logger");
     }
     
     void shutdown() {
