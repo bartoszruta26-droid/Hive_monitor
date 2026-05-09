@@ -2131,10 +2131,10 @@ option_reset_defaults() {
     set_config_value "$notify_file" "SMTP_PORT" "587"
     set_config_value "$notify_file" "SMTP_USER" ""
     set_config_value "$notify_file" "SMTP_PASSWORD" ""
-    set_config_value "$notify_file" "ALERT_TEMP_MIN" "10"
-    set_config_value "$notify_file" "ALERT_TEMP_MAX" "40"
-    set_config_value "$notify_file" "ALERT_HUMIDITY_MIN" "30"
-    set_config_value "$notify_file" "ALERT_HUMIDITY_MAX" "80"
+    set_config_value "$notify_file" "PUSH_ENABLED" "false"
+    set_config_value "$notify_file" "TEMP_THRESHOLD_HIGH" "40"
+    set_config_value "$notify_file" "TEMP_THRESHOLD_LOW" "10"
+    set_config_value "$notify_file" "HUMIDITY_THRESHOLD" "80"
     set_config_value "$notify_file" "ALERT_WEIGHT_CRITICAL" "5"
     echo -e "  ${GREEN}✓${NC} Notification settings reset to defaults"
     
@@ -2255,7 +2255,7 @@ APP_DEBUG=false
 APP_URL=http://localhost:8080
 
 DB_CONNECTION=sqlite
-DB_DATABASE=/home/user/.hive_monitor/data/hive_monitor.db
+DB_DATABASE=${HOME}/.hive_monitor/data/hive_monitor.db
 
 API_KEY=
 SECRET_KEY=
