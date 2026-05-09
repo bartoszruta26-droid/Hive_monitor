@@ -1,5 +1,4 @@
 ```markdown
-# Documentation files are source content - no need to ignore
-# The added markdown files in doc/habibi/ are documentation source files
-# and should be tracked by git
+# Documentation files
+doc/habibi/
 ```
