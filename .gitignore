@@ -1,12 +1,67 @@
-# Documentation builds and outputs
+# Documentation builds and artifacts
 doc/_build/
 doc/build/
 doc/api/
-doc/reference/
 doc/source/generated/
-doc/habibi/*.pdf
-doc/habibi/*.html
-doc/habibi/*.epub
-doc/habibi/*.tex
-doc/habibi/_static/
-doc/habibi/_templates/
+
+# Common build artifacts
+_build/
+build/
+dist/
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Logs and caches
+*.log
+*.tmp
+.coverage
+coverage/
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
