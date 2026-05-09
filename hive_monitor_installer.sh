@@ -408,6 +408,56 @@ option_backup_config() {
 }
 
 # ============================================================================
+# HELPER FUNCTIONS FOR SAFE CONFIG HANDLING
+# ============================================================================
+
+# Bezpieczne odczytanie wartości z pliku konfiguracyjnego (bez source!)
+get_config_value() {
+    local file="$1"
+    local key="$2"
+    local default="$3"
+    
+    if [[ -f "$file" ]]; then
+        local value
+        # Odczytaj wartość po znaku =, usuń cudzysłowy
+        value=$(grep "^${key}=" "$file" 2>/dev/null | head -n1 | cut -d'=' -f2-)
+        if [[ -n "$value" ]]; then
+            # Usuń otaczające cudzysłowy
+            value="${value#\"}"
+            value="${value%\"}"
+            value="${value#\'}"
+            value="${value%\'}"
+            echo "$value"
+            return 0
+        fi
+    fi
+    echo "$default"
+    return 1
+}
+
+# Bezpieczny zapis pojedynczej wartości do pliku konfiguracyjnego
+set_config_value() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    
+    mkdir -p "$(dirname "$file")"
+    
+    if [[ -f "$file" ]]; then
+        if grep -q "^${key}=" "$file" 2>/dev/null; then
+            # Aktualizuj istniejącą wartość
+            sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$file"
+        else
+            # Dodaj nową wartość
+            echo "${key}=\"${value}\"" >> "$file"
+        fi
+    else
+        # Utwórz nowy plik
+        echo "${key}=\"${value}\"" > "$file"
+    fi
+}
+
+# ============================================================================
 # CONFIGURATION SUB-MENU FUNCTIONS
 # ============================================================================
 
@@ -417,16 +467,18 @@ configure_api_endpoints() {
     local config_file="${CONFIG_DIR}/api_endpoints.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local LOCAL_API_URL
+    LOCAL_API_URL=$(get_config_value "$config_file" "LOCAL_API_URL" "http://localhost:8080/api")
     
-    # Set defaults if not loaded
-    LOCAL_API_URL="${LOCAL_API_URL:-http://localhost:8080/api}"
-    REMOTE_API_URL="${REMOTE_API_URL:-https://hive-monitor.example.com/api}"
-    MQTT_BROKER="${MQTT_BROKER:-localhost}"
-    MQTT_PORT="${MQTT_PORT:-1883}"
+    local REMOTE_API_URL
+    REMOTE_API_URL=$(get_config_value "$config_file" "REMOTE_API_URL" "https://hive-monitor.example.com/api")
+    
+    local MQTT_BROKER
+    MQTT_BROKER=$(get_config_value "$config_file" "MQTT_BROKER" "localhost")
+    
+    local MQTT_PORT
+    MQTT_PORT=$(get_config_value "$config_file" "MQTT_PORT" "1883")
     
     echo "Current API Configuration:"
     echo "--------------------------"
@@ -448,14 +500,11 @@ configure_api_endpoints() {
     read -p "Enter MQTT Port [$MQTT_PORT]: " new_port
     [[ -n "$new_port" ]] && MQTT_PORT="$new_port"
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor API Endpoints Configuration
-LOCAL_API_URL="$LOCAL_API_URL"
-REMOTE_API_URL="$REMOTE_API_URL"
-MQTT_BROKER="$MQTT_BROKER"
-MQTT_PORT="$MQTT_PORT"
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "LOCAL_API_URL" "$LOCAL_API_URL"
+    set_config_value "$config_file" "REMOTE_API_URL" "$REMOTE_API_URL"
+    set_config_value "$config_file" "MQTT_BROKER" "$MQTT_BROKER"
+    set_config_value "$config_file" "MQTT_PORT" "$MQTT_PORT"
     
     echo ""
     echo -e "${GREEN}API endpoints configuration saved!${NC}"
@@ -469,19 +518,27 @@ configure_database() {
     local config_file="${CONFIG_DIR}/database.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości z zachowaniem istniejącego typu bazy
+    local DB_TYPE
+    DB_TYPE=$(get_config_value "$config_file" "DB_TYPE" "sqlite")
     
-    # Set defaults if not loaded
-    DB_TYPE="${DB_TYPE:-sqlite}"
-    DB_HOST="${DB_HOST:-localhost}"
-    DB_PORT="${DB_PORT:-5432}"
-    DB_NAME="${DB_NAME:-hive_monitor}"
-    DB_USER="${DB_USER:-hiveuser}"
-    DB_PASSWORD="${DB_PASSWORD:-}"
-    DB_PATH="${DB_PATH:-${CONFIG_DIR}/data/hive_monitor.db}"
+    local DB_HOST
+    DB_HOST=$(get_config_value "$config_file" "DB_HOST" "localhost")
+    
+    local DB_PORT
+    DB_PORT=$(get_config_value "$config_file" "DB_PORT" "5432")
+    
+    local DB_NAME
+    DB_NAME=$(get_config_value "$config_file" "DB_NAME" "hive_monitor")
+    
+    local DB_USER
+    DB_USER=$(get_config_value "$config_file" "DB_USER" "hiveuser")
+    
+    local DB_PASSWORD
+    DB_PASSWORD=$(get_config_value "$config_file" "DB_PASSWORD" "")
+    
+    local DB_PATH
+    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "${CONFIG_DIR}/data/hive_monitor.db")
     
     echo "Current Database Configuration:"
     echo "--------------------------------"
@@ -490,7 +547,11 @@ configure_database() {
     echo "Port: $DB_PORT"
     echo "Database Name: $DB_NAME"
     echo "Username: $DB_USER"
-    echo "Password: ${DB_PASSWORD:0:3}***"
+    if [[ -n "$DB_PASSWORD" ]]; then
+        echo "Password: ${DB_PASSWORD:0:3}***"
+    else
+        echo "Password: (not set)"
+    fi
     echo "Path (for SQLite): $DB_PATH"
     echo ""
     
@@ -498,12 +559,19 @@ configure_database() {
     echo "1) SQLite (default, file-based)"
     echo "2) PostgreSQL"
     echo "3) MySQL/MariaDB"
-    read -p "Choice [1]: " db_choice
+    read -p "Choice [1-3, Enter to keep current]: " db_choice
     
     case $db_choice in
         2) DB_TYPE="postgresql" ;;
         3) DB_TYPE="mysql" ;;
-        *) DB_TYPE="sqlite" ;;
+        *) 
+            # Pozostaw obecny typ bazy przy pustym wejściu
+            if [[ -z "$db_choice" ]]; then
+                echo "Keeping current database type: $DB_TYPE"
+            else
+                DB_TYPE="sqlite"
+            fi
+            ;;
     esac
     
     if [[ "$DB_TYPE" != "sqlite" ]]; then
@@ -519,7 +587,7 @@ configure_database() {
         read -p "Enter database username [$DB_USER]: " new_user
         [[ -n "$new_user" ]] && DB_USER="$new_user"
         
-        read -sp "Enter database password: " new_pass
+        read -sp "Enter database password [press Enter to keep current]: " new_pass
         echo ""
         [[ -n "$new_pass" ]] && DB_PASSWORD="$new_pass"
     else
@@ -527,17 +595,14 @@ configure_database() {
         [[ -n "$new_path" ]] && DB_PATH="$new_path"
     fi
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Database Configuration
-DB_TYPE="$DB_TYPE"
-DB_HOST="$DB_HOST"
-DB_PORT="$DB_PORT"
-DB_NAME="$DB_NAME"
-DB_USER="$DB_USER"
-DB_PASSWORD="$DB_PASSWORD"
-DB_PATH="$DB_PATH"
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "DB_TYPE" "$DB_TYPE"
+    set_config_value "$config_file" "DB_HOST" "$DB_HOST"
+    set_config_value "$config_file" "DB_PORT" "$DB_PORT"
+    set_config_value "$config_file" "DB_NAME" "$DB_NAME"
+    set_config_value "$config_file" "DB_USER" "$DB_USER"
+    set_config_value "$config_file" "DB_PASSWORD" "$DB_PASSWORD"
+    set_config_value "$config_file" "DB_PATH" "$DB_PATH"
     
     echo ""
     echo -e "${GREEN}Database configuration saved!${NC}"
@@ -557,17 +622,21 @@ configure_intervals() {
     local config_file="${CONFIG_DIR}/intervals.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local SENSOR_INTERVAL
+    SENSOR_INTERVAL=$(get_config_value "$config_file" "SENSOR_INTERVAL" "30")
     
-    # Set defaults if not loaded (values in seconds)
-    SENSOR_INTERVAL="${SENSOR_INTERVAL:-30}"
-    DISPLAY_INTERVAL="${DISPLAY_INTERVAL:-5}"
-    LOG_INTERVAL="${LOG_INTERVAL:-300}"
-    SYNC_INTERVAL="${SYNC_INTERVAL:-3600}"
-    BACKUP_INTERVAL="${BACKUP_INTERVAL:-86400}"
+    local DISPLAY_INTERVAL
+    DISPLAY_INTERVAL=$(get_config_value "$config_file" "DISPLAY_INTERVAL" "5")
+    
+    local LOG_INTERVAL
+    LOG_INTERVAL=$(get_config_value "$config_file" "LOG_INTERVAL" "300")
+    
+    local SYNC_INTERVAL
+    SYNC_INTERVAL=$(get_config_value "$config_file" "SYNC_INTERVAL" "3600")
+    
+    local BACKUP_INTERVAL
+    BACKUP_INTERVAL=$(get_config_value "$config_file" "BACKUP_INTERVAL" "86400")
     
     echo "Current Update Intervals (in seconds):"
     echo "---------------------------------------"
@@ -605,15 +674,12 @@ configure_intervals() {
         BACKUP_INTERVAL="$new_backup"
     fi
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Update Intervals Configuration (seconds)
-SENSOR_INTERVAL=$SENSOR_INTERVAL
-DISPLAY_INTERVAL=$DISPLAY_INTERVAL
-LOG_INTERVAL=$LOG_INTERVAL
-SYNC_INTERVAL=$SYNC_INTERVAL
-BACKUP_INTERVAL=$BACKUP_INTERVAL
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "SENSOR_INTERVAL" "$SENSOR_INTERVAL"
+    set_config_value "$config_file" "DISPLAY_INTERVAL" "$DISPLAY_INTERVAL"
+    set_config_value "$config_file" "LOG_INTERVAL" "$LOG_INTERVAL"
+    set_config_value "$config_file" "SYNC_INTERVAL" "$SYNC_INTERVAL"
+    set_config_value "$config_file" "BACKUP_INTERVAL" "$BACKUP_INTERVAL"
     
     echo ""
     echo -e "${GREEN}Update intervals configuration saved!${NC}"
@@ -627,21 +693,33 @@ configure_notifications() {
     local config_file="${CONFIG_DIR}/notifications.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local EMAIL_ENABLED
+    EMAIL_ENABLED=$(get_config_value "$config_file" "EMAIL_ENABLED" "false")
     
-    # Set defaults if not loaded
-    EMAIL_ENABLED="${EMAIL_ENABLED:-false}"
-    EMAIL_ADDRESS="${EMAIL_ADDRESS:-}"
-    SMTP_SERVER="${SMTP_SERVER:-smtp.gmail.com}"
-    SMTP_PORT="${SMTP_PORT:-587}"
-    PUSH_ENABLED="${PUSH_ENABLED:-false}"
-    PUSH_TOKEN="${PUSH_TOKEN:-}"
-    TEMP_THRESHOLD_HIGH="${TEMP_THRESHOLD_HIGH:-35}"
-    TEMP_THRESHOLD_LOW="${TEMP_THRESHOLD_LOW:-10}"
-    HUMIDITY_THRESHOLD="${HUMIDITY_THRESHOLD:-80}"
+    local EMAIL_ADDRESS
+    EMAIL_ADDRESS=$(get_config_value "$config_file" "EMAIL_ADDRESS" "")
+    
+    local SMTP_SERVER
+    SMTP_SERVER=$(get_config_value "$config_file" "SMTP_SERVER" "smtp.gmail.com")
+    
+    local SMTP_PORT
+    SMTP_PORT=$(get_config_value "$config_file" "SMTP_PORT" "587")
+    
+    local PUSH_ENABLED
+    PUSH_ENABLED=$(get_config_value "$config_file" "PUSH_ENABLED" "false")
+    
+    local PUSH_TOKEN
+    PUSH_TOKEN=$(get_config_value "$config_file" "PUSH_TOKEN" "")
+    
+    local TEMP_THRESHOLD_HIGH
+    TEMP_THRESHOLD_HIGH=$(get_config_value "$config_file" "TEMP_THRESHOLD_HIGH" "35")
+    
+    local TEMP_THRESHOLD_LOW
+    TEMP_THRESHOLD_LOW=$(get_config_value "$config_file" "TEMP_THRESHOLD_LOW" "10")
+    
+    local HUMIDITY_THRESHOLD
+    HUMIDITY_THRESHOLD=$(get_config_value "$config_file" "HUMIDITY_THRESHOLD" "80")
     
     echo "Current Notification Settings:"
     echo "-------------------------------"
@@ -689,19 +767,16 @@ configure_notifications() {
     read -p "Humidity threshold (%) [$HUMIDITY_THRESHOLD]: " new_humidity
     [[ -n "$new_humidity" ]] && HUMIDITY_THRESHOLD="$new_humidity"
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Notifications Configuration
-EMAIL_ENABLED=$EMAIL_ENABLED
-EMAIL_ADDRESS="$EMAIL_ADDRESS"
-SMTP_SERVER="$SMTP_SERVER"
-SMTP_PORT="$SMTP_PORT"
-PUSH_ENABLED=$PUSH_ENABLED
-PUSH_TOKEN="$PUSH_TOKEN"
-TEMP_THRESHOLD_HIGH=$TEMP_THRESHOLD_HIGH
-TEMP_THRESHOLD_LOW=$TEMP_THRESHOLD_LOW
-HUMIDITY_THRESHOLD=$HUMIDITY_THRESHOLD
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "EMAIL_ENABLED" "$EMAIL_ENABLED"
+    set_config_value "$config_file" "EMAIL_ADDRESS" "$EMAIL_ADDRESS"
+    set_config_value "$config_file" "SMTP_SERVER" "$SMTP_SERVER"
+    set_config_value "$config_file" "SMTP_PORT" "$SMTP_PORT"
+    set_config_value "$config_file" "PUSH_ENABLED" "$PUSH_ENABLED"
+    set_config_value "$config_file" "PUSH_TOKEN" "$PUSH_TOKEN"
+    set_config_value "$config_file" "TEMP_THRESHOLD_HIGH" "$TEMP_THRESHOLD_HIGH"
+    set_config_value "$config_file" "TEMP_THRESHOLD_LOW" "$TEMP_THRESHOLD_LOW"
+    set_config_value "$config_file" "HUMIDITY_THRESHOLD" "$HUMIDITY_THRESHOLD"
     
     echo ""
     echo -e "${GREEN}Notifications configuration saved!${NC}"
@@ -715,17 +790,21 @@ configure_data_retention() {
     local config_file="${CONFIG_DIR}/retention.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local RAW_DATA_RETENTION
+    RAW_DATA_RETENTION=$(get_config_value "$config_file" "RAW_DATA_RETENTION" "30")
     
-    # Set defaults if not loaded (values in days)
-    RAW_DATA_RETENTION="${RAW_DATA_RETENTION:-30}"
-    HOURLY_DATA_RETENTION="${HOURLY_DATA_RETENTION:-365}"
-    DAILY_DATA_RETENTION="${DAILY_DATA_RETENTION:-730}"
-    ENABLE_COMPRESSION="${ENABLE_COMPRESSION:-true}"
-    COMPRESSION_AFTER_DAYS="${COMPRESSION_AFTER_DAYS:-7}"
+    local HOURLY_DATA_RETENTION
+    HOURLY_DATA_RETENTION=$(get_config_value "$config_file" "HOURLY_DATA_RETENTION" "365")
+    
+    local DAILY_DATA_RETENTION
+    DAILY_DATA_RETENTION=$(get_config_value "$config_file" "DAILY_DATA_RETENTION" "730")
+    
+    local ENABLE_COMPRESSION
+    ENABLE_COMPRESSION=$(get_config_value "$config_file" "ENABLE_COMPRESSION" "true")
+    
+    local COMPRESSION_AFTER_DAYS
+    COMPRESSION_AFTER_DAYS=$(get_config_value "$config_file" "COMPRESSION_AFTER_DAYS" "7")
     
     echo "Current Data Retention Policy:"
     echo "-------------------------------"
@@ -764,15 +843,12 @@ configure_data_retention() {
         fi
     fi
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Data Retention Configuration (days)
-RAW_DATA_RETENTION=$RAW_DATA_RETENTION
-HOURLY_DATA_RETENTION=$HOURLY_DATA_RETENTION
-DAILY_DATA_RETENTION=$DAILY_DATA_RETENTION
-ENABLE_COMPRESSION=$ENABLE_COMPRESSION
-COMPRESSION_AFTER_DAYS=$COMPRESSION_AFTER_DAYS
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "RAW_DATA_RETENTION" "$RAW_DATA_RETENTION"
+    set_config_value "$config_file" "HOURLY_DATA_RETENTION" "$HOURLY_DATA_RETENTION"
+    set_config_value "$config_file" "DAILY_DATA_RETENTION" "$DAILY_DATA_RETENTION"
+    set_config_value "$config_file" "ENABLE_COMPRESSION" "$ENABLE_COMPRESSION"
+    set_config_value "$config_file" "COMPRESSION_AFTER_DAYS" "$COMPRESSION_AFTER_DAYS"
     
     echo ""
     echo -e "${GREEN}Data retention policy saved!${NC}"
@@ -786,21 +862,30 @@ configure_network() {
     local config_file="${CONFIG_DIR}/network.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local DEVICE_HOSTNAME
+    DEVICE_HOSTNAME=$(get_config_value "$config_file" "DEVICE_HOSTNAME" "hive-monitor")
     
-    # Set defaults if not loaded
-    DEVICE_HOSTNAME="${DEVICE_HOSTNAME:-hive-monitor}"
-    USE_STATIC_IP="${USE_STATIC_IP:-false}"
-    STATIC_IP="${STATIC_IP:-192.168.1.100}"
-    STATIC_NETMASK="${STATIC_NETMASK:-255.255.255.0}"
-    STATIC_GATEWAY="${STATIC_GATEWAY:-192.168.1.1}"
-    STATIC_DNS="${STATIC_DNS:-8.8.8.8}"
-    WIFI_SSID="${WIFI_SSID:-}"
-    ENABLE_WEBSERVER="${ENABLE_WEBSERVER:-true}"
-    WEBSERVER_PORT="${WEBSERVER_PORT:-8080}"
+    local USE_STATIC_IP
+    USE_STATIC_IP=$(get_config_value "$config_file" "USE_STATIC_IP" "false")
+    
+    local STATIC_IP
+    STATIC_IP=$(get_config_value "$config_file" "STATIC_IP" "192.168.1.100")
+    
+    local STATIC_NETMASK
+    STATIC_NETMASK=$(get_config_value "$config_file" "STATIC_NETMASK" "255.255.255.0")
+    
+    local STATIC_GATEWAY
+    STATIC_GATEWAY=$(get_config_value "$config_file" "STATIC_GATEWAY" "192.168.1.1")
+    
+    local STATIC_DNS
+    STATIC_DNS=$(get_config_value "$config_file" "STATIC_DNS" "8.8.8.8")
+    
+    local ENABLE_WEBSERVER
+    ENABLE_WEBSERVER=$(get_config_value "$config_file" "ENABLE_WEBSERVER" "true")
+    
+    local WEBSERVER_PORT
+    WEBSERVER_PORT=$(get_config_value "$config_file" "WEBSERVER_PORT" "8080")
     
     echo "Current Network Settings:"
     echo "-------------------------"
@@ -847,18 +932,15 @@ configure_network() {
         fi
     fi
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Network Configuration
-DEVICE_HOSTNAME="$DEVICE_HOSTNAME"
-USE_STATIC_IP=$USE_STATIC_IP
-STATIC_IP="$STATIC_IP"
-STATIC_NETMASK="$STATIC_NETMASK"
-STATIC_GATEWAY="$STATIC_GATEWAY"
-STATIC_DNS="$STATIC_DNS"
-ENABLE_WEBSERVER=$ENABLE_WEBSERVER
-WEBSERVER_PORT=$WEBSERVER_PORT
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "DEVICE_HOSTNAME" "$DEVICE_HOSTNAME"
+    set_config_value "$config_file" "USE_STATIC_IP" "$USE_STATIC_IP"
+    set_config_value "$config_file" "STATIC_IP" "$STATIC_IP"
+    set_config_value "$config_file" "STATIC_NETMASK" "$STATIC_NETMASK"
+    set_config_value "$config_file" "STATIC_GATEWAY" "$STATIC_GATEWAY"
+    set_config_value "$config_file" "STATIC_DNS" "$STATIC_DNS"
+    set_config_value "$config_file" "ENABLE_WEBSERVER" "$ENABLE_WEBSERVER"
+    set_config_value "$config_file" "WEBSERVER_PORT" "$WEBSERVER_PORT"
     
     echo ""
     echo -e "${GREEN}Network settings saved!${NC}"
@@ -873,19 +955,27 @@ configure_user_preferences() {
     local config_file="${CONFIG_DIR}/user_prefs.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local PREFERRED_LANG
+    PREFERRED_LANG=$(get_config_value "$config_file" "PREFERRED_LANG" "en")
     
-    # Set defaults if not loaded
-    PREFERRED_LANG="${PREFERRED_LANG:-en}"
-    TEMP_UNIT="${TEMP_UNIT:-celsius}"
-    DATE_FORMAT="${DATE_FORMAT:-YYYY-MM-DD}"
-    TIME_FORMAT="${TIME_FORMAT:-24h}"
-    THEME="${THEME:-dark}"
-    SHOW_GRAPHS="${SHOW_GRAPHS:-true}"
-    AUTO_REFRESH="${AUTO_REFRESH:-true}"
+    local TEMP_UNIT
+    TEMP_UNIT=$(get_config_value "$config_file" "TEMP_UNIT" "celsius")
+    
+    local DATE_FORMAT
+    DATE_FORMAT=$(get_config_value "$config_file" "DATE_FORMAT" "YYYY-MM-DD")
+    
+    local TIME_FORMAT
+    TIME_FORMAT=$(get_config_value "$config_file" "TIME_FORMAT" "24h")
+    
+    local THEME
+    THEME=$(get_config_value "$config_file" "THEME" "dark")
+    
+    local SHOW_GRAPHS
+    SHOW_GRAPHS=$(get_config_value "$config_file" "SHOW_GRAPHS" "true")
+    
+    local AUTO_REFRESH
+    AUTO_REFRESH=$(get_config_value "$config_file" "AUTO_REFRESH" "true")
     
     echo "Current User Preferences:"
     echo "-------------------------"
@@ -958,17 +1048,14 @@ configure_user_preferences() {
     read -p "(Y/n): " refresh_choice
     [[ "$refresh_choice" =~ ^[Nn]$ ]] && AUTO_REFRESH="false" || AUTO_REFRESH="true"
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor User Preferences
-PREFERRED_LANG="$PREFERRED_LANG"
-TEMP_UNIT="$TEMP_UNIT"
-DATE_FORMAT="$DATE_FORMAT"
-TIME_FORMAT="$TIME_FORMAT"
-THEME="$THEME"
-SHOW_GRAPHS=$SHOW_GRAPHS
-AUTO_REFRESH=$AUTO_REFRESH
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "PREFERRED_LANG" "$PREFERRED_LANG"
+    set_config_value "$config_file" "TEMP_UNIT" "$TEMP_UNIT"
+    set_config_value "$config_file" "DATE_FORMAT" "$DATE_FORMAT"
+    set_config_value "$config_file" "TIME_FORMAT" "$TIME_FORMAT"
+    set_config_value "$config_file" "THEME" "$THEME"
+    set_config_value "$config_file" "SHOW_GRAPHS" "$SHOW_GRAPHS"
+    set_config_value "$config_file" "AUTO_REFRESH" "$AUTO_REFRESH"
     
     echo ""
     echo -e "${GREEN}User preferences saved!${NC}"
@@ -982,19 +1069,27 @@ configure_advanced() {
     local config_file="${CONFIG_DIR}/advanced.conf"
     mkdir -p "$CONFIG_DIR"
     
-    # Load existing config or use defaults
-    if [[ -f "$config_file" ]]; then
-        source "$config_file" 2>/dev/null || true
-    fi
+    # Bezpieczne ładowanie obecnych wartości
+    local DEBUG_MODE
+    DEBUG_MODE=$(get_config_value "$config_file" "DEBUG_MODE" "false")
     
-    # Set defaults if not loaded
-    DEBUG_MODE="${DEBUG_MODE:-false}"
-    VERBOSE_LOGGING="${VERBOSE_LOGGING:-false}"
-    MAX_LOG_SIZE="${MAX_LOG_SIZE:-10}"
-    LOG_ROTATION_COUNT="${LOG_ROTATION_COUNT:-5}"
-    WATCHDOG_ENABLED="${WATCHDOG_ENABLED:-true}"
-    WATCHDOG_TIMEOUT="${WATCHDOG_TIMEOUT:-30}"
-    SAFE_MODE="${SAFE_MODE:-false}"
+    local VERBOSE_LOGGING
+    VERBOSE_LOGGING=$(get_config_value "$config_file" "VERBOSE_LOGGING" "false")
+    
+    local MAX_LOG_SIZE
+    MAX_LOG_SIZE=$(get_config_value "$config_file" "MAX_LOG_SIZE" "10")
+    
+    local LOG_ROTATION_COUNT
+    LOG_ROTATION_COUNT=$(get_config_value "$config_file" "LOG_ROTATION_COUNT" "5")
+    
+    local WATCHDOG_ENABLED
+    WATCHDOG_ENABLED=$(get_config_value "$config_file" "WATCHDOG_ENABLED" "true")
+    
+    local WATCHDOG_TIMEOUT
+    WATCHDOG_TIMEOUT=$(get_config_value "$config_file" "WATCHDOG_TIMEOUT" "30")
+    
+    local SAFE_MODE
+    SAFE_MODE=$(get_config_value "$config_file" "SAFE_MODE" "false")
     
     echo "Current Advanced Settings:"
     echo "--------------------------"
@@ -1043,17 +1138,14 @@ configure_advanced() {
     read -p "(y/N): " safe_choice
     [[ "$safe_choice" =~ ^[Yy]$ ]] && SAFE_MODE="true" || SAFE_MODE="false"
     
-    # Save configuration
-    cat > "$config_file" << EOF
-# Hive Monitor Advanced Configuration
-DEBUG_MODE=$DEBUG_MODE
-VERBOSE_LOGGING=$VERBOSE_LOGGING
-MAX_LOG_SIZE=$MAX_LOG_SIZE
-LOG_ROTATION_COUNT=$LOG_ROTATION_COUNT
-WATCHDOG_ENABLED=$WATCHDOG_ENABLED
-WATCHDOG_TIMEOUT=$WATCHDOG_TIMEOUT
-SAFE_MODE=$SAFE_MODE
-EOF
+    # Zapisz konfigurację używając bezpiecznej funkcji
+    set_config_value "$config_file" "DEBUG_MODE" "$DEBUG_MODE"
+    set_config_value "$config_file" "VERBOSE_LOGGING" "$VERBOSE_LOGGING"
+    set_config_value "$config_file" "MAX_LOG_SIZE" "$MAX_LOG_SIZE"
+    set_config_value "$config_file" "LOG_ROTATION_COUNT" "$LOG_ROTATION_COUNT"
+    set_config_value "$config_file" "WATCHDOG_ENABLED" "$WATCHDOG_ENABLED"
+    set_config_value "$config_file" "WATCHDOG_TIMEOUT" "$WATCHDOG_TIMEOUT"
+    set_config_value "$config_file" "SAFE_MODE" "$SAFE_MODE"
     
     echo ""
     echo -e "${GREEN}Advanced settings saved!${NC}"
