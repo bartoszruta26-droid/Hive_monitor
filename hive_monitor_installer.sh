@@ -2562,17 +2562,454 @@ option_historical_data() {
 
 option_system_status() {
     print_header "${LANG[MENU_8]}"
-    echo "System Status Check"
-    echo "==================="
-    echo "[STUB] System status checking logic will be implemented here."
+    
+    # Color codes for status
+    STATUS_OK="${GREEN}[OK]${NC}"
+    STATUS_WARN="${YELLOW}[WARNING]${NC}"
+    STATUS_ERROR="${RED}[ERROR]${NC}"
+    STATUS_INFO="${CYAN}[INFO]${NC}"
+    
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}              SYSTEM STATUS REPORT - $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo "Checks to be implemented:"
-    echo "- Service status"
-    echo "- Disk space"
-    echo "- Memory usage"
-    echo "- Network connectivity"
-    echo "- Configuration validity"
-    log_message "INFO" "System status check requested"
+    
+    # ========================================================================
+    # 1. SYSTEM INFORMATION
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  SYSTEM INFORMATION                                     │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    local hostname_val=$(hostname 2>/dev/null || echo "N/A")
+    local kernel_ver=$(uname -r 2>/dev/null || echo "N/A")
+    local os_info=""
+    if [[ -f /etc/os-release ]]; then
+        os_info=$(grep "PRETTY_NAME" /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo "N/A")
+    fi
+    local uptime_str=$(uptime -p 2>/dev/null || uptime | awk -F'up ' '{print $2}' | awk -F',' '{print $1","$2}' || echo "N/A")
+    local arch=$(uname -m 2>/dev/null || echo "N/A")
+    
+    printf "  %-20s : %s\n" "Hostname" "$hostname_val"
+    printf "  %-20s : %s\n" "Operating System" "$os_info"
+    printf "  %-20s : %s\n" "Kernel Version" "$kernel_ver"
+    printf "  %-20s : %s\n" "Architecture" "$arch"
+    printf "  %-20s : %s\n" "System Uptime" "$uptime_str"
+    echo ""
+    
+    # ========================================================================
+    # 2. CPU USAGE & LOAD
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  CPU STATUS                                             │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    # Load averages
+    if [[ -f /proc/loadavg ]]; then
+        read load1 load5 load15 rest < /proc/loadavg
+        local cpu_count=$(nproc 2>/dev/null || grep -c processor /proc/cpuinfo 2>/dev/null || echo 1)
+        # Convert load to integer for bash arithmetic (multiply by 100, divide by 100 later)
+        local load1_int=$(echo "$load1" | awk '{printf "%.0f", $1 * 100}')
+        local load_percent=$((load1_int / cpu_count))
+        
+        printf "  %-20s : %s\n" "Load Average (1m)" "$load1"
+        printf "  %-20s : %s\n" "Load Average (5m)" "$load5"
+        printf "  %-20s : %s\n" "Load Average (15m)" "$load15"
+        printf "  %-20s : %s cores\n" "CPU Cores" "$cpu_count"
+        
+        # Load status indicator using bc for floating point comparison
+        local load_status_check=$(echo "$load1 < $cpu_count * 0.7" | bc -l 2>/dev/null)
+        local load_status_warn=$(echo "$load1 < $cpu_count" | bc -l 2>/dev/null)
+        if [[ "$load_status_check" == "1" ]]; then
+            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_OK"
+        elif [[ "$load_status_warn" == "1" ]]; then
+            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_WARN"
+        else
+            printf "  %-20s : %s\n" "CPU Load Status" "$STATUS_ERROR"
+        fi
+    else
+        echo "  CPU load information not available"
+    fi
+    
+    # CPU temperature (if available)
+    echo ""
+    local cpu_temp="N/A"
+    if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
+        cpu_temp=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        cpu_temp="${cpu_temp%.*}°C"  # Remove decimal part if exists
+    elif command -v vcgencmd &>/dev/null; then
+        # Raspberry Pi specific
+        cpu_temp=$(vcgencmd measure_temp 2>/dev/null | cut -d"'" -f2 || echo "N/A")
+    fi
+    printf "  %-20s : %s\n" "CPU Temperature" "$cpu_temp"
+    echo ""
+    
+    # ========================================================================
+    # 3. MEMORY USAGE
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  MEMORY STATUS                                          │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    if [[ -f /proc/meminfo ]]; then
+        local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        local mem_free=$(grep MemFree /proc/meminfo | awk '{print $2}')
+        local mem_available=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+        local mem_buffers=$(grep Buffers /proc/meminfo | awk '{print $2}')
+        local mem_cached=$(grep "^Cached:" /proc/meminfo | awk '{print $2}')
+        
+        local mem_used=$((mem_total - mem_free - mem_buffers - mem_cached))
+        local mem_percent=$((mem_used * 100 / mem_total))
+        
+        # Convert to MB
+        local mem_total_mb=$((mem_total / 1024))
+        local mem_used_mb=$((mem_used / 1024))
+        local mem_available_mb=$((mem_available / 1024))
+        
+        printf "  %-20s : %d MB\n" "Total Memory" "$mem_total_mb"
+        printf "  %-20s : %d MB (%d%%)\n" "Used Memory" "$mem_used_mb" "$mem_percent"
+        printf "  %-20s : %d MB\n" "Available Memory" "$mem_available_mb"
+        
+        # Memory status indicator
+        if [[ $mem_percent -lt 70 ]]; then
+            printf "  %-20s : %s\n" "Memory Status" "$STATUS_OK"
+        elif [[ $mem_percent -lt 90 ]]; then
+            printf "  %-20s : %s\n" "Memory Status" "$STATUS_WARN"
+        else
+            printf "  %-20s : %s\n" "Memory Status" "$STATUS_ERROR"
+        fi
+        
+        # Swap information
+        local swap_total=$(grep SwapTotal /proc/meminfo | awk '{print $2}')
+        local swap_free=$(grep SwapFree /proc/meminfo | awk '{print $2}')
+        if [[ $swap_total -gt 0 ]]; then
+            local swap_used=$((swap_total - swap_free))
+            local swap_percent=$((swap_used * 100 / swap_total))
+            printf "  %-20s : %d MB (%d%% used)\n" "Swap" "$((swap_total / 1024))" "$swap_percent"
+        fi
+    else
+        echo "  Memory information not available"
+    fi
+    echo ""
+    
+    # ========================================================================
+    # 4. DISK USAGE
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  DISK STATUS                                            │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    if command -v df &>/dev/null; then
+        printf "  %-15s %-10s %-10s %-10s %-8s %s\n" "Filesystem" "Size" "Used" "Avail" "Use%" "Mounted on"
+        echo "  ───────────────────────────────────────────────────────────────"
+        
+        # Show root filesystem and any other mounted partitions
+        df -h 2>/dev/null | grep -E '^/dev/' | while read -r line; do
+            local fs=$(echo "$line" | awk '{print $1}')
+            local size=$(echo "$line" | awk '{print $2}')
+            local used=$(echo "$line" | awk '{print $3}')
+            local avail=$(echo "$line" | awk '{print $4}')
+            local percent=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            local mount=$(echo "$line" | awk '{print $6}')
+            
+            # Truncate long filesystem names
+            [[ ${#fs} -gt 15 ]] && fs="${fs:0:12}..."
+            [[ ${#mount} -gt 18 ]] && mount="${mount:0:15}..."
+            
+            local status="$STATUS_OK"
+            [[ $percent -gt 80 ]] && status="$STATUS_WARN"
+            [[ $percent -gt 95 ]] && status="$STATUS_ERROR"
+            
+            printf "  %-15s %-10s %-10s %-10s %s%% %s %s\n" "$fs" "$size" "$used" "$avail" "$percent" "$mount" "$status"
+        done
+        
+        # Also show tmpfs if present
+        df -h 2>/dev/null | grep -E '^tmpfs' | head -2 | while read -r line; do
+            local fs=$(echo "$line" | awk '{print $1}')
+            local size=$(echo "$line" | awk '{print $2}')
+            local used=$(echo "$line" | awk '{print $3}')
+            local avail=$(echo "$line" | awk '{print $4}')
+            local percent=$(echo "$line" | awk '{print $5}' | tr -d '%')
+            local mount=$(echo "$line" | awk '{print $6}')
+            
+            [[ ${#mount} -gt 18 ]] && mount="${mount:0:15}..."
+            printf "  %-15s %-10s %-10s %-10s %s%% %s\n" "$fs" "$size" "$used" "$avail" "$percent" "$mount"
+        done
+    else
+        echo "  Disk information not available"
+    fi
+    echo ""
+    
+    # ========================================================================
+    # 5. NETWORK STATUS
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  NETWORK STATUS                                         │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    # Check network interfaces
+    if command -v ip &>/dev/null; then
+        local interfaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -v lo)
+        
+        for iface in $interfaces; do
+            iface=$(echo "$iface" | tr -d '@')
+            local state=$(ip link show "$iface" 2>/dev/null | grep -oE 'state [A-Z]+' | awk '{print $2}')
+            local mac=$(ip link show "$iface" 2>/dev/null | grep -oE 'link/[a-z]+ [0-9a-f:]+' | awk '{print $2}')
+            
+            local state_color="$STATUS_ERROR"
+            [[ "$state" == "UP" ]] && state_color="$STATUS_OK"
+            [[ "$state" == "DOWN" ]] && state_color="$STATUS_WARN"
+            
+            printf "  Interface: %-12s State: %s %s\n" "$iface" "$state" "$state_color"
+            printf "    MAC: %s\n" "$mac"
+            
+            # Get IP address if interface is up
+            if [[ "$state" == "UP" ]]; then
+                local ip_addr=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+                [[ -n "$ip_addr" ]] && printf "    IPv4: %s\n" "$ip_addr"
+                
+                local ip6_addr=$(ip -6 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+' | grep -v '::1' | head -1)
+                [[ -n "$ip6_addr" ]] && printf "    IPv6: %s\n" "$ip6_addr"
+            fi
+            echo ""
+        done
+    fi
+    
+    # Internet connectivity check
+    echo "  Internet Connectivity:"
+    if command -v ping &>/dev/null; then
+        if ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+            printf "    %-20s : %s\n" "Google DNS (8.8.8.8)" "$STATUS_OK"
+        else
+            printf "    %-20s : %s\n" "Google DNS (8.8.8.8)" "$STATUS_ERROR"
+        fi
+        
+        if ping -c 1 -W 2 github.com &>/dev/null; then
+            printf "    %-20s : %s\n" "GitHub.com" "$STATUS_OK"
+        else
+            printf "    %-20s : %s\n" "GitHub.com" "$STATUS_WARN"
+        fi
+    else
+        echo "    Ping command not available"
+    fi
+    echo ""
+    
+    # ========================================================================
+    # 6. HIVE MONITOR SERVICES STATUS
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  HIVE MONITOR SERVICES                                  │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    # Check for systemd services
+    local hm_services=("hive-monitor" "hive_monitor" "hivemonitor")
+    local services_found=0
+    
+    if command -v systemctl &>/dev/null; then
+        for service in "${hm_services[@]}"; do
+            if systemctl list-unit-files 2>/dev/null | grep -q "$service"; then
+                services_found=1
+                local status=$(systemctl is-active "$service" 2>/dev/null || echo "unknown")
+                local status_color="$STATUS_ERROR"
+                [[ "$status" == "active" ]] && status_color="$STATUS_OK"
+                [[ "$status" == "inactive" ]] && status_color="$STATUS_WARN"
+                printf "  %-25s : %-10s %s\n" "$service.service" "$status" "$status_color"
+                
+                # Show additional info
+                if [[ "$status" == "active" ]]; then
+                    local pid=$(systemctl show "$service" --property=MainPID 2>/dev/null | cut -d= -f2)
+                    [[ -n "$pid" && "$pid" != "0" ]] && printf "    PID: %s\n" "$pid"
+                fi
+            fi
+        done
+    fi
+    
+    # Check for running processes
+    echo ""
+    echo "  Running Processes:"
+    local hm_processes=$(pgrep -f "hive.*monitor\|hivemonitor" 2>/dev/null || echo "")
+    if [[ -n "$hm_processes" ]]; then
+        for pid in $hm_processes; do
+            local proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+            local proc_cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' || echo "N/A")
+            local proc_mem=$(ps -p "$pid" -o %mem= 2>/dev/null | tr -d ' ' || echo "N/A")
+            printf "    PID: %-6s Name: %-20s CPU: %s%% MEM: %s%%\n" "$pid" "$proc_name" "$proc_cpu" "$proc_mem"
+        done
+    else
+        echo "    No Hive Monitor processes found running"
+    fi
+    
+    # Check for Python scripts
+    local py_scripts=$(pgrep -f "python.*hive\|python3.*hive" 2>/dev/null || echo "")
+    if [[ -n "$py_scripts" ]]; then
+        echo ""
+        echo "  Python Hive Scripts:"
+        for pid in $py_scripts; do
+            local cmd=$(ps -p "$pid" -o args= 2>/dev/null | head -c 60 || echo "unknown")
+            printf "    PID: %-6s %s...\n" "$pid" "$cmd"
+        done
+    fi
+    
+    if [[ $services_found -eq 0 && -z "$hm_processes" ]]; then
+        echo -e "    ${YELLOW}No Hive Monitor services or processes detected${NC}"
+        echo "    Application may not be installed or configured yet."
+    fi
+    echo ""
+    
+    # ========================================================================
+    # 7. MICROCONTROLLER / SENSOR CONNECTIONS
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  CONNECTED DEVICES (Serial/USB)                         │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    # Check for serial devices
+    local serial_devices=$(ls -la /dev/ttyUSB* /dev/ttyACM* /dev/ttyAMA* /dev/serial/by-id/* 2>/dev/null || echo "")
+    if [[ -n "$serial_devices" ]]; then
+        echo "  Detected Serial Devices:"
+        ls -la /dev/ttyUSB* 2>/dev/null | while read -r line; do
+            echo "    $line"
+        done
+        ls -la /dev/ttyACM* 2>/dev/null | while read -r line; do
+            echo "    $line"
+        done
+        ls -la /dev/serial/by-id/* 2>/dev/null | while read -r line; do
+            echo "    $line"
+        done
+        
+        # Try to identify connected devices
+        echo ""
+        echo "  Device Details:"
+        if command -v udevadm &>/dev/null; then
+            for dev in /dev/ttyUSB* /dev/ttyACM*; do
+                if [[ -e "$dev" ]]; then
+                    local vendor=$(udevadm info -a -p "$(udevadm info -q path -n "$dev" 2>/dev/null)" 2>/dev/null | grep -m1 "ATTRS{idVendor}" | cut -d'"' -f2 || echo "N/A")
+                    local product=$(udevadm info -a -p "$(udevadm info -q path -n "$dev" 2>/dev/null)" 2>/dev/null | grep -m1 "ATTRS{idProduct}" | cut -d'"' -f2 || echo "N/A")
+                    printf "    %s: Vendor=%s Product=%s\n" "$dev" "$vendor" "$product"
+                fi
+            done
+        fi
+    else
+        echo -e "  ${YELLOW}No serial devices detected${NC}"
+        echo "  Microcontrollers (Arduino, Pico, etc.) may not be connected."
+    fi
+    echo ""
+    
+    # ========================================================================
+    # 8. CONFIGURATION FILES STATUS
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  CONFIGURATION FILES                                    │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    local config_files=(
+        "${CONFIG_DIR}/config.ini"
+        "${CONFIG_DIR}/settings.json"
+        "${HOME}/hive_monitor/config.ini"
+        "${HOME}/hive_monitor/.env"
+    )
+    
+    local configs_ok=0
+    local configs_missing=0
+    
+    for cfg in "${config_files[@]}"; do
+        if [[ -f "$cfg" ]]; then
+            local size=$(du -h "$cfg" 2>/dev/null | cut -f1)
+            local modified=$(stat -c %y "$cfg" 2>/dev/null | cut -d'.' -f1 || ls -la "$cfg" | awk '{print $6, $7, $8}')
+            printf "  %s %s\n" "$STATUS_OK" "$cfg"
+            printf "    Size: %s  Modified: %s\n" "$size" "$modified"
+            configs_ok=$((configs_ok + 1))
+        else
+            printf "  %s %s\n" "$STATUS_WARN" "$cfg (not found)"
+            configs_missing=$((configs_missing + 1))
+        fi
+    done
+    
+    echo ""
+    printf "  Summary: %d found, %d missing\n" "$configs_ok" "$configs_missing"
+    echo ""
+    
+    # ========================================================================
+    # 9. RECENT LOG ENTRIES
+    # ========================================================================
+    echo -e "${BLUE}┌─────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  RECENT LOG ENTRIES (Last 5)                            │${NC}"
+    echo -e "${BLUE}└─────────────────────────────────────────────────────────┘${NC}"
+    
+    if [[ -f "$LOG_FILE" ]]; then
+        tail -5 "$LOG_FILE" 2>/dev/null | while read -r line; do
+            if [[ "$line" == *"[ERROR]"* ]]; then
+                echo -e "    ${RED}$line${NC}"
+            elif [[ "$line" == *"[WARN]"* ]]; then
+                echo -e "    ${YELLOW}$line${NC}"
+            elif [[ "$line" == *"[INFO]"* ]]; then
+                echo -e "    ${GREEN}$line${NC}"
+            else
+                echo "    $line"
+            fi
+        done
+    else
+        echo "    No installer log file found at: $LOG_FILE"
+    fi
+    
+    # System logs (if accessible)
+    echo ""
+    if command -v journalctl &>/dev/null; then
+        echo "  Recent System Messages:"
+        journalctl -n 3 --no-pager 2>/dev/null | tail -3 | while read -r line; do
+            echo "    $line"
+        done
+    fi
+    echo ""
+    
+    # ========================================================================
+    # SUMMARY
+    # ========================================================================
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  STATUS SUMMARY${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
+    
+    # Calculate overall health
+    local issues=0
+    
+    # Check critical items
+    if [[ -f /proc/loadavg ]]; then
+        if (( $(echo "$load1 > $cpu_count" | bc -l 2>/dev/null || echo 0) )); then
+            issues=$((issues + 1))
+        fi
+    fi
+    
+    if [[ $mem_percent -gt 90 ]]; then
+        issues=$((issues + 1))
+    fi
+    
+    # Check disk space for root partition
+    local root_usage=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+    if [[ -n "$root_usage" && $root_usage -gt 90 ]]; then
+        issues=$((issues + 1))
+    fi
+    
+    if [[ $configs_missing -gt 0 ]]; then
+        issues=$((issues + 1))
+    fi
+    
+    echo ""
+    if [[ $issues -eq 0 ]]; then
+        echo -e "  Overall System Health: ${GREEN}HEALTHY${NC}"
+        echo -e "  ${STATUS_OK} All critical systems operating normally"
+    elif [[ $issues -le 2 ]]; then
+        echo -e "  Overall System Health: ${YELLOW}ATTENTION NEEDED${NC}"
+        echo -e "  ${STATUS_WARN} $issues minor issue(s) detected"
+    else
+        echo -e "  Overall System Health: ${RED}CRITICAL${NC}"
+        echo -e "  ${STATUS_ERROR} $issues issue(s) require immediate attention"
+    fi
+    
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
+    
+    log_message "INFO" "System status check completed - Health: $([[ $issues -eq 0 ]] && echo 'HEALTHY' || echo "ISSUES: $issues")"
+    
     wait_for_key
 }
 
