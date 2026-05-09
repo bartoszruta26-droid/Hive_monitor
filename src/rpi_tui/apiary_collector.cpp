@@ -1255,6 +1255,10 @@ public:
     }
 
     // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON) - OBSŁUGA WIELU ULl
+    size_t getHiveCount() const {
+        return hives_data.size();
+    }
+    
     std::string getStatusJSON() {
         std::lock_guard<std::mutex> lock(data_mutex);
         std::stringstream json;
@@ -1507,27 +1511,53 @@ public:
 
 // Funkcja główna do samodzielnego uruchomienia jako demon
 int main(int argc, char* argv[]) {
-    // ApiaryCollector używa singleton Logger
+    // Inicjalizacja loggera z pełną konfiguracją
+    LoggerConfig loggerConfig;
+    loggerConfig.log_file = "/var/log/apiaryguard/collector.log";
+    loggerConfig.debug_file = "/var/log/apiaryguard/collector_debug.log";
+    loggerConfig.console_output = true;
+    loggerConfig.file_output = true;
+    loggerConfig.min_level = LogLevel::DEBUG;
+    loggerConfig.rotation_enabled = true;
+    loggerConfig.max_file_size = 5 * 1024 * 1024; // 5MB
+    loggerConfig.max_queue_size = 500;
+    
+    Logger::getInstance().initialize(loggerConfig);
+    
+    Logger::getInstance().info("========================================", "MAIN");
+    Logger::getInstance().info("Apiary Collector v1.0.0 - Start", "MAIN");
+    Logger::getInstance().info("========================================", "MAIN");
+    Logger::getInstance().debug("PID procesu: " + std::to_string(getpid()), "MAIN");
+    Logger::getInstance().debug("Argumenty linii poleceń: " + std::string(argc > 1 ? argv[1] : "brak"), "MAIN");
+    
     ApiaryCollector collector;
 
     // Konfiguracja przykładowych IP uli (w produkcji czytane z config file)
     std::vector<std::string> hives = {"192.168.1.101", "192.168.1.102", "192.168.1.103"};
+    Logger::getInstance().debug("Konfiguracja " + std::to_string(hives.size()) + " uli", "MAIN");
     collector.configureHives(hives);
 
     // Uruchomienie w trybie symulacji (demonstracja) lub sieciowym
     bool sim_mode = (argc > 1 && std::string(argv[1]) == "--sim");
     
+    Logger::getInstance().info("Tryb pracy: " + std::string(sim_mode ? "SYMWLACJA" : "SIECIOWY"), "MAIN");
     collector.start(sim_mode);
+    
+    Logger::getInstance().info("Wątki workerów uruchomione", "MAIN");
 
     // Serwer HTTP API JSON na porcie 8080
+    Logger::getInstance().debug("Tworzenie socketu HTTP...", "HTTP");
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        Logger::getInstance().error("Nie udało się utworzyć socketu HTTP: " + std::string(strerror(errno)));
+        Logger::getInstance().error("Nie udało się utworzyć socketu HTTP: " + std::string(strerror(errno)), "HTTP");
+        Logger::getInstance().critical("Krytyczny błąd - zakończenie działania", "MAIN");
         return 1;
     }
+    Logger::getInstance().debug("Socket HTTP utworzony pomyślnie: fd=" + std::to_string(server_fd), "HTTP");
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    Logger::getInstance().debug("Opcja SO_REUSEADDR ustawiona", "HTTP");
 
     struct sockaddr_in http_addr;
     memset(&http_addr, 0, sizeof(http_addr));
@@ -1535,20 +1565,27 @@ int main(int argc, char* argv[]) {
     http_addr.sin_addr.s_addr = INADDR_ANY;
     http_addr.sin_port = htons(8080);
 
+    Logger::getInstance().info("Bindowanie portu HTTP 8080...", "HTTP");
     if (bind(server_fd, (struct sockaddr*)&http_addr, sizeof(http_addr)) < 0) {
-        Logger::getInstance().error("Błąd bindowania portu HTTP 8080: " + std::string(strerror(errno)));
+        Logger::getInstance().error("Błąd bindowania portu HTTP 8080: " + std::string(strerror(errno)), "HTTP");
+        Logger::getInstance().error("Sprawdź czy port 8080 nie jest zajęty przez inny proces", "HTTP");
+        Logger::getInstance().error("Możesz sprawdzić: netstat -tlnp | grep 8080", "HTTP");
         close(server_fd);
         return 1;
     }
+    Logger::getInstance().info("Port 8080 zbindowany pomyślnie", "HTTP");
 
     if (listen(server_fd, 10) < 0) {
-        Logger::getInstance().error("Błąd listen na porcie HTTP: " + std::string(strerror(errno)));
+        Logger::getInstance().error("Błąd listen na porcie HTTP: " + std::string(strerror(errno)), "HTTP");
         close(server_fd);
         return 1;
     }
+    Logger::getInstance().info("Nasłuchiwanie na porcie 8080 rozpoczęte", "HTTP");
 
-    Logger::getInstance().info("Serwer HTTP API JSON uruchomiony na porcie 8080");
-    Logger::getInstance().info("Endpointy: GET /api/status, GET /api/hives, GET /health");
+    Logger::getInstance().info("Serwer HTTP API JSON uruchomiony na porcie 8080", "HTTP");
+    Logger::getInstance().info("Endpointy: GET /api/status, GET /api/hives, GET /health", "HTTP");
+    Logger::getInstance().info("URL health check: http://localhost:8080/health", "HTTP");
+    Logger::getInstance().info("URL status: http://localhost:8080/api/status", "HTTP");
 
     fd_set readfds;
     struct timeval tv;
