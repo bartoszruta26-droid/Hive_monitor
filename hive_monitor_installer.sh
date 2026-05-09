@@ -3033,19 +3033,306 @@ option_system_status() {
 
 option_reset_defaults() {
     print_header "${LANG[MENU_9]}"
-    echo "Reset to Default Settings"
-    echo "========================="
-    echo -e "${RED}WARNING: This will reset all configurations to defaults!${NC}"
-    echo ""
-    read -p "Are you sure? (y/N): " confirm
     
-    if [[ $confirm =~ ^[Yy]$ ]]; then
-        echo "[STUB] Reset to defaults logic will be implemented here."
-        log_message "WARN" "Reset to defaults initiated"
-    else
-        echo "Operation cancelled."
-        log_message "INFO" "Reset to defaults cancelled"
+    echo -e "${RED}==================================================${NC}"
+    echo -e "${RED}  WARNING: Reset to Factory Defaults${NC}"
+    echo -e "${RED}==================================================${NC}"
+    echo ""
+    echo "This operation will:"
+    echo "  • Remove all custom configuration files"
+    echo "  • Reset all settings to factory defaults"
+    echo "  • Clear user preferences"
+    echo "  • Reset API endpoints, database settings, intervals"
+    echo "  • Clear notification and network configurations"
+    echo "  • Reset advanced options and watchdog settings"
+    echo ""
+    echo -e "${YELLOW}IMPORTANT: Your data files will NOT be deleted.${NC}"
+    echo -e "${YELLOW}Only configuration files will be reset.${NC}"
+    echo ""
+    
+    # First, offer to create a backup
+    echo "It is recommended to create a backup before resetting."
+    read -p "Create backup first? (Y/n): " backup_choice
+    
+    if [[ ! "$backup_choice" =~ ^[Nn]$ ]]; then
+        echo ""
+        echo "Creating backup..."
+        mkdir -p "$BACKUP_DIR"
+        TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+        BACKUP_FILE="${BACKUP_DIR}/hive_monitor_backup_${TIMESTAMP}.tar.gz"
+        
+        if [[ -d "$CONFIG_DIR" ]]; then
+            tar -czf "$BACKUP_FILE" -C "$(dirname "$CONFIG_DIR")" "$(basename "$CONFIG_DIR")" 2>/dev/null
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}Backup created: $BACKUP_FILE${NC}"
+                log_message "INFO" "Backup created before reset: $BACKUP_FILE"
+            else
+                echo -e "${YELLOW}Warning: Backup creation failed${NC}"
+                log_message "WARN" "Backup creation failed before reset"
+            fi
+        else
+            echo -e "${YELLOW}No configuration directory found to backup${NC}"
+        fi
+        echo ""
     fi
+    
+    # Confirmation with extra safety
+    echo -e "${RED}Are you ABSOLUTELY sure you want to reset all settings?${NC}"
+    read -p "Type 'RESET' to confirm (or any other key to cancel): " confirm_reset
+    
+    if [[ "$confirm_reset" != "RESET" ]]; then
+        echo ""
+        echo "Operation cancelled. No changes made."
+        log_message "INFO" "Reset to defaults cancelled by user"
+        wait_for_key
+        return 0
+    fi
+    
+    echo ""
+    echo "Starting reset process..."
+    echo ""
+    
+    # Define all config files to reset
+    declare -a CONFIG_FILES=(
+        "${CONFIG_DIR}/api_endpoints.conf"
+        "${CONFIG_DIR}/database.conf"
+        "${CONFIG_DIR}/intervals.conf"
+        "${CONFIG_DIR}/notifications.conf"
+        "${CONFIG_DIR}/retention.conf"
+        "${CONFIG_DIR}/network.conf"
+        "${CONFIG_DIR}/user_prefs.conf"
+        "${CONFIG_DIR}/advanced.conf"
+        "${CONFIG_DIR}/config.ini"
+        "${CONFIG_DIR}/settings.json"
+    )
+    
+    # Remove old config files
+    echo "Removing old configuration files..."
+    for file in "${CONFIG_FILES[@]}"; do
+        if [[ -f "$file" ]]; then
+            rm -f "$file"
+            echo "  Removed: $file"
+            log_message "INFO" "Removed config file: $file"
+        fi
+    done
+    
+    # Also remove hive_monitor config if it exists in home directory
+    if [[ -f "${HOME}/hive_monitor/config.ini" ]]; then
+        rm -f "${HOME}/hive_monitor/config.ini"
+        echo "  Removed: ${HOME}/hive_monitor/config.ini"
+        log_message "INFO" "Removed config file: ${HOME}/hive_monitor/config.ini"
+    fi
+    
+    if [[ -f "${HOME}/hive_monitor/.env" ]]; then
+        rm -f "${HOME}/hive_monitor/.env"
+        echo "  Removed: ${HOME}/hive_monitor/.env"
+        log_message "INFO" "Removed config file: ${HOME}/hive_monitor/.env"
+    fi
+    
+    echo ""
+    echo "Creating fresh configuration files with default values..."
+    echo ""
+    
+    # Recreate config directory
+    mkdir -p "$CONFIG_DIR"
+    
+    # ==========================================================================
+    # 1. API Endpoints - Default Values
+    # ==========================================================================
+    local api_file="${CONFIG_DIR}/api_endpoints.conf"
+    set_config_value "$api_file" "LOCAL_API_URL" "http://localhost:8080/api"
+    set_config_value "$api_file" "REMOTE_API_URL" "https://hive-monitor.example.com/api"
+    set_config_value "$api_file" "MQTT_BROKER" "localhost"
+    set_config_value "$api_file" "MQTT_PORT" "1883"
+    echo -e "  ${GREEN}✓${NC} API endpoints reset to defaults"
+    
+    # ==========================================================================
+    # 2. Database Settings - Default Values
+    # ==========================================================================
+    local db_file="${CONFIG_DIR}/database.conf"
+    set_config_value "$db_file" "DB_TYPE" "sqlite"
+    set_config_value "$db_file" "DB_HOST" "localhost"
+    set_config_value "$db_file" "DB_PORT" "5432"
+    set_config_value "$db_file" "DB_NAME" "hive_monitor"
+    set_config_value "$db_file" "DB_USER" "hiveuser"
+    set_config_value "$db_file" "DB_PASSWORD" ""
+    set_config_value "$db_file" "DB_PATH" "${CONFIG_DIR}/data/hive_monitor.db"
+    echo -e "  ${GREEN}✓${NC} Database settings reset to defaults"
+    
+    # ==========================================================================
+    # 3. Update Intervals - Default Values (in seconds)
+    # ==========================================================================
+    local interval_file="${CONFIG_DIR}/intervals.conf"
+    set_config_value "$interval_file" "SENSOR_INTERVAL" "30"
+    set_config_value "$interval_file" "DISPLAY_INTERVAL" "5"
+    set_config_value "$interval_file" "LOG_INTERVAL" "300"
+    set_config_value "$interval_file" "SYNC_INTERVAL" "3600"
+    set_config_value "$interval_file" "BACKUP_INTERVAL" "86400"
+    echo -e "  ${GREEN}✓${NC} Update intervals reset to defaults"
+    
+    # ==========================================================================
+    # 4. Notifications - Default Values
+    # ==========================================================================
+    local notify_file="${CONFIG_DIR}/notifications.conf"
+    set_config_value "$notify_file" "EMAIL_ENABLED" "false"
+    set_config_value "$notify_file" "EMAIL_ADDRESS" ""
+    set_config_value "$notify_file" "SMTP_SERVER" "smtp.gmail.com"
+    set_config_value "$notify_file" "SMTP_PORT" "587"
+    set_config_value "$notify_file" "SMTP_USER" ""
+    set_config_value "$notify_file" "SMTP_PASSWORD" ""
+    set_config_value "$notify_file" "PUSH_ENABLED" "false"
+    set_config_value "$notify_file" "TEMP_THRESHOLD_HIGH" "40"
+    set_config_value "$notify_file" "TEMP_THRESHOLD_LOW" "10"
+    set_config_value "$notify_file" "HUMIDITY_THRESHOLD" "80"
+    set_config_value "$notify_file" "ALERT_WEIGHT_CRITICAL" "5"
+    echo -e "  ${GREEN}✓${NC} Notification settings reset to defaults"
+    
+    # ==========================================================================
+    # 5. Data Retention - Default Values (in days)
+    # ==========================================================================
+    local retention_file="${CONFIG_DIR}/retention.conf"
+    set_config_value "$retention_file" "RAW_DATA_RETENTION" "30"
+    set_config_value "$retention_file" "HOURLY_AVG_RETENTION" "365"
+    set_config_value "$retention_file" "DAILY_AVG_RETENTION" "730"
+    set_config_value "$retention_file" "MONTHLY_AVG_RETENTION" "3650"
+    set_config_value "$retention_file" "AUTO_PURGE_ENABLED" "true"
+    echo -e "  ${GREEN}✓${NC} Data retention policy reset to defaults"
+    
+    # ==========================================================================
+    # 6. Network Settings - Default Values
+    # ==========================================================================
+    local network_file="${CONFIG_DIR}/network.conf"
+    set_config_value "$network_file" "WIFI_SSID" ""
+    set_config_value "$network_file" "WIFI_PASSWORD" ""
+    set_config_value "$network_file" "STATIC_IP" ""
+    set_config_value "$network_file" "STATIC_NETMASK" "255.255.255.0"
+    set_config_value "$network_file" "STATIC_GATEWAY" ""
+    set_config_value "$network_file" "DNS_PRIMARY" "8.8.8.8"
+    set_config_value "$network_file" "DNS_SECONDARY" "8.8.4.4"
+    set_config_value "$network_file" "TIMEZONE" "Europe/Warsaw"
+    set_config_value "$network_file" "NTP_SERVER" "pool.ntp.org"
+    echo -e "  ${GREEN}✓${NC} Network settings reset to defaults"
+    
+    # ==========================================================================
+    # 7. User Preferences - Default Values
+    # ==========================================================================
+    local prefs_file="${CONFIG_DIR}/user_prefs.conf"
+    set_config_value "$prefs_file" "LANGUAGE" "en"
+    set_config_value "$prefs_file" "THEME" "dark"
+    set_config_value "$prefs_file" "REFRESH_RATE" "5"
+    set_config_value "$prefs_file" "DATE_FORMAT" "YYYY-MM-DD"
+    set_config_value "$prefs_file" "TIME_FORMAT" "24h"
+    set_config_value "$prefs_file" "TEMP_UNIT" "C"
+    set_config_value "$prefs_file" "WEIGHT_UNIT" "kg"
+    set_config_value "$prefs_file" "SHOW_GRAPHS" "true"
+    set_config_value "$prefs_file" "SHOW_ALERTS" "true"
+    echo -e "  ${GREEN}✓${NC} User preferences reset to defaults"
+    
+    # ==========================================================================
+    # 8. Advanced Options - Default Values
+    # ==========================================================================
+    local advanced_file="${CONFIG_DIR}/advanced.conf"
+    set_config_value "$advanced_file" "DEBUG_MODE" "false"
+    set_config_value "$advanced_file" "VERBOSE_LOGGING" "false"
+    set_config_value "$advanced_file" "MAX_LOG_SIZE" "10"
+    set_config_value "$advanced_file" "LOG_ROTATION_COUNT" "5"
+    set_config_value "$advanced_file" "WATCHDOG_ENABLED" "true"
+    set_config_value "$advanced_file" "WATCHDOG_TIMEOUT" "30"
+    set_config_value "$advanced_file" "SAFE_MODE" "false"
+    echo -e "  ${GREEN}✓${NC} Advanced options reset to defaults"
+    
+    # ==========================================================================
+    # 9. Main Config.ini - Default Values
+    # ==========================================================================
+    local main_config="${CONFIG_DIR}/config.ini"
+    cat > "$main_config" << 'EOF'
+# Hive Monitor Main Configuration
+# Reset to factory defaults
+
+[general]
+app_name = Hive Monitor
+version = 1.0.0
+environment = production
+
+[sensors]
+auto_detect = true
+polling_enabled = true
+
+[logging]
+level = INFO
+path = /var/log/hive_monitor/
+
+[security]
+api_key_required = false
+session_timeout = 3600
+EOF
+    echo -e "  ${GREEN}✓${NC} Main config.ini reset to defaults"
+    
+    # ==========================================================================
+    # 10. Settings.json - Default Values
+    # ==========================================================================
+    local settings_json="${CONFIG_DIR}/settings.json"
+    cat > "$settings_json" << 'EOF'
+{
+    "version": "1.0.0",
+    "first_run": true,
+    "wizard_completed": false,
+    "features": {
+        "graphs_enabled": true,
+        "export_enabled": true,
+        "alerts_enabled": true
+    },
+    "ui": {
+        "sidebar_collapsed": false,
+        "dashboard_layout": "default"
+    }
+}
+EOF
+    echo -e "  ${GREEN}✓${NC} Settings.json reset to defaults"
+    
+    # Also reset hive_monitor directory configs if they exist
+    if [[ -d "${HOME}/hive_monitor" ]]; then
+        mkdir -p "${HOME}/hive_monitor"
+        
+        # Create default .env file
+        cat > "${HOME}/hive_monitor/.env" << 'EOF'
+# Hive Monitor Environment Variables
+# Reset to factory defaults
+
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=http://localhost:8080
+
+DB_CONNECTION=sqlite
+DB_DATABASE=${HOME}/.hive_monitor/data/hive_monitor.db
+
+API_KEY=
+SECRET_KEY=
+EOF
+        echo -e "  ${GREEN}✓${NC} Hive Monitor .env reset to defaults"
+    fi
+    
+    echo ""
+    echo "=================================================="
+    echo -e "${GREEN}  Reset completed successfully!${NC}"
+    echo "=================================================="
+    echo ""
+    echo "All configuration files have been reset to factory defaults."
+    echo ""
+    echo "Default values applied:"
+    echo "  • API: localhost:8080, MQTT on port 1883"
+    echo "  • Database: SQLite in ${CONFIG_DIR}/data/"
+    echo "  • Sensor interval: 30 seconds"
+    echo "  • Data retention: 30 days (raw), 365 days (hourly avg)"
+    echo "  • Timezone: Europe/Warsaw"
+    echo "  • Language: English"
+    echo "  • Debug mode: Disabled"
+    echo "  • Watchdog: Enabled (30s timeout)"
+    echo ""
+    echo -e "${YELLOW}Note: You may need to restart the application for changes to take effect.${NC}"
+    echo ""
+    
+    log_message "INFO" "Reset to defaults completed successfully"
     
     wait_for_key
 }
