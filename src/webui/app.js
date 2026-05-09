@@ -24,7 +24,28 @@ const CONFIG = {
         sensors: '/api/sensors',
         effectors: '/api/effectors',
         history: '/api/history',
-        logs: '/api/logs'
+        logs: '/api/logs',
+        config: '/api/config'
+    },
+    // Domyślne ustawienia (nadpisane przez loadConfig())
+    settings: {
+        refreshInterval: 10,
+        alertThreshold: 35,
+        language: 'pl',
+        temperatureUnit: 'C',
+        humidityUnit: '%',
+        weightUnit: 'kg',
+        dateFormat: 'DD.MM.YYYY',
+        timeFormat: '24h',
+        theme: 'light',
+        showCharts: true,
+        enableNotifications: true,
+        emailNotifications: false,
+        pushNotifications: false,
+        tempMinAlert: 10,
+        tempMaxAlert: 35,
+        humidityMinAlert: 40,
+        humidityMaxAlert: 70
     }
 };
 
@@ -49,12 +70,63 @@ let historyChart = null;
 // INICJALIZACJA
 // ============================================================================
 document.addEventListener('DOMContentLoaded', function() {
+    loadConfigFromBackend(); // Najpierw załaduj konfigurację
     initTabs();
     initSettings();
     loadDemoData(); // Demo dane na początek
     startAutoRefresh();
     checkCollectorConnection();
 });
+
+// ============================================================================
+// ŁADOWANIE KONFIGURACJI Z BACKENDU
+// ============================================================================
+async function loadConfigFromBackend() {
+    try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.config) {
+                // Scal konfigurację z backendu z domyślnymi ustawieniami
+                if (data.config.preferences) {
+                    const prefs = data.config.preferences;
+                    CONFIG.settings.language = prefs.language || CONFIG.settings.language;
+                    CONFIG.settings.temperatureUnit = prefs.temperature_unit || CONFIG.settings.temperatureUnit;
+                    CONFIG.settings.humidityUnit = prefs.humidity_unit || CONFIG.settings.humidityUnit;
+                    CONFIG.settings.weightUnit = prefs.weight_unit || CONFIG.settings.weightUnit;
+                    CONFIG.settings.dateFormat = prefs.date_format || CONFIG.settings.dateFormat;
+                    CONFIG.settings.timeFormat = prefs.time_format || CONFIG.settings.timeFormat;
+                    CONFIG.settings.theme = prefs.theme || CONFIG.settings.theme;
+                    CONFIG.settings.showCharts = prefs.show_charts !== undefined ? prefs.show_charts : CONFIG.settings.showCharts;
+                }
+                
+                if (data.config.notifications) {
+                    const notif = data.config.notifications;
+                    CONFIG.settings.enableNotifications = notif.enable_notifications !== undefined ? notif.enable_notifications : CONFIG.settings.enableNotifications;
+                    CONFIG.settings.emailNotifications = notif.email_notifications !== undefined ? notif.email_notifications : CONFIG.settings.emailNotifications;
+                    CONFIG.settings.pushNotifications = notif.push_notifications !== undefined ? notif.push_notifications : CONFIG.settings.pushNotifications;
+                    CONFIG.settings.tempMinAlert = notif.temp_min_alert || CONFIG.settings.tempMinAlert;
+                    CONFIG.settings.tempMaxAlert = notif.temp_max_alert || CONFIG.settings.tempMaxAlert;
+                    CONFIG.settings.humidityMinAlert = notif.humidity_min_alert || CONFIG.settings.humidityMinAlert;
+                    CONFIG.settings.humidityMaxAlert = notif.humidity_max_alert || CONFIG.settings.humidityMaxAlert;
+                }
+                
+                if (data.config.intervals) {
+                    const intv = data.config.intervals;
+                    CONFIG.settings.refreshInterval = intv.sensor_update_interval || CONFIG.settings.refreshInterval;
+                }
+                
+                console.log('✅ Konfiguracja załadowana z backendu:', data.config);
+            }
+        }
+    } catch (error) {
+        console.log('⚠️ Nie udało się załadować konfiguracji z backendu, używam domyślnych:', error.message);
+    }
+}
 
 // ============================================================================
 // ZARZĄDZANIE ZAKŁADKAMI
@@ -486,18 +558,73 @@ function clearLogs() {
 // ============================================================================
 function initSettings() {
     const form = document.getElementById('settingsForm');
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            CONFIG.settings.refreshInterval = parseInt(document.getElementById('refreshInterval').value);
+            CONFIG.settings.alertThreshold = parseFloat(document.getElementById('alertThreshold').value);
+            
+            // Zapisz konfigurację do backendu
+            saveConfigToBackend();
+            
+            // Zrestartuj auto-refresh z nowym interwałem
+            stopAutoRefresh();
+            startAutoRefresh();
+            
+            alert('✅ Ustawienia zapisane!');
+        });
+    }
+}
+
+// ============================================================================
+// ZAPIS KONFIGURACJI DO BACKENDU
+// ============================================================================
+async function saveConfigToBackend() {
+    try {
+        const configData = {
+            preferences: {
+                language: CONFIG.settings.language,
+                temperature_unit: CONFIG.settings.temperatureUnit,
+                humidity_unit: CONFIG.settings.humidityUnit,
+                weight_unit: CONFIG.settings.weightUnit,
+                date_format: CONFIG.settings.dateFormat,
+                time_format: CONFIG.settings.timeFormat,
+                theme: CONFIG.settings.theme,
+                show_charts: CONFIG.settings.showCharts
+            },
+            notifications: {
+                enable_notifications: CONFIG.settings.enableNotifications,
+                email_notifications: CONFIG.settings.emailNotifications,
+                push_notifications: CONFIG.settings.pushNotifications,
+                temp_min_alert: CONFIG.settings.tempMinAlert,
+                temp_max_alert: CONFIG.settings.tempMaxAlert,
+                humidity_min_alert: CONFIG.settings.humidityMinAlert,
+                humidity_max_alert: CONFIG.settings.humidityMaxAlert
+            },
+            intervals: {
+                sensor_update_interval: CONFIG.settings.refreshInterval,
+                screen_update_interval: 5,
+                log_refresh_interval: 10,
+                data_sync_interval: 300,
+                backup_interval: 86400
+            }
+        };
         
-        CONFIG.settings.refreshInterval = parseInt(document.getElementById('refreshInterval').value);
-        CONFIG.settings.alertThreshold = parseFloat(document.getElementById('alertThreshold').value);
+        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: configData })
+        });
         
-        // Zrestartuj auto-refresh z nowym interwałem
-        stopAutoRefresh();
-        startAutoRefresh();
-        
-        alert('✅ Ustawienia zapisane!');
-    });
+        if (response.ok) {
+            console.log('✅ Konfiguracja zapisana do backendu');
+        } else {
+            console.error('❌ Błąd zapisu konfiguracji');
+        }
+    } catch (error) {
+        console.error('⚠️ Nie udało się zapisać konfiguracji:', error.message);
+    }
 }
 
 // ============================================================================

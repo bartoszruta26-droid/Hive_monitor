@@ -13,33 +13,35 @@
 .vscode/
 .idea/
 
-# Dependencies
-.venv/
-venv/
-node_modules/
+# OS generated files
+.DS_Store
+Thumbs.db
 
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.o
-*.obj
+# Build artifacts
+dist/
+build/
+target/
+*.out
 *.exe
 *.dll
 *.so
 *.a
-*.out
-dist/
-build/
-target/
+*.o
+*.obj
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
 .mypy_cache/
 .pytest_cache/
+.coverage
 coverage/
 htmlcov/
-.coverage
-
-# System files
-.DS_Store
-Thumbs.db
+.gradle/
+julia-*/
+zig*/
 
 # Compressed files
 *.zip
