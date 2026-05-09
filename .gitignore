@@ -1,3 +1,14 @@
-(doc/habibi/spis_tresci.md is a markdown documentation file, which is source content that should not be ignored)
+```
+# Compiled and binary files
+*.o
+*.obj
 
-(empty - output nothing)
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment files
+.env
+.env.local
+*.env.*
+```

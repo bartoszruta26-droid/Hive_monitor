@@ -44,6 +44,7 @@ declare -A LANG_EN=(
     [PRESS_KEY]="Press any key to continue..."
     [INVALID]="Invalid option"
     [WELCOME]="Welcome to Hive Monitor Setup"
+    [COMPILE_CPP]="Compile C++ Components"
 )
 
 declare -A LANG_PL=(
@@ -62,6 +63,7 @@ declare -A LANG_PL=(
     [PRESS_KEY]="Naciśnij dowolny klawisz, aby kontynuować..."
     [INVALID]="Nieprawidłowa opcja"
     [WELCOME]="Witaj w konfiguracji Hive Monitor"
+    [COMPILE_CPP]="Kompiluj komponenty C++"
 )
 
 # Current language dictionary - properly copy associative array
@@ -255,6 +257,62 @@ option_install_software() {
                 fi
                 echo -e "${GREEN}Update completed!${NC}"
                 log_message "INFO" "Software updated from GitHub"
+                
+                # Recompile C++ components after update if source exists
+                if [[ -f "$INSTALL_DIR/src/rpi_tui/Makefile" ]]; then
+                    echo ""
+                    echo "C++ source files detected. Would you like to recompile after update?"
+                    read -p "Recompile C++ components? (y/N): " recompile_choice
+                    if [[ $recompile_choice =~ ^[Yy]$ ]]; then
+                        echo ""
+                        echo "Checking for required build tools..."
+                        if ! command -v make &> /dev/null; then
+                            echo -e "${RED}Error: 'make' is not installed.${NC}"
+                            echo "Please run 'Install Dependencies' first."
+                            log_message "ERROR" "make not found during recompilation"
+                        elif ! command -v g++ &> /dev/null; then
+                            echo -e "${RED}Error: 'g++' is not installed.${NC}"
+                            echo "Please run 'Install Dependencies' first."
+                            log_message "ERROR" "g++ not found during recompilation"
+                        else
+                            echo "Build tools found. Recompiling..."
+                            cd "$INSTALL_DIR/src/rpi_tui"
+                            
+                            echo "Cleaning previous builds..."
+                            make clean 2>/dev/null || true
+                            
+                            echo "Compiling C++ components..."
+                            if make all; then
+                                echo ""
+                                echo -e "${GREEN}Recompilation completed successfully!${NC}"
+                                echo "Compiled binaries:"
+                                ls -lh apiary_collector apiary_logger_test 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
+                                
+                                echo ""
+                                echo "Would you like to reinstall the compiled binaries to system paths?"
+                                read -p "Reinstall to system? (y/N): " reinstall_system
+                                if [[ $reinstall_system =~ ^[Yy]$ ]]; then
+                                    if [[ $EUID -eq 0 ]]; then
+                                        make install
+                                    else
+                                        sudo make install
+                                    fi
+                                    if [[ $? -eq 0 ]]; then
+                                        echo -e "${GREEN}Binaries reinstalled successfully!${NC}"
+                                        log_message "INFO" "C++ binaries reinstalled to system paths after update"
+                                    else
+                                        echo -e "${RED}Failed to reinstall binaries${NC}"
+                                        log_message "ERROR" "Failed to reinstall C++ binaries"
+                                    fi
+                                fi
+                            else
+                                echo -e "${RED}Recompilation failed. Check error messages above.${NC}"
+                                log_message "ERROR" "C++ recompilation failed after update"
+                            fi
+                            cd - > /dev/null
+                        fi
+                    fi
+                fi
                 ;;
             2)
                 echo "Removing existing installation..."
@@ -312,6 +370,78 @@ option_install_software() {
                 echo -e "${YELLOW}Warning: Some Python dependencies may have failed to install${NC}"
                 log_message "WARN" "Some Python dependencies failed to install"
             }
+        fi
+        
+        # Compile C++ components if Makefile exists
+        if [[ -f "$INSTALL_DIR/src/rpi_tui/Makefile" ]]; then
+            echo ""
+            echo "C++ source files detected. Would you like to compile the collector and logger?"
+            read -p "Compile C++ components? (y/N): " compile_choice
+            if [[ $compile_choice =~ ^[Yy]$ ]]; then
+                echo ""
+                echo "Checking for required build tools..."
+                if ! command -v make &> /dev/null; then
+                    echo -e "${RED}Error: 'make' is not installed.${NC}"
+                    echo "Please run 'Install Dependencies' first to install build-essential."
+                    log_message "ERROR" "make not found during C++ compilation"
+                elif ! command -v g++ &> /dev/null; then
+                    echo -e "${RED}Error: 'g++' is not installed.${NC}"
+                    echo "Please run 'Install Dependencies' first to install build-essential."
+                    log_message "ERROR" "g++ not found during C++ compilation"
+                else
+                    echo "Build tools found. Compiling..."
+                    cd "$INSTALL_DIR/src/rpi_tui"
+                    
+                    # Clean previous builds
+                    echo "Cleaning previous builds..."
+                    make clean 2>/dev/null || true
+                    
+                    # Build all components
+                    echo "Compiling C++ components (this may take a few minutes)..."
+                    if make all; then
+                        echo ""
+                        echo -e "${GREEN}C++ components compiled successfully!${NC}"
+                        echo "Compiled binaries:"
+                        ls -lh apiary_collector apiary_logger_test 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}'
+                        
+                        # Optional: Install to system
+                        echo ""
+                        echo "Would you like to install the compiled binaries to system paths?"
+                        echo "(This requires sudo and will copy binaries to /usr/local/bin)"
+                        read -p "Install to system? (y/N): " install_system
+                        if [[ $install_system =~ ^[Yy]$ ]]; then
+                            if [[ $EUID -eq 0 ]]; then
+                                make install
+                            else
+                                sudo make install
+                            fi
+                            if [[ $? -eq 0 ]]; then
+                                echo -e "${GREEN}Binaries installed successfully!${NC}"
+                                echo "You can now run:"
+                                echo "  apiary-collector  - Main data collector"
+                                echo "  apiary-logger     - Logger test utility"
+                                echo "  apiary-tui        - TUI interface"
+                                log_message "INFO" "C++ binaries installed to system paths"
+                            else
+                                echo -e "${RED}Failed to install binaries${NC}"
+                                log_message "ERROR" "Failed to install C++ binaries"
+                            fi
+                        else
+                            echo "Binaries available in: $INSTALL_DIR/src/rpi_tui/"
+                            echo "To run manually:"
+                            echo "  cd $INSTALL_DIR/src/rpi_tui && ./apiary_collector"
+                        fi
+                    else
+                        echo -e "${RED}Compilation failed. Check error messages above.${NC}"
+                        log_message "ERROR" "C++ compilation failed"
+                    fi
+                    cd - > /dev/null
+                fi
+            else
+                echo "Skipping C++ compilation. You can compile later by running:"
+                echo "  cd $INSTALL_DIR/src/rpi_tui && make all"
+                log_message "INFO" "User skipped C++ compilation"
+            fi
         fi
         
         log_message "INFO" "Software installation from GitHub completed"
