@@ -19,19 +19,20 @@ venv/
 __pycache__/
 .mypy_cache/
 .pytest_cache/
-
-# Build artifacts
 dist/
 build/
 target/
+.gradle/
+
+# Compiled files
 *.pyc
-*.o
-*.obj
 *.class
+*.o
 *.exe
 *.dll
 *.so
 *.a
+*.obj
 *.out
 
 # OS files
