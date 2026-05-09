@@ -1,12 +1,12 @@
-```markdown
-# Documentation build outputs
+# Documentation builds and outputs
 doc/_build/
 doc/build/
+doc/api/
+doc/reference/
+doc/source/generated/
 doc/habibi/*.pdf
-doc/habibi/*.epub
 doc/habibi/*.html
-
-# Temporary documentation files
-doc/habibi/*.tmp
-doc/habibi/*.log
-```
+doc/habibi/*.epub
+doc/habibi/*.tex
+doc/habibi/_static/
+doc/habibi/_templates/
