@@ -1948,21 +1948,615 @@ EOF
     log_message "INFO" "Live microcontroller data session ended"
 }
 
+# ============================================================================
+# HISTORICAL DATA BROWSER FUNCTIONS
+# ============================================================================
+
+# Get database path from configuration
+get_database_path() {
+    local config_file="${CONFIG_DIR}/database.conf"
+    local db_path
+    db_path=$(get_config_value "$config_file" "DB_PATH" "${CONFIG_DIR}/data/hive_monitor.db")
+    echo "$db_path"
+}
+
+# Get CSV directory from configuration
+get_csv_directory() {
+    local csv_dir="${CONFIG_DIR}/data/csv"
+    mkdir -p "$csv_dir"
+    echo "$csv_dir"
+}
+
+# Check if database exists and has data
+check_database_exists() {
+    local db_path="$1"
+    if [[ -f "$db_path" ]]; then
+        # Check if sqlite3 is available
+        if command -v sqlite3 &> /dev/null; then
+            local count
+            count=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM hive_data;" 2>/dev/null || echo "0")
+            if [[ "$count" -gt 0 ]]; then
+                return 0
+            fi
+        fi
+    fi
+    return 1
+}
+
+# Check for CSV files
+check_csv_files() {
+    local csv_dir="$1"
+    if [[ -d "$csv_dir" ]] && [[ -n "$(ls -A "$csv_dir"/*.csv 2>/dev/null)" ]]; then
+        return 0
+    fi
+    # Also check collector data file
+    if [[ -f "/tmp/apiary_data.csv" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Display data from SQLite database by date range
+view_data_by_date_sqlite() {
+    local db_path="$1"
+    
+    echo ""
+    echo "Enter date range (YYYY-MM-DD format):"
+    read -p "Start date [default: 7 days ago]: " start_date
+    read -p "End date [default: today]: " end_date
+    
+    # Set defaults
+    if [[ -z "$start_date" ]]; then
+        start_date=$(date -d "7 days ago" '+%Y-%m-%d' 2>/dev/null || date -v-7d '+%Y-%m-%d' 2>/dev/null || echo "")
+        if [[ -z "$start_date" ]]; then
+            start_date="2024-01-01"
+        fi
+    fi
+    if [[ -z "$end_date" ]]; then
+        end_date=$(date '+%Y-%m-%d')
+    fi
+    
+    echo ""
+    echo "Fetching data from $start_date to $end_date..."
+    echo ""
+    
+    # Query database with formatted output
+    sqlite3 -header -column "$db_path" <<EOF
+SELECT 
+    datetime(timestamp, 'localtime') as Time,
+    temperature,
+    humidity,
+    pressure,
+    light_intensity,
+    sound_level,
+    air_quality,
+    battery_voltage
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+ORDER BY timestamp DESC
+LIMIT 100;
+EOF
+    
+    echo ""
+    echo "Showing up to 100 most recent records in range."
+}
+
+# Display data from CSV files
+view_data_from_csv() {
+    local csv_dir="$1"
+    
+    echo ""
+    echo "Available CSV files:"
+    echo "--------------------"
+    
+    local csv_files=()
+    while IFS= read -r -d '' file; do
+        csv_files+=("$file")
+    done < <(find "$csv_dir" -name "*.csv" -type f -print0 2>/dev/null)
+    
+    # Also include collector data file if exists
+    if [[ -f "/tmp/apiary_data.csv" ]]; then
+        csv_files+=("/tmp/apiary_data.csv")
+    fi
+    
+    if [[ ${#csv_files[@]} -eq 0 ]]; then
+        echo "No CSV files found."
+        return 1
+    fi
+    
+    # List files with numbers
+    for i in "${!csv_files[@]}"; do
+        echo "$((i+1))) ${csv_files[$i]}"
+    done
+    echo "0) Back"
+    echo ""
+    
+    read -p "Select file to view (0-${#csv_files[@]}): " file_choice
+    
+    if [[ "$file_choice" -eq 0 ]]; then
+        return 0
+    fi
+    
+    if [[ "$file_choice" -ge 1 && "$file_choice" -le "${#csv_files[@]}" ]]; then
+        local selected_file="${csv_files[$((file_choice-1))]}"
+        echo ""
+        echo "Contents of: $selected_file"
+        echo "----------------------------------------"
+        
+        # Show first 50 lines
+        head -n 50 "$selected_file"
+        
+        local line_count
+        line_count=$(wc -l < "$selected_file")
+        if [[ "$line_count" -gt 50 ]]; then
+            echo ""
+            echo "... (showing first 50 of $line_count lines)"
+        fi
+    else
+        echo "Invalid selection."
+    fi
+}
+
+# Search for specific metrics
+search_metrics() {
+    local db_path="$1"
+    
+    echo ""
+    echo "Search Metrics"
+    echo "=============="
+    echo "Available metrics:"
+    echo "1) Temperature"
+    echo "2) Humidity"
+    echo "3) Pressure"
+    echo "4) Light Intensity"
+    echo "5) Sound Level"
+    echo "6) Air Quality"
+    echo "7) Battery Voltage"
+    echo "0) Back"
+    echo ""
+    
+    read -p "Select metric to search (0-7): " metric_choice
+    
+    local column_name=""
+    local unit=""
+    case $metric_choice in
+        1) column_name="temperature"; unit="°C" ;;
+        2) column_name="humidity"; unit="%" ;;
+        3) column_name="pressure"; unit="hPa" ;;
+        4) column_name="light_intensity"; unit="lux" ;;
+        5) column_name="sound_level"; unit="dB" ;;
+        6) column_name="air_quality"; unit="AQI" ;;
+        7) column_name="battery_voltage"; unit="V" ;;
+        0) return 0 ;;
+        *) echo "Invalid choice"; return 1 ;;
+    esac
+    
+    echo ""
+    read -p "Enter minimum value [$unit]: " min_val
+    read -p "Enter maximum value [$unit]: " max_val
+    
+    if [[ -z "$min_val" ]]; then
+        min_val="0"
+    fi
+    if [[ -z "$max_val" ]]; then
+        max_val="9999"
+    fi
+    
+    echo ""
+    echo "Searching for $column_name between $min_val and $max_val $unit..."
+    echo ""
+    
+    sqlite3 -header -column "$db_path" <<EOF
+SELECT 
+    datetime(timestamp, 'localtime') as Time,
+    $column_name as Value
+FROM hive_data 
+WHERE $column_name BETWEEN $min_val AND $max_val
+ORDER BY timestamp DESC
+LIMIT 50;
+EOF
+    
+    echo ""
+    echo "Showing up to 50 matching records."
+}
+
+# Export data to CSV or JSON
+export_data() {
+    local db_path="$1"
+    local export_dir="${CONFIG_DIR}/exports"
+    mkdir -p "$export_dir"
+    
+    echo ""
+    echo "Export Options"
+    echo "=============="
+    echo "1) Export to CSV"
+    echo "2) Export to JSON"
+    echo "0) Back"
+    echo ""
+    
+    read -p "Select export format (0-2): " format_choice
+    
+    case $format_choice in
+        1)
+            local filename="hive_export_$(date '+%Y%m%d_%H%M%S').csv"
+            local filepath="${export_dir}/${filename}"
+            
+            echo ""
+            read -p "Enter start date (YYYY-MM-DD) [default: all data]: " start_date
+            read -p "Enter end date (YYYY-MM-DD) [default: today]: " end_date
+            
+            if [[ -z "$end_date" ]]; then
+                end_date=$(date '+%Y-%m-%d')
+            fi
+            
+            sqlite3 -header -csv "$db_path" "
+                SELECT * FROM hive_data 
+                WHERE date(timestamp) BETWEEN '${start_date:-2000-01-01}' AND '$end_date'
+                ORDER BY timestamp;
+            " > "$filepath"
+            
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}Data exported successfully to: $filepath${NC}"
+                echo "File size: $(du -h "$filepath" | cut -f1)"
+            else
+                echo -e "${RED}Export failed${NC}"
+            fi
+            ;;
+        2)
+            local filename="hive_export_$(date '+%Y%m%d_%H%M%S').json"
+            local filepath="${export_dir}/${filename}"
+            
+            echo ""
+            read -p "Enter start date (YYYY-MM-DD) [default: all data]: " start_date
+            read -p "Enter end date (YYYY-MM-DD) [default: today]: " end_date
+            
+            if [[ -z "$end_date" ]]; then
+                end_date=$(date '+%Y-%m-%d')
+            fi
+            
+            # Create JSON manually since sqlite3 doesn't have native JSON output in older versions
+            echo "[" > "$filepath"
+            sqlite3 -separator ',' "$db_path" "
+                SELECT 
+                    json_object(
+                        'timestamp', datetime(timestamp, 'localtime'),
+                        'temperature', temperature,
+                        'humidity', humidity,
+                        'pressure', pressure,
+                        'light_intensity', light_intensity,
+                        'sound_level', sound_level,
+                        'air_quality', air_quality,
+                        'battery_voltage', battery_voltage
+                    )
+                FROM hive_data 
+                WHERE date(timestamp) BETWEEN '${start_date:-2000-01-01}' AND '$end_date'
+                ORDER BY timestamp;
+            " | sed '$ ! s/$/,/' >> "$filepath"
+            echo "]" >> "$filepath"
+            
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}Data exported successfully to: $filepath${NC}"
+                echo "File size: $(du -h "$filepath" | cut -f1)"
+            else
+                echo -e "${RED}Export failed${NC}"
+            fi
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "Invalid choice"
+            return 1
+            ;;
+    esac
+}
+
+# Generate summary report
+generate_report() {
+    local db_path="$1"
+    local report_dir="${CONFIG_DIR}/reports"
+    mkdir -p "$report_dir"
+    
+    echo ""
+    echo "Generate Report"
+    echo "==============="
+    echo "1) Daily Summary"
+    echo "2) Weekly Summary"
+    echo "3) Monthly Summary"
+    echo "4) Custom Range"
+    echo "0) Back"
+    echo ""
+    
+    read -p "Select report type (0-4): " report_type
+    
+    local start_date=""
+    local end_date=""
+    
+    case $report_type in
+        1)
+            start_date=$(date '+%Y-%m-%d')
+            end_date=$(date '+%Y-%m-%d')
+            ;;
+        2)
+            start_date=$(date -d "7 days ago" '+%Y-%m-%d' 2>/dev/null || date -v-7d '+%Y-%m-%d' 2>/dev/null || echo "2024-01-01")
+            end_date=$(date '+%Y-%m-%d')
+            ;;
+        3)
+            start_date=$(date -d "30 days ago" '+%Y-%m-%d' 2>/dev/null || date -v-30d '+%Y-%m-%d' 2>/dev/null || echo "2024-01-01")
+            end_date=$(date '+%Y-%m-%d')
+            ;;
+        4)
+            read -p "Start date (YYYY-MM-DD): " start_date
+            read -p "End date (YYYY-MM-DD): " end_date
+            [[ -z "$end_date" ]] && end_date=$(date '+%Y-%m-%d')
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "Invalid choice"
+            return 1
+            ;;
+    esac
+    
+    local filename="report_$(date '+%Y%m%d_%H%M%S').txt"
+    local filepath="${report_dir}/${filename}"
+    
+    {
+        echo "========================================"
+        echo "     HIVE MONITOR - DATA REPORT"
+        echo "========================================"
+        echo ""
+        echo "Report Period: $start_date to $end_date"
+        echo "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo ""
+        echo "----------------------------------------"
+        echo "SUMMARY STATISTICS"
+        echo "----------------------------------------"
+        
+        sqlite3 "$db_path" <<EOF
+SELECT 
+    'Temperature (°C)' as Metric,
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(temperature), MAX(temperature), AVG(temperature)) as Stats
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+UNION ALL
+SELECT 
+    'Humidity (%)',
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(humidity), MAX(humidity), AVG(humidity))
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+UNION ALL
+SELECT 
+    'Pressure (hPa)',
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(pressure), MAX(pressure), AVG(pressure))
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+UNION ALL
+SELECT 
+    'Light Intensity (lux)',
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(light_intensity), MAX(light_intensity), AVG(light_intensity))
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+UNION ALL
+SELECT 
+    'Sound Level (dB)',
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(sound_level), MAX(sound_level), AVG(sound_level))
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date'
+UNION ALL
+SELECT 
+    'Battery Voltage (V)',
+    printf('Min: %.2f | Max: %.2f | Avg: %.2f', MIN(battery_voltage), MAX(battery_voltage), AVG(battery_voltage))
+FROM hive_data 
+WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date';
+EOF
+        
+        echo ""
+        echo "----------------------------------------"
+        echo "DATA POINTS"
+        echo "----------------------------------------"
+        local count
+        count=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM hive_data WHERE date(timestamp) BETWEEN '$start_date' AND '$end_date';")
+        echo "Total records: $count"
+        echo ""
+        echo "========================================"
+        
+    } > "$filepath"
+    
+    echo -e "${GREEN}Report generated: $filepath${NC}"
+    echo ""
+    cat "$filepath"
+}
+
+# Text-based data visualization (simple ASCII chart)
+visualize_data() {
+    local db_path="$1"
+    
+    echo ""
+    echo "Data Visualization"
+    echo "=================="
+    echo "Select metric to visualize:"
+    echo "1) Temperature"
+    echo "2) Humidity"
+    echo "3) Pressure"
+    echo "0) Back"
+    echo ""
+    
+    read -p "Select metric (0-3): " viz_choice
+    
+    local column_name=""
+    case $viz_choice in
+        1) column_name="temperature" ;;
+        2) column_name="humidity" ;;
+        3) column_name="pressure" ;;
+        0) return 0 ;;
+        *) echo "Invalid choice"; return 1 ;;
+    esac
+    
+    echo ""
+    echo "Last 20 readings of $column_name:"
+    echo ""
+    
+    # Get last 20 values and create simple bar chart
+    local values
+    values=$(sqlite3 "$db_path" "
+        SELECT $column_name 
+        FROM hive_data 
+        ORDER BY timestamp DESC 
+        LIMIT 20;
+    ")
+    
+    if [[ -z "$values" ]]; then
+        echo "No data available."
+        return 1
+    fi
+    
+    # Find min and max for scaling
+    local min_val max_val
+    min_val=$(echo "$values" | sort -n | head -1)
+    max_val=$(echo "$values" | sort -n | tail -1)
+    
+    echo "Range: $min_val - $max_val"
+    echo ""
+    
+    # Simple horizontal bar chart
+    local count=0
+    while IFS= read -r val; do
+        if [[ -n "$val" ]]; then
+            # Calculate bar length using awk for float-safe math (scale to 0-40 characters)
+            local bar_len
+            bar_len=$(awk -v val="$val" -v min="$min_val" -v max="$max_val" 'BEGIN {
+                range = max - min
+                if (range == 0) range = 1
+                bar_len = int((val - min) * 40 / range + 0.5)
+                if (bar_len < 0) bar_len = 0
+                if (bar_len > 40) bar_len = 40
+                print bar_len
+            }')
+            local bar=""
+            for ((i=0; i<bar_len; i++)); do
+                bar+="█"
+            done
+            printf "%3d | %s %.2f\n" "$count" "$bar" "$val"
+            ((count++))
+        fi
+    done <<< "$values"
+    
+    echo ""
+    echo "Each █ represents relative value within range."
+}
+
+# Main historical data browser function
 option_historical_data() {
     print_header "${LANG[MENU_7]}"
+    
+    local db_path
+    db_path=$(get_database_path)
+    local csv_dir
+    csv_dir=$(get_csv_directory)
+    
     echo "Historical Data Browser"
     echo "======================="
-    echo "Data location: ${CONFIG_DIR}/data"
     echo ""
-    echo "1) View by date range"
+    echo "Database: $db_path"
+    echo "CSV Directory: $csv_dir"
+    echo ""
+    
+    # Check data sources
+    local has_db=false
+    local has_csv=false
+    
+    if check_database_exists "$db_path"; then
+        has_db=true
+        echo -e "${GREEN}✓ Database found with data${NC}"
+    else
+        echo -e "${YELLOW}✗ Database not found or empty${NC}"
+    fi
+    
+    if check_csv_files "$csv_dir"; then
+        has_csv=true
+        echo -e "${GREEN}✓ CSV files found${NC}"
+    else
+        echo -e "${YELLOW}✗ No CSV files found${NC}"
+    fi
+    
+    echo ""
+    
+    if ! $has_db && ! $has_csv; then
+        echo -e "${RED}No historical data available.${NC}"
+        echo ""
+        echo "To collect data:"
+        echo "1. Ensure the microcontroller data collector is running"
+        echo "2. Check that sensors are properly connected"
+        echo "3. Verify database configuration in option 5"
+        log_message "WARN" "Historical data browser accessed but no data available"
+        wait_for_key
+        return 0
+    fi
+    
+    echo "Main Menu:"
+    echo "----------"
+    echo "1) View data by date range"
     echo "2) Search specific metrics"
     echo "3) Export data (CSV/JSON)"
     echo "4) Generate reports"
-    echo "5) Data visualization (text-based)"
+    echo "5) Data visualization (text-based charts)"
+    echo "6) View raw CSV files"
     echo "0) Back to main menu"
     echo ""
-    echo "[STUB] Historical data browsing logic will be implemented here."
-    log_message "INFO" "Historical data browser requested"
+    
+    read -p "Select option (0-6): " hist_choice
+    
+    case $hist_choice in
+        1)
+            if $has_db; then
+                view_data_by_date_sqlite "$db_path"
+            else
+                view_data_from_csv "$csv_dir"
+            fi
+            ;;
+        2)
+            if $has_db; then
+                search_metrics "$db_path"
+            else
+                echo -e "${RED}Search requires database. Please configure database first.${NC}"
+            fi
+            ;;
+        3)
+            if $has_db; then
+                export_data "$db_path"
+            else
+                echo -e "${RED}Export requires database. Please configure database first.${NC}"
+            fi
+            ;;
+        4)
+            if $has_db; then
+                generate_report "$db_path"
+            else
+                echo -e "${RED}Reports require database. Please configure database first.${NC}"
+            fi
+            ;;
+        5)
+            if $has_db; then
+                visualize_data "$db_path"
+            else
+                echo -e "${RED}Visualization requires database. Please configure database first.${NC}"
+            fi
+            ;;
+        6)
+            view_data_from_csv "$csv_dir"
+            ;;
+        0)
+            log_message "INFO" "Historical data browser exited"
+            return 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option${NC}"
+            ;;
+    esac
+    
+    log_message "INFO" "Historical data browser operation completed"
     wait_for_key
 }
 
