@@ -39,6 +39,20 @@ HX711Metrics currentHX711Metrics;
 AirQualityMetrics currentAirMetrics;
 RadarMetrics currentRadarMetrics;
 
+// Global sensor data variables (shared across modules)
+float temperature = 0.0f;
+float humidity = 0.0f;
+uint16_t co2_eq = 0;
+uint16_t voc_idx = 0;
+long hx711_value = 0;
+
+// Audio buffers
+int16_t audioBuffer[AUDIO_BUFFER_SIZE];
+float audioFFT[AUDIO_BUFFER_SIZE];
+
+// Weight buffer
+HX711DataPoint hx711Buffer[HX711_BUFFER_SIZE];
+
 // Timing variables
 unsigned long lastMillis = 0;
 

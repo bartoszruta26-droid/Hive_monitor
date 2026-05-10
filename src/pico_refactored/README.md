@@ -1,113 +1,94 @@
 # ApiaryGuard Pico - Refactored Firmware
 
-## Overview
-Refactored version of the ApiaryGuard firmware for Raspberry Pi Pico (RP2040) with modular architecture addressing the critical issues in the original monolithic code.
+## Struktura projektu
 
-## Key Improvements
-
-### 1. Modular Architecture
-- **Main file**: `apiaryguard_pico.ino` (~100 lines) - Entry point only
-- **Config**: `include/config.h` - Pin definitions and constants
-- **Sensors**: `src/sensors.cpp` + `include/sensors.h` - Sensor detection and reading
-- **HX711**: `src/hx711.cpp` + `include/hx711.h` - Weight sensor with robust implementation
-- **Network**: `src/network.cpp` + `include/network.h` - Ethernet W6100 with DHCP fallback
-- **Audio**: `include/audio_analysis.h` - Audio FFT analysis (stub)
-- **Weight**: `include/weight_analysis.h` - Weight trend analysis (stub)
-- **Air Quality**: `include/air_quality.h` - SGP41 processing (stub)
-- **Radar**: `include/radar_analysis.h` - LD2410B processing (stub)
-- **Effectors**: `src/effectors.cpp` + `include/effectors.h` - PWM and relay control
-
-### 2. Fixed Critical Issues
-
-#### HX711 Implementation
-- ✅ Added timeout handling (50ms) to prevent hanging
-- ✅ Proper error logging with rate limiting
-- ✅ Watchdog feed during wait loop
-- ✅ Stable timing with `delayMicroseconds(1)` for RP2040 at 133MHz
-
-#### Memory Management
-- ✅ Reduced structure sizes (simplified from 100+ params to essential ones)
-- ✅ Removed large static buffers where possible
-- ✅ Stack-safe design with smaller local variables
-
-#### Network
-- ✅ DHCP fallback mechanism (tries DHCP first, falls back to static IP)
-- ✅ Proper `Ethernet.maintain()` calls in main loop
-- ✅ Link status checking
-
-#### Sensor Handling
-- ✅ Dynamic sensor detection at startup
-- ✅ Conditional reading (only active sensors)
-- ✅ Error counting and recovery
-- ✅ DHT read retries (3 attempts)
-
-#### Watchdog
-- ✅ Enabled with 8-second timeout
-- ✅ Fed in main loop and long-wait operations
-
-#### Pin Conflicts
-- ✅ Fixed GPIO26/28 conflict (RELAY_CH6 moved to GPIO28)
-
-### 3. Compilation Benefits
-- Original: Single 4700-line file - slow compilation, hard debugging
-- Refactored: Multiple small files - fast incremental compilation, easy debugging
-
-## File Structure
 ```
 pico_refactored/
-├── apiaryguard_pico.ino    # Main entry point
-├── include/
-│   ├── config.h            # Pin definitions, constants
-│   ├── sensors.h           # Sensor management
-│   ├── hx711.h             # Weight sensor
-│   ├── network.h           # Ethernet/W6100
-│   ├── audio_analysis.h    # Audio FFT
-│   ├── weight_analysis.h   # Weight trends
-│   ├── air_quality.h       # SGP41 IAQ
-│   ├── radar_analysis.h    # LD2410B
-│   └── effectors.h         # PWM/relays
-└── src/
-    ├── sensors.cpp         # Sensor implementation
-    ├── hx711.cpp           # HX711 reading
-    ├── network.cpp         # Network stack
-    └── effectors.cpp       # Actuator control
+├── apiaryguard_pico.ino      # Główny plik (116 linii)
+├── include/                   # Nagłówki
+│   ├── config.h              # Konfiguracja pinów i stałe
+│   ├── sensors.h             # Wykrywanie sensorów
+│   ├── hx711.h               # Waga HX711
+│   ├── audio_analysis.h      # Analiza audio
+│   ├── weight_analysis.h     # Analiza wagi
+│   ├── air_quality.h         # Jakość powietrza SGP41
+│   ├── radar_analysis.h      # Radar LD2410B
+│   ├── network.h             # Ethernet W6100
+│   └── effectors.h           # Sterowanie wykonawcami
+└── src/                      # Implementacje
+    ├── sensors.cpp           # 216 linii
+    ├── hx711.cpp             # 65 linii
+    ├── audio_analysis.cpp    # 173 linie
+    ├── weight_analysis.cpp   # 191 linii
+    ├── air_quality.cpp       # 150 linii
+    ├── radar_analysis.cpp    # 212 linii
+    ├── network.cpp           # 140 linii
+    └── effectors.cpp         # 38 linii
 ```
 
-## Usage
+**Łącznie: ~1740 linii** (vs. 4700+ w oryginalnym monolicie)
 
-### Arduino IDE Setup
-1. Install RP2040 board support
-2. Install required libraries:
-   - Ethernet (for W6100)
-   - DHT sensor library
-   - Adafruit SGP41 library
-3. Open `apiaryguard_pico.ino`
-4. Select board: "Raspberry Pi Pico"
-5. Upload
+## Kluczowe poprawki
 
-### Configuration
-Edit `include/config.h` to change:
-- Pin assignments
-- Network settings (IP, gateway)
-- Analysis parameters
+### 1. HX711 - Stabilna implementacja
+- Timeout 50ms przy oczekiwaniu na dane
+- Feed watchdog podczas czekania
+- DelayMicroseconds(1) dla stabilności na 133 MHz
+- Error logging z throttlingiem
 
-## Migration from Original
-The refactored code maintains API compatibility with the original where possible. Global variables are declared as `extern` and shared between modules.
+### 2. Sieć - DHCP Fallback
+```cpp
+#if USE_DHCP_FALLBACK
+    if (Ethernet.begin(macAddress)) {
+        // DHCP成功了
+    } else {
+        // Fallback do statycznego IP
+        Ethernet.begin(macAddress, staticIP, gateway, subnet);
+    }
+#endif
+```
 
-## Remaining Work
-The following modules need full implementation (currently stubs):
-- Full FFT audio analysis
-- Complete weight trend analysis (60+ params reduced to essentials)
-- Air quality IAQ calculation
-- Radar anomaly detection
+### 3. Watchdog Timer
+- Włączony w setup(): `rp2040.wdtEnable(8000)`
+- Resetowany w każdej iteracji loop(): `rp2040.wdtReset()`
+- Timeout: 8 sekund
 
-These can be added incrementally without breaking the core functionality.
+### 4. Wykrywanie sensorów
+- Dynamiczne wykrywanie przy starcie
+- Flagi `detected` i `active` dla każdego sensora
+- Warunkowe czytanie tylko wykrytych sensorów
+- Retry mechanizm dla DHT22 (3 próby)
 
-## Testing
-1. Verify sensor detection in Serial Monitor
-2. Check Ethernet connectivity (DHCP or static)
-3. Test HTTP endpoint at `http://<ip>:8080/`
-4. Verify UDP data transmission to RPi
+### 5. Fix konfliktu pinów
+- GPIO26/28 zmienione na ADC-only
+- RELAY_CH6 przeniesiony z GPIO26 na GPIO28
 
-## License
-Same as original project
+### 6. Zarządzanie pamięcią
+- Zredukowane struktury danych (mniej pól)
+- Bufory o rozsądnych rozmiarach
+- Unika się alokacji dynamicznej
+
+## Kompilacja
+
+Wymagane biblioteki Arduino:
+- Raspberry Pi RP2040 Boards
+- Ethernet (W6100)
+- DHT sensor library
+- Adafruit SGP41 Library
+
+## Użycie
+
+1. Skonfiguruj piny w `include/config.h`
+2. Ustaw adresację sieciową (DHCP lub statyczne)
+3. Skalibruj HX711 (tare i scale)
+4. Wgraj na Pico
+
+## Debugowanie
+
+Odkomentuj definicje w config.h:
+```cpp
+#define DEBUG_AUDIO
+#define DEBUG_WEIGHT
+#define DEBUG_AIR
+#define DEBUG_RADAR
+```
