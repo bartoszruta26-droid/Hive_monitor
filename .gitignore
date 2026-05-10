@@ -1,14 +1,14 @@
 ```
-# Compiled and build artifacts
+# Build artifacts
 *.o
 *.obj
 *.out
-build/
 
 # Dependencies
 .pio/
 .platformio/
 lib/
+
 # Logs and temp files
 *.log
 *.tmp
@@ -22,10 +22,4 @@ lib/
 .vscode/
 .idea/
 *.swp
-*.swo
-
-# Arduino/Pico specific
-*.hex
-*.bin
-*.uf2
 ```

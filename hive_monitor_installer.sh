@@ -156,24 +156,23 @@ option_install_dependencies() {
     
     # Helper function to run commands with proper privilege handling and error checking
     run_cmd() {
-        local cmd="$1"
         if [[ $EUID -eq 0 ]]; then
-            eval "$cmd"
+            eval "$@"
         else
-            sudo "$cmd"
+            sudo "$@"
         fi
     }
     
     # Detect package manager and install dependencies (NO PYTHON - removed python3-pip, python3-serial)
     if command -v apt-get &> /dev/null; then
         echo "Detected Debian/Ubuntu package manager (apt-get)"
-        run_cmd "apt-get update" || {
+        run_cmd apt-get update || {
             echo -e "${RED}Failed to update package lists${NC}"
             log_message "ERROR" "Failed to update apt package lists"
             INSTALL_FAILED=1
             return 1
         }
-        run_cmd "apt-get install -y git curl wget build-essential make g++" || {
+        run_cmd apt-get install -y git curl wget build-essential make g++ || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via apt-get"
             INSTALL_FAILED=1
@@ -181,7 +180,7 @@ option_install_dependencies() {
         }
     elif command -v yum &> /dev/null; then
         echo "Detected RHEL/CentOS package manager (yum)"
-        run_cmd "yum install -y git curl wget gcc gcc-c++ make" || {
+        run_cmd yum install -y git curl wget gcc gcc-c++ make || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via yum"
             INSTALL_FAILED=1
@@ -189,7 +188,7 @@ option_install_dependencies() {
         }
     elif command -v dnf &> /dev/null; then
         echo "Detected Fedora package manager (dnf)"
-        run_cmd "dnf install -y git curl wget gcc gcc-c++ make" || {
+        run_cmd dnf install -y git curl wget gcc gcc-c++ make || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via dnf"
             INSTALL_FAILED=1
@@ -197,7 +196,7 @@ option_install_dependencies() {
         }
     elif command -v pacman &> /dev/null; then
         echo "Detected Arch Linux package manager (pacman)"
-        run_cmd "pacman -Sy --noconfirm git curl wget base-devel" || {
+        run_cmd pacman -Sy --noconfirm git curl wget base-devel || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via pacman"
             INSTALL_FAILED=1

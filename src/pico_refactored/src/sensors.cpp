@@ -8,9 +8,12 @@
 
 extern Adafruit_SGP41 sgp;
 extern HardwareSerial radarSerial;
-
-// Global sensor state instance
-SensorState sensors;
+extern float temperature;
+extern float humidity;
+extern uint16_t co2_eq;
+extern uint16_t voc_idx;
+extern long hx711_value;
+extern SensorState sensors;
 
 void initI2C() {
     Wire.setSDA(I2C_SDA);
@@ -179,8 +182,6 @@ void readSensors(unsigned long now) {
         float t = dht.readTemperature();
         
         if (!isnan(h)) {
-            // Update global humidity variable (defined in main)
-            extern float humidity;
             humidity = h;
             sensors.tempHum.error_count = 0;
         } else {
@@ -188,8 +189,6 @@ void readSensors(unsigned long now) {
         }
         
         if (!isnan(t)) {
-            // Update global temperature variable (defined in main)
-            extern float temperature;
             temperature = t;
         }
     }
@@ -197,7 +196,6 @@ void readSensors(unsigned long now) {
     // Read HX711 weight
     if (sensors.hx711.active) {
         extern long readHX711();
-        extern long hx711_value;
         extern const long hx711_offset;
         extern const float hx711_scale;
         
@@ -208,8 +206,6 @@ void readSensors(unsigned long now) {
     // Read SGP41 air quality
     if (sensors.airQual.active) {
         sgp.measureGas();
-        extern uint16_t co2_eq;
-        extern uint16_t voc_idx;
         co2_eq = sgp.CO2eq;
         voc_idx = sgp.VOCindex;
     }
