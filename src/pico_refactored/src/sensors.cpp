@@ -6,6 +6,7 @@
 #include <Adafruit_SGP41.h>
 #include <HardwareSerial.h>
 
+// External globals (defined in main .ino file)
 extern Adafruit_SGP41 sgp;
 extern HardwareSerial radarSerial;
 extern float temperature;
@@ -13,7 +14,7 @@ extern float humidity;
 extern uint16_t co2_eq;
 extern uint16_t voc_idx;
 extern long hx711_value;
-extern SensorState sensors;
+// Note: sensors is declared extern in sensors.h, no need to redeclare here
 
 void initI2C() {
     Wire.setSDA(I2C_SDA);
@@ -195,10 +196,6 @@ void readSensors(unsigned long now) {
     
     // Read HX711 weight
     if (sensors.hx711.active) {
-        extern long readHX711();
-        extern const long hx711_offset;
-        extern const float hx711_scale;
-        
         long raw = readHX711();
         hx711_value = (raw - hx711_offset) / hx711_scale;
     }

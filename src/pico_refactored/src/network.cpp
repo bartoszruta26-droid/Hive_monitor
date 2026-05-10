@@ -5,12 +5,13 @@
 #include "network.h"
 #include "config.h"
 
-// External global sensor variables (defined in main)
+// External global sensor variables (defined in main .ino file)
 extern float temperature;
 extern float humidity;
 extern uint16_t co2_eq;
 extern uint16_t voc_idx;
 extern long hx711_value;
+extern SensorState sensors;
 
 // MAC address as byte array
 byte macAddress[] = MAC_ADDRESS;

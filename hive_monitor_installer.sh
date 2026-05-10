@@ -157,7 +157,7 @@ option_install_dependencies() {
     # Helper function to run commands with proper privilege handling and error checking
     run_cmd() {
         if [[ $EUID -eq 0 ]]; then
-            eval "$@"
+            "$@"
         else
             sudo "$@"
         fi
