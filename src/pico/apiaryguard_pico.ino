@@ -116,6 +116,7 @@
 #include <DHT.h>
 #include <Adafruit_SGP41.h>
 #include <HardwareSerial.h>
+#include <RP2040Watchdog.h> // Watchdog dla RP2040 - reset przy zawieszeniu
 
 // --- KONFIGURACJA SIECI W6100 ---
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
@@ -1157,20 +1158,33 @@ void sendUdpDataToRpi() {
   Serial.println("[UDP] Wysłano JSON do RPi");
 }
 
-// Obsługa HX711 (Bit-bang dla Pico)
+// Obsługa HX711 (Bit-bang dla Pico z timeoutem)
+// Timeout zapobiega zawieszeniu się w przypadku braku podłączonego sensora
+#define HX711_TIMEOUT_MS 50
+
 long readHX711() {
   long count = 0;
   pinMode(HX711_DT, INPUT);
   pinMode(HX711_SCK, OUTPUT);
   
   digitalWrite(HX711_SCK, LOW);
-  while(digitalRead(HX711_DT)); // Czekaj na gotowość
+  
+  // Czekaj na gotowość z timeoutem (zapobiega zawieszeniu przy braku HX711)
+  unsigned long start_time = millis();
+  while(digitalRead(HX711_DT)) {
+    if (millis() - start_time > HX711_TIMEOUT_MS) {
+      Serial.println("[HX711] Timeout - sensor not detected");
+      return 0; // Zwróć 0 w przypadku błędu
+    }
+  }
   
   for(int i = 0; i < 24; i++) {
     digitalWrite(HX711_SCK, HIGH);
     count = count << 1;
     digitalWrite(HX711_SCK, LOW);
     if(digitalRead(HX711_DT)) count++;
+    // Krótka opóźnienie dla stabilności na wysokich częstotliwościach RP2040
+    delayMicroseconds(1);
   }
   
   // 25 impuls dla następnego odczytu (gain 128)
@@ -3866,6 +3880,11 @@ void setup() {
   
   Serial.println("=== ApiaryGuard Pico v2.0 Start ===");
   
+  // Inicjalizacja Watchdoga (RP2040) - reset przy zawieszeniu
+  // Watchdog timeout: 8000ms (8 sekund) - wystarczająco dla najdłuższych operacji
+  rp2040.wdtEnable(8000);
+  Serial.println(">> Watchdog włączony (timeout: 8s)");
+  
   // Inicjalizacja I2C
   Wire.setSDA(I2C_SDA);
   Wire.setSCL(I2C_SCL);
@@ -3930,9 +3949,16 @@ void setup() {
   
   Serial.println(">> System gotowy.");
 }
+}
 
 void loop() {
   unsigned long now = millis();
+  
+  // Watchdog reset - zapobiega zawieszeniu systemu
+  rp2040.wdtReset();
+  
+  // Ethernet maintain - utrzymuje połączenie DHCP/ARP
+  Ethernet.maintain();
   
   // ================================================================
   // WARUNKOWY ODCZYT SENSORÓW - tylko dla wykrytych modułów

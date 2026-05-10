@@ -3,6 +3,9 @@
 # Hive Monitor Installer & Configurator
 # Shell script with TUI menu system
 
+# Strict mode for better error handling and safety
+set -uo pipefail
+
 # Note: We don't use set -e because we handle errors manually in critical sections
 # This allows proper error handling and user feedback instead of abrupt exits
 
@@ -246,17 +249,25 @@ option_install_software() {
         case $update_choice in
             1)
                 echo "Updating existing installation..."
-                cd "$INSTALL_DIR"
-                if ! git pull origin main 2>/dev/null; then
-                    if ! git pull origin master 2>/dev/null; then
-                        echo -e "${RED}Failed to update repository${NC}"
-                        log_message "ERROR" "Failed to update repository from GitHub"
-                        wait_for_key
-                        return 1
-                    fi
+                cd "$INSTALL_DIR" || { echo -e "${RED}Failed to change directory${NC}"; return 1; }
+                
+                # Check current branch and pull from correct branch
+                current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+                    echo -e "${RED}Failed to determine git branch${NC}"
+                    log_message "ERROR" "Failed to determine git branch"
+                    wait_for_key
+                    return 1
+                }
+                
+                echo "Current branch: $current_branch"
+                if ! git pull origin "$current_branch" 2>&1; then
+                    echo -e "${RED}Failed to update repository from branch '$current_branch'${NC}"
+                    log_message "ERROR" "Failed to update repository from branch '$current_branch'"
+                    wait_for_key
+                    return 1
                 fi
                 echo -e "${GREEN}Update completed!${NC}"
-                log_message "INFO" "Software updated from GitHub"
+                log_message "INFO" "Software updated from GitHub (branch: $current_branch)"
                 
                 # Recompile C++ components after update if source exists
                 if [[ -f "$INSTALL_DIR/src/rpi_tui/Makefile" ]]; then
@@ -276,7 +287,11 @@ option_install_software() {
                             log_message "ERROR" "g++ not found during recompilation"
                         else
                             echo "Build tools found. Recompiling..."
-                            cd "$INSTALL_DIR/src/rpi_tui"
+                            cd "$INSTALL_DIR/src/rpi_tui" || { 
+                                echo -e "${RED}Failed to change to rpi_tui directory${NC}"
+                                log_message "ERROR" "Failed to cd to src/rpi_tui"
+                                return 1
+                            }
                             
                             echo "Cleaning previous builds..."
                             make clean 2>/dev/null || true
@@ -293,21 +308,28 @@ option_install_software() {
                                 read -p "Reinstall to system? (y/N): " reinstall_system
                                 if [[ $reinstall_system =~ ^[Yy]$ ]]; then
                                     if [[ $EUID -eq 0 ]]; then
-                                        make install
+                                        make install || {
+                                            echo -e "${RED}Failed to install binaries (running as root)${NC}"
+                                            log_message "ERROR" "make install failed (root)"
+                                        }
                                     else
-                                        sudo make install
+                                        sudo make install || {
+                                            echo -e "${RED}Failed to install binaries (sudo)${NC}"
+                                            log_message "ERROR" "sudo make install failed"
+                                        }
                                     fi
                                     if [[ $? -eq 0 ]]; then
                                         echo -e "${GREEN}Binaries reinstalled successfully!${NC}"
                                         log_message "INFO" "C++ binaries reinstalled to system paths after update"
                                     else
-                                        echo -e "${RED}Failed to reinstall binaries${NC}"
-                                        log_message "ERROR" "Failed to reinstall C++ binaries"
+                                        echo -e "${YELLOW}Installation had issues but compilation succeeded${NC}"
                                     fi
                                 fi
                             else
                                 echo -e "${RED}Recompilation failed. Check error messages above.${NC}"
                                 log_message "ERROR" "C++ recompilation failed after update"
+                                cd - > /dev/null || true
+                                return 1
                             fi
                             cd - > /dev/null
                         fi
