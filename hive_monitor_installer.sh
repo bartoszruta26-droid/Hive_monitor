@@ -4,10 +4,7 @@
 # Shell script with TUI menu system
 
 # Strict mode for better error handling and safety
-set -uo pipefail
-
-# Note: We don't use set -e because we handle errors manually in critical sections
-# This allows proper error handling and user feedback instead of abrupt exits
+set -euo pipefail
 
 # ============================================================================
 # GLOBAL VARIABLES
@@ -18,6 +15,7 @@ CONFIG_DIR="${HOME}/.hive_monitor"
 BACKUP_DIR="${CONFIG_DIR}/backups"
 LOG_FILE="${CONFIG_DIR}/installer.log"
 CURRENT_LANG="en"
+INSTALL_FAILED=0
 
 # Color codes
 RED='\033[0;31m'
@@ -148,7 +146,7 @@ option_install_dependencies() {
     print_header "${LANG[MENU_2]}"
     
     echo "Installing required system dependencies..."
-    echo "Dependencies: git, curl, wget, python3-pip, python3-serial, etc."
+    echo "Dependencies: git, curl, wget, build-essential, etc."
     echo ""
     
     # Check if running as root or with sudo
@@ -156,65 +154,66 @@ option_install_dependencies() {
         echo -e "${YELLOW}Note: You may be prompted for sudo password${NC}"
     fi
     
-    # Helper function to run commands with proper privilege handling
+    # Helper function to run commands with proper privilege handling and error checking
     run_cmd() {
+        local cmd="$1"
         if [[ $EUID -eq 0 ]]; then
-            eval "$@"
+            eval "$cmd"
         else
-            sudo "$@"
+            sudo "$cmd"
         fi
     }
     
-    # Detect package manager and install dependencies
+    # Detect package manager and install dependencies (NO PYTHON - removed python3-pip, python3-serial)
     if command -v apt-get &> /dev/null; then
         echo "Detected Debian/Ubuntu package manager (apt-get)"
-        run_cmd apt-get update || {
+        run_cmd "apt-get update" || {
             echo -e "${RED}Failed to update package lists${NC}"
             log_message "ERROR" "Failed to update apt package lists"
-            wait_for_key
+            INSTALL_FAILED=1
             return 1
         }
-        run_cmd apt-get install -y git curl wget python3-pip python3-serial python3-dev build-essential || {
+        run_cmd "apt-get install -y git curl wget build-essential make g++" || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via apt-get"
-            wait_for_key
+            INSTALL_FAILED=1
             return 1
         }
     elif command -v yum &> /dev/null; then
         echo "Detected RHEL/CentOS package manager (yum)"
-        run_cmd yum install -y git curl wget python3-pip python3-serial python3-devel gcc make || {
+        run_cmd "yum install -y git curl wget gcc gcc-c++ make" || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via yum"
-            wait_for_key
+            INSTALL_FAILED=1
             return 1
         }
     elif command -v dnf &> /dev/null; then
         echo "Detected Fedora package manager (dnf)"
-        run_cmd dnf install -y git curl wget python3-pip python3-serial python3-devel gcc make || {
+        run_cmd "dnf install -y git curl wget gcc gcc-c++ make" || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via dnf"
-            wait_for_key
+            INSTALL_FAILED=1
             return 1
         }
     elif command -v pacman &> /dev/null; then
         echo "Detected Arch Linux package manager (pacman)"
-        run_cmd pacman -Sy --noconfirm git curl wget python python-pip python-serial base-devel || {
+        run_cmd "pacman -Sy --noconfirm git curl wget base-devel" || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via pacman"
-            wait_for_key
+            INSTALL_FAILED=1
             return 1
         }
     else
         echo -e "${RED}Error: Unsupported package manager. Please install dependencies manually.${NC}"
-        echo "Required packages: git, curl, wget, python3-pip, python3-serial"
+        echo "Required packages: git, curl, wget, build-essential/make/g++"
         log_message "ERROR" "Unsupported package manager"
-        wait_for_key
+        INSTALL_FAILED=1
         return 1
     fi
     
     echo ""
     echo -e "${GREEN}Dependencies installed successfully!${NC}"
-    log_message "INFO" "Dependencies installation completed"
+    log_message "INFO" "Dependencies installation completed (no Python)"
     wait_for_key
 }
 
