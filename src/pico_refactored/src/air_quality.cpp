@@ -131,9 +131,7 @@ void processAirQualityPeriodically(unsigned long now) {
     lastProcess = now;
     
     // Only process if sensor is active
-    extern struct SensorFlags airQual;
-    // Note: We can't directly access sensors.airQual here due to header dependencies
-    // In production, pass sensor state as parameter
+    // Note: sensors.airQual is accessed from global SensorState defined in main .ino
     
     // Read from sensor (already done in readSensors())
     // sgp.measureGas(); // Called in sensors.cpp

@@ -5,6 +5,14 @@
 #include "network.h"
 #include "config.h"
 
+// External global sensor variables (defined in main .ino file)
+extern float temperature;
+extern float humidity;
+extern uint16_t co2_eq;
+extern uint16_t voc_idx;
+extern long hx711_value;
+extern SensorState sensors;
+
 // MAC address as byte array
 byte macAddress[] = MAC_ADDRESS;
 IPAddress staticIP STATIC_IP;
@@ -82,12 +90,6 @@ void handleClients() {
                     client.println();
                     
                     // Send JSON response with sensor data
-                    extern float temperature;
-                    extern float humidity;
-                    extern uint16_t co2_eq;
-                    extern uint16_t voc_idx;
-                    extern long hx711_value;
-                    
                     client.print("{\"temp\":");
                     client.print(temperature);
                     client.print(",\"hum\":");
@@ -123,12 +125,6 @@ void sendUDPData() {
     lastUdpSend = millis();
     
     // Prepare UDP packet
-    extern float temperature;
-    extern float humidity;
-    extern uint16_t co2_eq;
-    extern uint16_t voc_idx;
-    extern long hx711_value;
-    
     String payload = String::format(
         "{\"t\":%.1f,\"h\":%.1f,\"c\":%d,\"v\":%d,\"w\":%ld}",
         temperature, humidity, co2_eq, voc_idx, hx711_value

@@ -1,17 +1,23 @@
 ```
-# Compiled and build artifacts
+# Build artifacts
 *.o
 *.obj
+*.a
+*.so
+*.dll
+*.exe
 *.out
-build/
 
 # Dependencies
 .pio/
 .platformio/
 lib/
+src/pico_refactored/.pio/
+
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
 # Environment
 .env
@@ -24,8 +30,32 @@ lib/
 *.swp
 *.swo
 
-# Arduino/Pico specific
-*.hex
-*.bin
-*.uf2
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Compression files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
