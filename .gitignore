@@ -1,29 +1,26 @@
 ```
-# Compiled and build artifacts
+# Arduino/Pico build artifacts
+*.hex
+*.bin
+*.elf
+*.map
+build/
 *.o
-*.obj
 *.a
-*.so
-*.dll
-*.exe
-*.out
 
 # Dependencies
 .pio/
 .platformio/
 lib/
-src/.pioenvs/
-src/.piolibdeps/
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -31,13 +28,7 @@ src/.piolibdeps/
 *.swp
 *.swo
 
-# Coverage and testing
-.coverage
-coverage/
-htmlcov/
-
-# Build outputs
-build/
-dist/
-target/
+# OS
+.DS_Store
+Thumbs.db
 ```
