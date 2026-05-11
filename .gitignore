@@ -1,24 +1,26 @@
 ```
-# Compiled and build artifacts
+# Build artifacts
 *.o
 *.obj
 *.out
-*.exe
-*.dll
-*.so
-*.a
+build/
+dist/
 
 # Dependencies
-.pio/
-.platformio/
-build/
 .pioenvs/
 .piolibdeps/
+.sconsign.dblite
+.scons_temp/
+.wafpickle-*
+.waf-*
+.cache/
+deps/
 
 # Logs and temp files
 *.log
 *.tmp
 *.swp
+*.swo
 
 # Environment
 .env
@@ -36,14 +38,7 @@ coverage/
 htmlcov/
 .coverage
 
-# MyPy cache
-.mypy_cache/
-
-# Pytest cache
-.pytest_cache/
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
+# OS specific
+.DS_Store
+Thumbs.db
 ```
