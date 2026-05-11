@@ -1,5 +1,5 @@
 /**
- * ApiaryGuard - Arduino Nano Dual Mode (USB + Ethernet)
+ * ApiaryGuard - Arduino Nano Dual Mode (USB + Ethernet ENC28J60)
  * Uniwersalny firmware z automatyczną detekcją trybu połączenia
  * 
  * PRIORYTET: USB > Ethernet
@@ -8,12 +8,12 @@
  * wybranym trybem. Preferuje USB nad Ethernet.
  * 
  * Wymagane biblioteki:
- * - Ethernet by Arduino (wbudowana)
+ * - UIPEthernet by Norbert Truchseß (dla ENC28J60)
  * - DHT sensor library by Adafruit
  * - ArduinoJson by Benoit Blanchon (v6 lub v7)
  * 
  * Połączenia pinów Arduino Nano:
- * Ethernet W5100/W6100 (SPI): D10(CS), D11(MOSI), D12(MISO), D13(SCK)
+ * Ethernet ENC28J60 (SPI): D10(CS), D11(MOSI), D12(MISO), D13(SCK)
  * HX711: DT->A0, SCK->A1
  * DHT22: DATA->D4
  * PWM: HEATER->D5, FAN->D6, PUMP->D9
@@ -23,7 +23,7 @@
  */
 
 #include <SPI.h>
-#include <Ethernet.h>
+#include <UIPEthernet.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
@@ -57,7 +57,7 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 100);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-EthernetServer server(8080);
+UIPEthernetServer server(8080);
 
 // ==================== OBIEKTY ====================
 DHT dht(DHT_PIN, DHT22);
@@ -135,22 +135,23 @@ bool detectUSB() {
 }
 
 /**
- * Inicjalizacja Ethernet
+ * Inicjalizacja Ethernet ENC28J60
  */
 bool initEthernet() {
-  Serial.println("Eth: Inicjalizacja...");
+  Serial.println("Eth: Inicjalizacja ENC28J60...");
   
-  Ethernet.init(ETH_CS_PIN);
+  // UIPEthernet nie wymaga Ethernet.init() - CS jest ustawiany w begin()
   
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Eth: Nie wykryto sprzetu!");
+  int ret = Ethernet.begin(mac, ip, gateway, subnet);
+  delay(1500);
+  
+  if (ret == 0) {
+    Serial.println("Eth: Nie wykryto sprzetu lub brak polaczenia!");
     return false;
   }
   
-  Ethernet.begin(mac, ip, gateway, subnet);
-  delay(1500);
-  
-  if (Ethernet.linkStatus() == LinkOFF) {
+  // Sprawdzenie linku przez odczyt statusu
+  if (Ethernet.linkStatus() == 0) {
     Serial.println("Eth: Brak kabla!");
     return false;
   }
@@ -428,7 +429,7 @@ void sendUSBHeartbeat() {
 /**
  * Wysyłanie JSON przez Ethernet
  */
-void sendEthernetJSON(EthernetClient& client) {
+void sendEthernetJSON(UIPEthernetClient& client) {
   StaticJsonDocument<512> doc;
   
   doc["temp_raw"] = sensors.temp_raw;
@@ -463,7 +464,7 @@ void sendEthernetJSON(EthernetClient& client) {
 /**
  * Wysyłanie odpowiedzi HTTP
  */
-void sendHTTPResponse(EthernetClient& client, const char* contentType, const String& content) {
+void sendHTTPResponse(UIPEthernetClient& client, const char* contentType, const String& content) {
   client.println("HTTP/1.1 200 OK");
   client.print("Content-Type: ");
   client.println(contentType);
@@ -502,7 +503,7 @@ void handleHTTPCommand(String cmd) {
  * Obsługa serwera HTTP
  */
 void handleEthernetServer() {
-  EthernetClient client = server.available();
+  UIPEthernetClient client = server.available();
   if (!client) return;
   
   unsigned long timeout = millis();
