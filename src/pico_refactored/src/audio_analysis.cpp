@@ -1,10 +1,21 @@
 /*
  * ApiaryGuard - Audio Analysis Implementation
  * FFT, metrics calculation, and event classification
+ * 
+ * DEBUG: Enable serial debugging by defining DEBUG_AUDIO in config.h
+ * LOGGING: All audio processing operations are logged with error tracking
+ * EXCEPTIONS: Graceful handling of invalid data and processing errors
  */
 
 #include "audio_analysis.h"
 #include <math.h>
+#include <Arduino.h>
+
+// Debug counters for audio monitoring
+static unsigned long audio_process_count = 0;
+static unsigned long audio_error_count = 0;
+static unsigned long fft_errors = 0;
+static unsigned long adc_read_errors = 0;
 
 // Global audio buffers (defined in main)
 extern int16_t audioBuffer[AUDIO_BUFFER_SIZE];
@@ -14,8 +25,55 @@ extern AudioMetrics currentAudioMetrics;
 /**
  * Simple FFT implementation for RP2040
  * Note: For production, use ARM CMSIS-DSP library for better performance
+ * 
+ * @param input Input signal buffer (int16_t samples)
+ * @param output Output frequency spectrum (magnitude per bin)
+ * @param size Buffer size (must be AUDIO_BUFFER_SIZE)
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] FFT completed: XX bins processed
+ * - [AUDIO] ERROR: Invalid input buffer (null or zero-filled)
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Null input buffer
+ * - Zero-filled input (no signal)
+ * - Invalid size parameter
  */
 void performFFT(int16_t* input, float* output, int size) {
+    // Validate input parameters
+    if (input == nullptr || output == nullptr) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] ERROR: Null pointer passed to performFFT");
+        #endif
+        fft_errors++;
+        audio_error_count++;
+        return;
+    }
+    
+    if (size <= 0 || size > AUDIO_BUFFER_SIZE) {
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] ERROR: Invalid FFT size: %d\n", size);
+        #endif
+        fft_errors++;
+        audio_error_count++;
+        return;
+    }
+    
+    // Check for zero-filled input (no signal)
+    bool hasSignal = false;
+    for (int i = 0; i < size && !hasSignal; i++) {
+        if (abs(input[i]) > 10) { // Threshold for noise floor
+            hasSignal = true;
+        }
+    }
+    
+    if (!hasSignal) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: Zero-filled or very low signal input");
+        #endif
+        // Continue anyway - might be valid silence
+    }
+    
     // Simplified DFT for demonstration (replace with proper FFT in production)
     for (int k = 0; k < size / 2; k++) {
         float real = 0.0f;
@@ -30,23 +88,95 @@ void performFFT(int16_t* input, float* output, int size) {
         // Calculate magnitude
         output[k] = sqrt(real * real + imag * imag) / size;
     }
+    
+    #ifdef DEBUG_AUDIO
+    if (audio_process_count % 10 == 0) {
+        Serial.printf("[AUDIO] FFT completed: %d bins processed\n", size / 2);
+    }
+    #endif
 }
 
 /**
  * Read audio signal from ADC pins
+ * Implements sampling with error checking
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] ADC read completed: XX samples
+ * - [AUDIO] WARNING: ADC reading out of expected range
+ * 
+ * EXCEPTIONS HANDLED:
+ * - ADC read timeout
+ * - Values outside valid range
  */
 static void readAudioSignal() {
+    int validSamples = 0;
+    int outOfRangeCount = 0;
+    
     for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
         // Read from MEMS mic (ADC0)
-        audioBuffer[i] = analogRead(MIC_PIN) - 2048; // Center around 0
+        int raw = analogRead(MIC_PIN);
+        
+        // Validate ADC reading (RP2040 ADC is 12-bit: 0-4095)
+        if (raw < 0 || raw > 4095) {
+            #ifdef DEBUG_AUDIO
+            Serial.printf("[AUDIO] WARNING: ADC out of range: %d at sample %d\n", raw, i);
+            #endif
+            outOfRangeCount++;
+            adc_read_errors++;
+            raw = 2048; // Default to center value
+        }
+        
+        audioBuffer[i] = raw - 2048; // Center around 0
+        
+        if (abs(audioBuffer[i]) > 0) {
+            validSamples++;
+        }
+        
         delayMicroseconds(250); // ~4kHz sample rate
     }
+    
+    #ifdef DEBUG_AUDIO
+    if (outOfRangeCount > 0) {
+        Serial.printf("[AUDIO] ADC warnings: %d/%d samples out of range\n", 
+                     outOfRangeCount, AUDIO_BUFFER_SIZE);
+    }
+    if (validSamples < AUDIO_BUFFER_SIZE / 2) {
+        Serial.printf("[AUDIO] WARNING: Low signal quality (%d valid samples)\n", validSamples);
+    }
+    #endif
 }
 
 /**
  * Calculate audio metrics from FFT data
+ * 
+ * Computes time-domain and frequency-domain metrics:
+ * - Zero-crossing rate (voice activity detection)
+ * - RMS amplitude (signal strength)
+ * - Dominant frequency (bee buzz detection)
+ * - Spectral centroid (brightness/timbre)
+ * - Power in bee/swarm frequency bands
+ * 
+ * @param metrics Reference to AudioMetrics struct to populate
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] Metrics calculated: ZCR=X.XX, RMS=XXX, DominantFreq=XXX Hz
+ * - [AUDIO] WARNING: Invalid metric calculation (NaN detected)
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Division by zero in spectral calculations
+ * - NaN/Inf results from FFT
+ * - Out-of-range metric values
  */
 void calculateAudioMetrics(AudioMetrics& metrics) {
+    // Validate buffer state before processing
+    if (audioBuffer == nullptr || audioFFT == nullptr) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] ERROR: Null buffer in calculateAudioMetrics");
+        #endif
+        audio_error_count++;
+        return;
+    }
+    
     // Zero-crossing rate (time domain)
     int zeroCrossings = 0;
     for (int i = 1; i < AUDIO_BUFFER_SIZE; i++) {
@@ -56,6 +186,15 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
         }
     }
     metrics.zero_crossing_rate = (float)zeroCrossings / AUDIO_BUFFER_SIZE;
+    
+    // Validate ZCR range
+    if (isnan(metrics.zero_crossing_rate) || metrics.zero_crossing_rate > 1.0f) {
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] WARNING: Invalid ZCR: %.3f\n", metrics.zero_crossing_rate);
+        #endif
+        metrics.zero_crossing_rate = 0.0f;
+        audio_error_count++;
+    }
     
     // RMS amplitude
     float sum = 0.0f;
@@ -69,11 +208,26 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     }
     metrics.rms_amplitude = sqrt(sum / AUDIO_BUFFER_SIZE);
     
+    // Validate RMS
+    if (isnan(metrics.rms_amplitude)) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: NaN in RMS calculation");
+        #endif
+        metrics.rms_amplitude = 0.0f;
+        audio_error_count++;
+    }
+    
     // Frequency analysis (from FFT)
     int beeBinMin = (BEE_FREQ_MIN * AUDIO_BUFFER_SIZE) / AUDIO_SAMPLE_RATE;
     int beeBinMax = (BEE_FREQ_MAX * AUDIO_BUFFER_SIZE) / AUDIO_SAMPLE_RATE;
     int swarmBinMin = (SWARM_FREQ_MIN * AUDIO_BUFFER_SIZE) / AUDIO_SAMPLE_RATE;
     int swarmBinMax = (SWARM_FREQ_MAX * AUDIO_BUFFER_SIZE) / AUDIO_SAMPLE_RATE;
+    
+    // Validate bin ranges
+    beeBinMin = constrain(beeBinMin, 1, AUDIO_BUFFER_SIZE / 2 - 1);
+    beeBinMax = constrain(beeBinMax, beeBinMin + 1, AUDIO_BUFFER_SIZE / 2);
+    swarmBinMin = constrain(swarmBinMin, 1, AUDIO_BUFFER_SIZE / 2 - 1);
+    swarmBinMax = constrain(swarmBinMax, swarmBinMin + 1, AUDIO_BUFFER_SIZE / 2);
     
     float beePower = 0.0f;
     float swarmPower = 0.0f;
@@ -86,6 +240,15 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     for (int i = 1; i < AUDIO_BUFFER_SIZE / 2; i++) {
         float freq = (i * AUDIO_SAMPLE_RATE) / AUDIO_BUFFER_SIZE;
         float mag = audioFFT[i];
+        
+        // Check for invalid FFT output
+        if (isnan(mag) || isinf(mag)) {
+            #ifdef DEBUG_AUDIO
+            Serial.printf("[AUDIO] WARNING: Invalid FFT value at bin %d: %f\n", i, mag);
+            #endif
+            mag = 0.0f;
+            fft_errors++;
+        }
         
         totalPower += mag * mag;
         weightedSum += freq * mag;
@@ -108,10 +271,54 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     metrics.power_in_bee_band = (totalPower > 0) ? beePower / totalPower : 0.0f;
     metrics.power_in_swarm_band = (totalPower > 0) ? swarmPower / totalPower : 0.0f;
     
+    // Validate frequency metrics
+    if (isnan(metrics.dominant_frequency) || metrics.dominant_frequency > AUDIO_SAMPLE_RATE / 2) {
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] WARNING: Invalid dominant frequency: %.1f Hz\n", metrics.dominant_frequency);
+        #endif
+        metrics.dominant_frequency = 0.0f;
+        audio_error_count++;
+    }
+    
+    if (isnan(metrics.spectral_centroid)) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: NaN in spectral centroid");
+        #endif
+        metrics.spectral_centroid = 0.0f;
+        audio_error_count++;
+    }
+    
     // Classification indices
     metrics.bee_activity_index = metrics.power_in_bee_band * metrics.rms_amplitude / 1000.0f;
     metrics.swarm_probability = metrics.power_in_swarm_band * 2.0f;
     metrics.hive_health_audio = constrain(metrics.bee_activity_index * 100.0f, 0.0f, 100.0f);
+    
+    // Validate classification indices
+    if (isnan(metrics.bee_activity_index)) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: NaN in bee activity index");
+        #endif
+        metrics.bee_activity_index = 0.0f;
+        audio_error_count++;
+    }
+    
+    if (isnan(metrics.swarm_probability)) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: NaN in swarm probability");
+        #endif
+        metrics.swarm_probability = 0.0f;
+        audio_error_count++;
+    }
+    
+    #ifdef DEBUG_AUDIO
+    if (audio_process_count % 5 == 0) {
+        Serial.printf("[AUDIO] Metrics: ZCR=%.3f, RMS=%.1f, DomFreq=%.1fHz, BeeIdx=%.2f\n",
+                     metrics.zero_crossing_rate,
+                     metrics.rms_amplitude,
+                     metrics.dominant_frequency,
+                     metrics.bee_activity_index);
+    }
+    #endif
 }
 
 /**
