@@ -5,12 +5,46 @@
  * 
  * Ten plik działa jako proxy między frontendem a APIARY_COLLECTOR
  * Obsługuje CORS i zapewnia dodatkową warstwę bezpieczeństwa
+ * 
+ * @package ApiaryGuard
+ * @subpackage WebUI
+ * @version 1.0.0
+ * @author ApiaryGuard Pro Team
+ * @license MIT
+ * 
+ * @debug DEBUG_MODE - ustaw true aby włączyć szczegółowe logowanie
+ * @todo Dodac autoryzacje JWT
+ * @todo Dodac rate limiting
  */
 
+// ============================================================================
+// KONFIGURACJA DEBUGOWANIA I LOGOWANIA
+// ============================================================================
+define('DEBUG_MODE', true); // Włącz/wyłącz tryb debugowania
+define('LOG_ALL_REQUESTS', true); // Loguj wszystkie żądania HTTP
+define('LOG_ERRORS_TO_FILE', true); // Loguj błędy do pliku
+define('DISPLAY_ERRORS', false); // Nie wyświetlaj błędów użytkownikom (bezpieczeństwo)
+
+// Raportowanie błędów - pełne dla debugowania
+if (DEBUG_MODE) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', DISPLAY_ERRORS ? '1' : '0');
+    ini_set('log_errors', '1');
+} else {
+    error_reporting(0);
+    ini_set('display_errors', '0');
+}
+
+// ============================================================================
+// NAGŁÓWKI HTTP I CORS
+// ============================================================================
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Max-Age: 86400'); // Cache preflight przez 24h
+header('X-Content-Type-Options: nosniff'); // Bezpieczeństwo
+header('X-Frame-Options: DENY'); // Clickjacking protection
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -20,27 +54,221 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Konfiguracja
 $COLLECTOR_HOST = getenv('APIARY_COLLECTOR_HOST') ?: 'localhost';
-$COLLECTOR_PORT = getenv('APIARY_COLLECTOR_PORT') ?: 8080;
+$COLLECTOR_PORT = (int)(getenv('APIARY_COLLECTOR_PORT') ?: 8080);
 $COLLECTOR_URL = "http://{$COLLECTOR_HOST}:{$COLLECTOR_PORT}";
 
-// Logowanie do pliku
+// ============================================================================
+// KONFIGURACJA ŚCIEŻEK LOGÓW
+// ============================================================================
 $logFile = '/var/log/apiaryguard/webui.log';
-if (!is_dir(dirname($logFile))) {
-    mkdir(dirname($logFile), 0755, true);
+$errorLogFile = '/var/log/apiaryguard/webui_errors.log';
+$accessLogFile = '/var/log/apiaryguard/webui_access.log';
+
+// Funkcja tworząca katalogi rekurencyjnie z obsługą błędów
+function ensureDirectoryExists($path) {
+    if (!is_dir($path)) {
+        try {
+            if (!mkdir($path, 0755, true)) {
+                error_log("[FILESYSTEM ERROR] Cannot create directory: {$path}");
+                return false;
+            }
+            return true;
+        } catch (Exception $e) {
+            error_log("[EXCEPTION] Failed to create directory {$path}: " . $e->getMessage());
+            return false;
+        }
+    }
+    return true;
 }
 
-function logMessage($level, $message) {
-    global $logFile;
+// Utwórz katalogi dla logów
+ensureDirectoryExists(dirname($logFile));
+ensureDirectoryExists(dirname($errorLogFile));
+ensureDirectoryExists(dirname($accessLogFile));
+
+// ============================================================================
+// FUNKCJE LOGOWANIA Z OBSŁUGĄ WYJĄTKÓW I BŁĘDÓW
+// ============================================================================
+
+/**
+ * Loguje wiadomość do pliku logu z poziomem i timestampem
+ * 
+ * @param string $level Poziom logu (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+ * @param string $message Treść wiadomości
+ * @param string $source Źródło wiadomości (domyślnie 'WebUI')
+ * @return bool Czy zapis się powiódł
+ * 
+ * @throws Exception Jeśli nie można zapisać do pliku logu
+ */
+function logMessage($level, $message, $source = 'WebUI') {
+    global $logFile, $errorLogFile;
+    
+    // Sprawdź czy level jest poprawny
+    $validLevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+    if (!in_array($level, $validLevels)) {
+        $level = 'INFO'; // Domyślny poziom
+    }
+    
     $timestamp = date('Y-m-d H:i:s');
-    $logEntry = "[{$timestamp}] [{$level}] {$message}\n";
-    file_put_contents($logFile, $logEntry, FILE_APPEND);
+    $microtime = microtime(true);
+    $pid = getmypid();
+    
+    // Format: [2024-01-15 10:30:45.123] [LEVEL] [PID:1234] [Source] Message
+    $logEntry = "[{$timestamp}] [" . sprintf('%06.3f', $microtime - floor($microtime)) . "] [{$level}] [PID:{$pid}] [{$source}] {$message}\n";
+    
+    // Wybierz plik docelowy w zależności od poziomu
+    $targetFile = ($level === 'ERROR' || $level === 'CRITICAL') ? $errorLogFile : $logFile;
+    
+    try {
+        // Spróbuj zapisać z flagą FILE_APPEND | LOCK_EX dla thread-safety
+        $result = file_put_contents($targetFile, $logEntry, FILE_APPEND | LOCK_EX);
+        
+        if ($result === false) {
+            // Fallback: spróbuj bez locka
+            $result = file_put_contents($targetFile, $logEntry, FILE_APPEND);
+        }
+        
+        if ($result === false) {
+            // Ostateczny fallback: loguj do stderr/system log
+            error_log("[LOGGER FALLBACK] {$logEntry}");
+            return false;
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        // Critical error - logger itself failed
+        error_log("[LOGGER EXCEPTION] " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+        return false;
+    }
 }
 
-// Pobierz metodę HTTP
-$method = $_SERVER['REQUEST_METHOD'];
-$path = isset($_GET['endpoint']) ? $_GET['endpoint'] : '';
+/**
+ * Loguje żądanie HTTP do pliku access log
+ * 
+ * @param array $_server Tablica $_SERVER z danymi żądania
+ * @return void
+ */
+function logHttpRequest($_server) {
+    global $accessLogFile;
+    
+    if (!defined('LOG_ALL_REQUESTS') || !LOG_ALL_REQUESTS) {
+        return;
+    }
+    
+    $method = $_server['REQUEST_METHOD'] ?? 'UNKNOWN';
+    $uri = $_server['REQUEST_URI'] ?? '/';
+    $ip = $_server['REMOTE_ADDR'] ?? 'unknown';
+    $userAgent = $_server['HTTP_USER_AGENT'] ?? 'unknown';
+    $referer = $_server['HTTP_REFERER'] ?? '-';
+    
+    $timestamp = date('Y-m-d H:i:s');
+    $accessEntry = "[{$timestamp}] {$ip} - - \"{$method} {$uri} HTTP/1.1\" 200 - \"{$referer}\" \"{$userAgent}\"\n";
+    
+    try {
+        file_put_contents($accessLogFile, $accessEntry, FILE_APPEND | LOCK_EX);
+    } catch (Exception $e) {
+        error_log("[ACCESS LOG ERROR] " . $e->getMessage());
+    }
+}
 
-// Mapa endpointów
+/**
+ * Obsługuje wyjątki i błędy fatalne
+ * 
+ * @param Throwable $exception Wyjątek lub błąd
+ * @return void
+ */
+function handleException($exception) {
+    logMessage('CRITICAL', 
+        "Unhandled exception: " . $exception->getMessage() . 
+        " in " . $exception->getFile() . ":" . $exception->getLine() .
+        " Stack trace: " . $exception->getTraceAsString(),
+        'ExceptionHandler'
+    );
+    
+    if (!headers_sent()) {
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'Internal server error',
+            'type' => get_class($exception),
+            'file' => DEBUG_MODE ? $exception->getFile() : null,
+            'line' => DEBUG_MODE ? $exception->getLine() : null,
+            'message' => DEBUG_MODE ? $exception->getMessage() : 'An unexpected error occurred'
+        ]);
+    }
+}
+
+// Zarejestruj handler wyjątków
+set_exception_handler('handleException');
+
+/**
+ * Obsługuje błędy PHP
+ * 
+ * @param int $errno Poziom błędu
+ * @param string $errstr Wiadomość błędu
+ * @param string $errfile Plik gdzie wystąpił błąd
+ * @param int $errline Linia błędu
+ * @return bool
+ */
+function handleError($errno, $errstr, $errfile, $errline) {
+    $levelMap = [
+        E_ERROR => 'ERROR',
+        E_WARNING => 'WARNING',
+        E_PARSE => 'CRITICAL',
+        E_NOTICE => 'DEBUG',
+        E_CORE_ERROR => 'CRITICAL',
+        E_CORE_WARNING => 'ERROR',
+        E_COMPILE_ERROR => 'CRITICAL',
+        E_COMPILE_WARNING => 'ERROR',
+        E_USER_ERROR => 'ERROR',
+        E_USER_WARNING => 'WARNING',
+        E_USER_NOTICE => 'DEBUG',
+        E_STRICT => 'DEBUG',
+        E_RECOVERABLE_ERROR => 'ERROR',
+        E_DEPRECATED => 'DEBUG',
+        E_USER_DEPRECATED => 'DEBUG'
+    ];
+    
+    $level = $levelMap[$errno] ?? 'INFO';
+    $message = "[{$errno}] {$errstr} in {$errfile}:{$errline}";
+    
+    logMessage($level, $message, 'ErrorHandler');
+    
+    // Nie przerywaj działania dla warningów i notice
+    return ($errno !== E_ERROR && $errno !== E_USER_ERROR);
+}
+
+// Zarejestruj handler błędów
+set_error_handler('handleError');
+
+// Zarejestruj shutdown function dla błędów fatalnych
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        logMessage('CRITICAL', 
+            "Fatal error: {$error['message']} in {$error['file']}:{$error['line']}",
+            'ShutdownHandler'
+        );
+    }
+});
+
+// Pobierz metodę HTTP z walidacją
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$validMethods = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+if (!in_array(strtoupper($method), $validMethods)) {
+    logMessage('WARNING', "Invalid HTTP method: {$method}", 'RequestValidator');
+    http_response_code(405); // Method Not Allowed
+    echo json_encode(['error' => 'Method not allowed', 'allowed_methods' => $validMethods]);
+    exit();
+}
+
+// Pobierz endpoint z walidacją XSS
+$path = isset($_GET['endpoint']) ? htmlspecialchars(trim($_GET['endpoint']), ENT_QUOTES, 'UTF-8') : '';
+
+// Zaloguj żądanie HTTP
+logHttpRequest($_SERVER);
+logMessage('DEBUG', "Incoming request: {$method} {$path}", 'RequestHandler');
+
+// Mapa endpointów - centralna rejestracja wszystkich dostępnych endpointów
 $endpoints = [
     'status' => '/api/status',
     'hives' => '/api/hives',
@@ -53,11 +281,61 @@ $endpoints = [
     'config' => '/api/config'
 ];
 
-// Ścieżka do plików konfiguracyjnych
-$configDir = getenv('HOME') ? rtrim(getenv('HOME'), '/') . '/.hive_monitor' : '/root/.hive_monitor';
-if (!is_dir($configDir)) {
-    mkdir($configDir, 0755, true);
+/**
+ * Waliduje nazwę endpointu
+ * 
+ * @param string $path Nazwa endpointu do walidacji
+ * @return bool Czy endpoint jest poprawny
+ */
+function isValidEndpoint($path) {
+    global $endpoints;
+    return array_key_exists($path, $endpoints) || empty($path) || $path === 'health';
 }
+
+// Sprawdź czy endpoint jest poprawny
+if (!isValidEndpoint($path)) {
+    logMessage('WARNING', "Invalid endpoint requested: {$path}", 'Security');
+    http_response_code(400);
+    echo json_encode([
+        'error' => 'Invalid endpoint',
+        'available_endpoints' => array_keys($endpoints),
+        'requested' => $path
+    ]);
+    exit();
+}
+
+// Ścieżka do plików konfiguracyjnych z walidacją
+$configDir = getenv('HOME') ? rtrim(getenv('HOME'), '/') . '/.hive_monitor' : '/root/.hive_monitor';
+
+/**
+ * Bezpiecznie tworzy katalog konfiguracyjny
+ * 
+ * @param string $path Ścieżka do katalogu
+ * @return bool Czy operacja się powiodła
+ */
+function ensureConfigDir($path) {
+    try {
+        // Walidacja ścieżki - zapobiegaj directory traversal
+        if (strpos($path, '..') !== false || strpos($path, "\0") !== false) {
+            logMessage('ERROR', "Invalid config path detected: {$path}", 'Security');
+            return false;
+        }
+        
+        if (!is_dir($path)) {
+            if (!mkdir($path, 0755, true)) {
+                logMessage('ERROR', "Cannot create config directory: {$path}", 'Filesystem');
+                return false;
+            }
+            logMessage('INFO', "Created config directory: {$path}", 'Filesystem');
+        }
+        return true;
+    } catch (Exception $e) {
+        logMessage('ERROR', "Exception creating config dir: " . $e->getMessage(), 'Filesystem');
+        return false;
+    }
+}
+
+ensureConfigDir($configDir);
 
 // Demo dane gdy kolektor nie odpowiada
 function getDemoData() {
