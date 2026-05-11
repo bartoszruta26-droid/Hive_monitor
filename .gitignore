@@ -1,1 +1,38 @@
-Nothing should be ignored in this case, as only a single Arduino source file (.ino) was modified and no build artifacts, dependencies, or temporary files were detected in the changes.
+```
+# Arduino/Pico build artifacts
+*.hex
+*.bin
+*.elf
+*.map
+*.o
+*.d
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+
+# Build directories
+build/
+cmake-build-*/
+.pio/
+.platformio/
+
+# Dependencies
+lib/
+.libs/
+
+# Temp files
+*.tmp
+*.log
+*.swp
+*~
+
+# IDE specific
+.vscode/
+.idea/
+*.cp
+*.cpp
+*.dep
+*.prefs
+```
