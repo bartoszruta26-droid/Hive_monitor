@@ -1,43 +1,46 @@
 ```
-# Compiled and build artifacts
-*.o
-*.obj
-*.a
-*.so
-*.dll
-*.exe
+# Arduino build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
+*.sym
+*.eep
+*.sr
+*.srec
+*.ihx
+*.cdb
+*.gdb
 *.out
 
-# Dependencies
-.pio/
-.platformio/
-lib/
-src/.pioenvs/
-src/.piolibdeps/
+# Build directories
+build/
+build-*/
+.release/
+.cache/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Coverage and testing
-.coverage
-coverage/
-htmlcov/
+# Logs and temp files
+*.log
+*.tmp
 
-# Build outputs
-build/
-dist/
-target/
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Dependencies
+node_modules/
+vendor/
+lib/
+
+# OS specific
+.DS_Store
+Thumbs.db
 ```
