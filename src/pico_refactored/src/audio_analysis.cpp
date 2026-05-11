@@ -89,6 +89,9 @@ void performFFT(int16_t* input, float* output, int size) {
         output[k] = sqrt(real * real + imag * imag) / size;
     }
     
+    // Increment process counter for throttled debug logs
+    audio_process_count++;
+    
     #ifdef DEBUG_AUDIO
     if (audio_process_count % 10 == 0) {
         Serial.printf("[AUDIO] FFT completed: %d bins processed\n", size / 2);
