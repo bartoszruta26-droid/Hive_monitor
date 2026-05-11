@@ -124,28 +124,13 @@ uint16_t getFreeRam() {
 
 /**
  * Detekcja połączenia USB
- * Na Arduino Nano (ATmega328) Serial jest zawsze "true" po begin(),
- * więc sprawdzamy czy host wysyła dane lub czy linie DTR/RTS są aktywne.
  */
 bool detectUSB() {
-  // Czekaj krótko na ewentualną aktywność z hosta USB
-  unsigned long detectStart = millis();
-  const unsigned long detectTimeout = 500;  // 500ms
-  
-  // Sprawdź czy jakieś dane przychodzą z USB
-  while (millis() - detectStart < detectTimeout) {
-    if (Serial.available() > 0) {
-      // Host USB wysyła dane - połączenie aktywne
-      return true;
-    }
-    delay(1);
+  if (Serial) {
+    Serial.flush();
+    delay(100);
+    return true;
   }
-  
-  // Alternatywnie: sprawdź czy port jest otwarty (DTR/RTS)
-  // Na niektórych boardach Serial && Serial.dtr() działa
-  // ale na ATmega328 nie ma dostępu do DTR/RTS
-  
-  // Jeśli brak aktywności, zakładamy brak hosta USB
   return false;
 }
 
