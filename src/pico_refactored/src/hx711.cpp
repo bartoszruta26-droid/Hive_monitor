@@ -39,7 +39,9 @@ long readHX711() {
             return 0;
         }
         // Prevent watchdog trigger during wait
-        rp2040.wdtReset();
+        #ifdef ARDUINO_ARCH_RP2040
+        watchdog_update();
+        #endif
     }
     
     // Read 24 bits

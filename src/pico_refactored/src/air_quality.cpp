@@ -5,6 +5,7 @@
 
 #include "air_quality.h"
 #include <Adafruit_SGP41.h>
+#include <algorithm> // for std::min, std::max, std::constrain (C++17)
 
 // Global variables (defined in main)
 extern AirQualityMetrics currentAirMetrics;
@@ -96,18 +97,18 @@ void calculateAirMetrics(AirQualityMetrics& metrics) {
     metrics.mean_voc = calculateMean(vocHistory, AIRQUAL_BUFFER_SIZE);
     
     // Calculate trends (1 hour window = ~60 readings at 1/min)
-    int trendWindow = min(60, AIRQUAL_BUFFER_SIZE);
+    int trendWindow = std::min(60, AIRQUAL_BUFFER_SIZE);
     metrics.trend_slope_1h = calculateTrend(co2History, trendWindow);
-    metrics.trend_direction = constrain(metrics.trend_slope_1h / 50.0f, -1.0f, 1.0f);
+    metrics.trend_direction = std::clamp(metrics.trend_slope_1h / 50.0f, -1.0f, 1.0f);
     
     // IAQ Index (simplified calculation)
-    float co2Score = 100.0f - constrain((float)metrics.co2_eq / CO2_WARNING_LEVEL * 100.0f, 0.0f, 100.0f);
-    float vocScore = 100.0f - constrain((float)metrics.voc_idx / VOC_ALERT_LEVEL * 100.0f, 0.0f, 100.0f);
+    float co2Score = 100.0f - std::clamp((float)metrics.co2_eq / CO2_WARNING_LEVEL * 100.0f, 0.0f, 100.0f);
+    float vocScore = 100.0f - std::clamp((float)metrics.voc_idx / VOC_ALERT_LEVEL * 100.0f, 0.0f, 100.0f);
     metrics.iaq_index = (co2Score + vocScore) / 2.0f;
     
     // Ventilation need
     if (metrics.co2_eq > CO2_WARNING_LEVEL || metrics.voc_idx > VOC_ALERT_LEVEL) {
-        metrics.ventilation_need = constrain(
+        metrics.ventilation_need = std::clamp(
             ((float)metrics.co2_eq / CO2_WARNING_LEVEL + 
              (float)metrics.voc_idx / VOC_ALERT_LEVEL) * 50.0f,
             0.0f, 100.0f

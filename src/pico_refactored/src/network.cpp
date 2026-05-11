@@ -4,6 +4,7 @@
 
 #include "network.h"
 #include "config.h"
+#include <SPI.h>
 
 // External global sensor variables (defined in main .ino file)
 extern float temperature;
@@ -22,6 +23,9 @@ IPAddress rpiIP RPI_IP;
 
 void initW6100() {
     Serial.println(">> Initializing W6100 Ethernet...");
+    
+    // Initialize SPI before using Ethernet
+    SPI.begin();
     
     // Reset W6100
     pinMode(W6100_RST, OUTPUT);
@@ -124,8 +128,9 @@ void sendUDPData() {
     if (millis() - lastUdpSend < 10000) return; // Send every 10 seconds
     lastUdpSend = millis();
     
-    // Prepare UDP packet
-    String payload = String::format(
+    // Prepare UDP packet using snprintf (String::format doesn't exist in Arduino)
+    char payload[128];
+    snprintf(payload, sizeof(payload),
         "{\"t\":%.1f,\"h\":%.1f,\"c\":%d,\"v\":%d,\"w\":%ld}",
         temperature, humidity, co2_eq, voc_idx, hx711_value
     );

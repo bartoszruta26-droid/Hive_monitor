@@ -31,8 +31,8 @@ void initUART() {
 void initPWM() {
     pinMode(HEATER_PWM, OUTPUT);
     pinMode(FAN_PWM, OUTPUT);
-    analogWriteFrequency(HEATER_PWM, 1000);
-    analogWriteFrequency(FAN_PWM, 1000);
+    // analogWriteFrequency is not available on RP2040 Arduino core
+    // PWM frequency is set automatically (default ~1kHz)
     Serial.println(">> PWM initialized");
 }
 

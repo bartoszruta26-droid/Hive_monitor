@@ -59,8 +59,10 @@
 #include <regex>
 #include <cmath>
 
-// Dołączamy loggera i używamy przestrzeni nazw apiary
-#include "apiary_logger.cpp"
+// Dołączamy nagłówek loggera (nie implementację .cpp)
+#include "apiary_logger.h"
+
+// Używamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
 
 // ============================================================================
