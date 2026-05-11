@@ -96,6 +96,7 @@
 
 #define AIRQUAL_BUFFER_SIZE         144
 #define CO2_WARNING_LEVEL           1000
+#define CO2_ALERT_LEVEL             1500
 #define VOC_ALERT_LEVEL             250
 
 // ============================================================================

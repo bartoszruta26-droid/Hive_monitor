@@ -1,11 +1,22 @@
 /*
  * ApiaryGuard - Weight Analysis Implementation
  * HX711 data buffering, trend analysis, and event detection
+ * 
+ * DEBUG: Enable serial debugging by defining DEBUG_WEIGHT in config.h
+ * LOGGING: All weight analysis operations are logged with metrics
+ * EXCEPTIONS: Graceful handling of invalid data and sensor errors
  */
 
 #include "weight_analysis.h"
 #include "hx711.h"
 #include <math.h>
+#include <Arduino.h>
+
+// Debug counters for weight monitoring
+static unsigned long weight_calc_count = 0;
+static unsigned long weight_error_count = 0;
+static unsigned long invalid_readings = 0;
+static unsigned long buffer_updates = 0;
 
 // Global variables (defined in main)
 extern HX711Metrics currentHX711Metrics;
@@ -14,16 +25,44 @@ extern long hx711_value;
 
 /**
  * Update circular buffer with new weight data point
+ * @param point New HX711DataPoint to add to buffer
+ * 
+ * Implements circular buffer for efficient storage of weight readings
+ * 
+ * DEBUG OUTPUT:
+ * - [WEIGHT] Buffer updated: index=X, total updates=Y
+ * - [WEIGHT] WARNING: Invalid data point added to buffer
  */
 void updateHX711Buffer(const HX711DataPoint& point) {
     static int currentIndex = 0;
     
+    // Validate data point
+    if (!point.is_valid) {
+        invalid_readings++;
+        #ifdef DEBUG_WEIGHT
+        Serial.printf("[WEIGHT] WARNING: Adding invalid data point to buffer (raw=%.2f)\n", point.weight_raw);
+        #endif
+    }
+    
     hx711Buffer[currentIndex] = point;
     currentIndex = (currentIndex + 1) % HX711_BUFFER_SIZE;
+    buffer_updates++;
+    
+    #ifdef DEBUG_WEIGHT
+    if (buffer_updates % 50 == 0) {
+        Serial.printf("[WEIGHT] Buffer updated: index=%d, total updates=%lu\n", currentIndex, buffer_updates);
+    }
+    #endif
 }
 
 /**
  * Simple moving average filter
+ * @param windowSize Number of samples to average
+ * @return float Mean value, 0.0f if no valid data
+ * 
+ * DEBUG OUTPUT:
+ * - [WEIGHT] Moving average calculated: X.XX (window=Y)
+ * - [WEIGHT] WARNING: No valid data for averaging
  */
 static float movingAverage(int windowSize) {
     float sum = 0.0f;
@@ -36,13 +75,48 @@ static float movingAverage(int windowSize) {
         }
     }
     
-    return (count > 0) ? sum / count : 0.0f;
+    if (count == 0) {
+        #ifdef DEBUG_WEIGHT
+        Serial.println("[WEIGHT] WARNING: No valid data for moving average");
+        #endif
+        weight_error_count++;
+        return 0.0f;
+    }
+    
+    float result = sum / count;
+    
+    #ifdef DEBUG_WEIGHT
+    if (weight_calc_count % 20 == 0) {
+        Serial.printf("[WEIGHT] Moving average: %.2f (window=%d, count=%d)\n", result, windowSize, count);
+    }
+    #endif
+    
+    return result;
 }
 
 /**
  * Calculate weight metrics from buffered data
+ * @param metrics Reference to HX711Metrics struct to populate
+ * 
+ * Computes comprehensive weight statistics:
+ * - Basic statistics (mean, std, min, max)
+ * - Trend analysis (rate of change, slope)
+ * - Hive health indicators (nectar inflow, consumption)
+ * - Anomaly detection
+ * 
+ * DEBUG OUTPUT:
+ * - [WEIGHT] Metrics calculated: mean=X.XX, rate=X.XXX
+ * - [WEIGHT] WARNING: No valid samples for calculation
+ * - [WEIGHT] ALERT: High anomaly score detected
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Empty buffer (no valid samples)
+ * - Division by zero in calculations
+ * - Invalid metric values (NaN/Inf)
  */
 void calculateHX711Metrics(HX711Metrics& metrics) {
+    weight_calc_count++;
+    
     // Collect valid samples
     float samples[HX711_SHORT_WINDOW];
     int validCount = 0;
@@ -53,7 +127,14 @@ void calculateHX711Metrics(HX711Metrics& metrics) {
         }
     }
     
+    // Handle empty buffer case
     if (validCount == 0) {
+        #ifdef DEBUG_WEIGHT
+        Serial.println("[WEIGHT] WARNING: No valid samples for metric calculation");
+        #endif
+        weight_error_count++;
+        
+        // Set safe defaults
         metrics.mean_weight = 0.0f;
         metrics.std_weight = 0.0f;
         metrics.min_weight = 0.0f;
