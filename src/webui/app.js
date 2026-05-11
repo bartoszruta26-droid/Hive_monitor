@@ -133,17 +133,25 @@ async function loadConfigFromBackend() {
 // ============================================================================
 function initTabs() {
     const tabs = document.querySelectorAll('.nav-tab');
+    if (!tabs || tabs.length === 0) return; // Guard clause - check if elements exist
+    
     tabs.forEach(tab => {
         tab.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
             
             // Usuń active ze wszystkich
             tabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const tabContents = document.querySelectorAll('.tab-content');
+            if (tabContents) {
+                tabContents.forEach(c => c.classList.remove('active'));
+            }
             
             // Dodaj active do klikniętej
             this.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
+            const tabElement = document.getElementById(tabId);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
             
             // Odśwież dane w zależności od zakładki
             if (tabId === 'history') {
@@ -161,6 +169,11 @@ function initTabs() {
 async function checkCollectorConnection() {
     const statusEl = document.getElementById('collectorStatus');
     const progressEl = document.getElementById('connectionProgress');
+    
+    if (!statusEl || !progressEl) {
+        console.warn('DOM elements not found for connection status');
+        return false;
+    }
     
     try {
         progressEl.style.width = '50%';
@@ -195,6 +208,8 @@ async function checkCollectorConnection() {
 function updateConnectionStatus(connected) {
     const indicator = document.getElementById('connectionStatus');
     const statusText = document.getElementById('statusText');
+    
+    if (!indicator || !statusText) return; // Guard clause
     
     if (connected) {
         indicator.style.backgroundColor = '#28a745';
@@ -232,6 +247,11 @@ async function fetchHiveData() {
 // ============================================================================
 function renderDashboard() {
     const hiveCardsContainer = document.getElementById('hiveCards');
+    
+    if (!hiveCardsContainer) {
+        console.warn('hiveCardsContainer element not found');
+        return;
+    }
     
     if (!appState.hives || appState.hives.length === 0) {
         hiveCardsContainer.innerHTML = `
@@ -313,21 +333,34 @@ function renderDashboard() {
 function updateSummaryMetrics() {
     const hives = appState.hives || [];
     
-    document.getElementById('totalHives').textContent = hives.length;
-    document.getElementById('onlineHives').textContent = hives.filter(h => h.is_online).length;
+    // Guard clauses for DOM elements
+    const totalHivesEl = document.getElementById('totalHives');
+    const onlineHivesEl = document.getElementById('onlineHives');
+    const avgTempEl = document.getElementById('avgTemp');
+    const avgHumidityEl = document.getElementById('avgHumidity');
+    const totalWeightEl = document.getElementById('totalWeight');
+    const alertsCountEl = document.getElementById('alertsCount');
     
-    const avgTemp = hives.reduce((sum, h) => sum + (h.temperature || 0), 0) / hives.length;
-    const avgHum = hives.reduce((sum, h) => sum + (h.humidity || 0), 0) / hives.length;
+    if (!totalHivesEl || !onlineHivesEl || !avgTempEl || !avgHumidityEl || !totalWeightEl || !alertsCountEl) {
+        console.warn('Some summary metrics DOM elements not found');
+        return;
+    }
+    
+    totalHivesEl.textContent = hives.length;
+    onlineHivesEl.textContent = hives.filter(h => h.is_online).length;
+    
+    const avgTemp = hives.reduce((sum, h) => sum + (h.temperature || 0), 0) / (hives.length || 1);
+    const avgHum = hives.reduce((sum, h) => sum + (h.humidity || 0), 0) / (hives.length || 1);
     const totalWeight = hives.reduce((sum, h) => sum + (h.weight || 0), 0);
     
-    document.getElementById('avgTemp').textContent = avgTemp ? avgTemp.toFixed(1) : '--';
-    document.getElementById('avgHumidity').textContent = avgHum ? avgHum.toFixed(1) : '--';
-    document.getElementById('totalWeight').textContent = totalWeight ? totalWeight.toFixed(2) : '--';
+    avgTempEl.textContent = avgTemp ? avgTemp.toFixed(1) : '--';
+    avgHumidityEl.textContent = avgHum ? avgHum.toFixed(1) : '--';
+    totalWeightEl.textContent = totalWeight ? totalWeight.toFixed(2) : '--';
     
     // Liczenie alertów (temperatura > próg)
     const alerts = hives.filter(h => (h.temperature || 0) > CONFIG.settings.alertThreshold).length;
-    document.getElementById('alertsCount').textContent = alerts;
-    document.getElementById('alertsCount').style.color = alerts > 0 ? '#dc3545' : 'var(--primary-color)';
+    alertsCountEl.textContent = alerts;
+    alertsCountEl.style.color = alerts > 0 ? '#dc3545' : 'var(--primary-color)';
 }
 
 // ============================================================================

@@ -1,23 +1,21 @@
 ```
-# Build artifacts
+# Compiled and build artifacts
 *.o
 *.obj
-*.a
-*.so
-*.dll
-*.exe
 *.out
+build/
+dist/
 
 # Dependencies
 .pio/
 .platformio/
 lib/
-src/pico_refactored/.pio/
+*.hex
+*.uf2
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
 # Environment
 .env
@@ -31,11 +29,11 @@ src/pico_refactored/.pio/
 *.swo
 
 # Coverage
-.coverage
 coverage/
 htmlcov/
+.coverage
 
-# Compression files
+# Compression
 *.zip
 *.gz
 *.tar
