@@ -53,6 +53,18 @@ public:
     void flush();
     void shutdown();
     
+    // Metody wygodne dla poszczególnych poziomów logowania
+    void debug(const std::string& message, const std::string& source = "");
+    void info(const std::string& message, const std::string& source = "");
+    void warning(const std::string& message, const std::string& source = "");
+    void error(const std::string& message, const std::string& source = "");
+    void critical(const std::string& message, const std::string& source = "");
+    
+    // Specjalne logi dla uli i sieci
+    void logHiveEvent(const std::string& hive_id, const std::string& event, 
+                      double temperature = 0.0, double humidity = 0.0);
+    void logNetworkEvent(const std::string& device_ip, const std::string& event);
+    
 private:
     Logger();
     ~Logger();

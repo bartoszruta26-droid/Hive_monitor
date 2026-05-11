@@ -52,7 +52,21 @@ struct LoggerConfig {
     LogLevel min_level = LogLevel::DEBUG;
     bool rotation_enabled = true;
     int rotation_count = 5;
+    
+    LoggerConfig();
 };
+
+// Implementacja konstruktora LoggerConfig
+LoggerConfig::LoggerConfig() 
+    : log_file("/var/log/apiaryguard/apiary.log")
+    , debug_file("/var/log/apiaryguard/debug.log")
+    , max_file_size(10 * 1024 * 1024)
+    , max_queue_size(1000)
+    , console_output(true)
+    , file_output(true)
+    , min_level(LogLevel::DEBUG)
+    , rotation_enabled(true)
+    , rotation_count(5) {}
 
 // Wpis logu
 struct LogEntry {
