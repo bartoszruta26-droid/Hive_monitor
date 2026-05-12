@@ -268,8 +268,8 @@ private:
 #define DEBUG_SCOPED_TIMER(name) \
     apiary::debug::ScopedTimer __timer__(name)
 
-#define DEBUG_COUNTER_INC(name, val) \
-    apiary::debug::debug_counter_inc(name, val)
+#define DEBUG_COUNTER_INC(name) \
+    apiary::debug::debug_counter_inc(name, 1)
 
 #define DEBUG_COUNTER_DEC(name, val) \
     apiary::debug::debug_counter_dec(name, val)
@@ -294,7 +294,7 @@ private:
 #define DEBUG_START_TIMER(name)
 #define DEBUG_STOP_TIMER(name)
 #define DEBUG_SCOPED_TIMER(name)
-#define DEBUG_COUNTER_INC(name, val)
+#define DEBUG_COUNTER_INC(name)
 #define DEBUG_COUNTER_DEC(name, val)
 #define DEBUG_COUNTER_GET(name) (0)
 #define DEBUG_TRACK_RESOURCE(id, type, ptr)
