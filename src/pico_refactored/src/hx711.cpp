@@ -11,6 +11,8 @@
  * - Debug macros from config.h for consistent logging
  * - Watchdog feed integration for RP2040 stability
  * - Rate-limited error reporting to prevent log flooding
+ * - Trace debugging support (DEBUG_VERBOSE)
+ * - Performance monitoring (DEBUG_PERF)
  */
 
 #include "hx711.h"
@@ -41,10 +43,13 @@ static unsigned long last_error_log_time = 0;
  * - Error logging via Serial with rate limiting
  * - Watchdog feed for RP2040 stability
  * - Input validation using configured limits
+ * - Trace debugging support
  * 
  * DEBUG OUTPUT:
  * - [HX711] ERROR: Timeout - sensor not detected (every 5s)
  * - [HX711] ERROR: Invalid reading (count > 100 per minute)
+ * - [TRACE] ENTER/EXIT readHX711 (when DEBUG_VERBOSE enabled)
+ * - [PERF] Read duration (when DEBUG_PERF enabled)
  * 
  * EXCEPTIONS HANDLED:
  * - Sensor disconnection (timeout after HX711_TIMEOUT_MS)
@@ -52,6 +57,9 @@ static unsigned long last_error_log_time = 0;
  * - Watchdog reset prevention
  */
 long readHX711() {
+    TRACE_ENTER(HX711);
+    PERF_START(readHX711);
+    
     long count = 0;
     unsigned long read_start = millis();
     
@@ -59,6 +67,9 @@ long readHX711() {
     hx711_read_count++;
     
     // Ensure proper pin modes - validate configuration
+    GENTLE_ASSERT(digitalRead(HX711_SCK) == LOW || digitalRead(HX711_SCK) == HIGH, 
+                  "HX711", "SCK pin may not be configured correctly");
+    
     pinMode(HX711_DT, INPUT);
     pinMode(HX711_SCK, OUTPUT);
     digitalWrite(HX711_SCK, LOW);
@@ -86,6 +97,8 @@ long readHX711() {
             Serial.println("[HX711] DEBUG: SCK pin state: " + String(digitalRead(HX711_SCK)));
             #endif
             
+            PERF_END(readHX711);
+            TRACE_EXIT(HX711);
             return 0; // Return error code
         }
         
@@ -135,6 +148,8 @@ long readHX711() {
             last_error_log_time = millis();
         }
         
+        PERF_END(readHX711);
+        TRACE_EXIT(HX711);
         return 0;
     }
     
@@ -160,5 +175,7 @@ long readHX711() {
     }
     #endif
     
+    PERF_END(readHX711);
+    TRACE_EXIT(HX711);
     return count;
 }

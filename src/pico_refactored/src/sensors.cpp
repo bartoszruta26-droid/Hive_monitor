@@ -456,13 +456,24 @@ void initSensors() {
  * Implements error counting for each sensor type
  * Uses new logging macros from config.h for consistent output
  * Validates readings against configured limits
+ * Includes performance monitoring and trace debugging
  * 
  * DEBUG OUTPUT:
  * - [SENSORS] Read error: DHT returned NaN (count: X)
  * - [SENSORS] HX711 raw value: XXXXX
  * - [SENSORS] Invalid CO2/VOC readings with range info
+ * - [TRACE] ENTER/EXIT readSensors (when DEBUG_VERBOSE enabled)
+ * - [PERF] Execution time (when DEBUG_PERF enabled)
+ * 
+ * EXCEPTIONS HANDLED:
+ * - NaN values from DHT sensor
+ * - Invalid HX711 readings
+ * - Out-of-range air quality values
  */
 void readSensors(unsigned long now) {
+    TRACE_ENTER(SENSORS);
+    PERF_START(readSensors);
+    
     static unsigned long lastRead = 0;
     
     // Rate limiting - read every 2 seconds
@@ -504,6 +515,10 @@ void readSensors(unsigned long now) {
             Serial.println("[SENSORS] WARNING: DHT temperature read returned NaN");
             #endif
         }
+        
+        // Validate temperature and humidity ranges
+        GENTLE_ASSERT(humidity >= 0.0f && humidity <= 100.0f, "SENSORS", "Humidity out of valid range");
+        GENTLE_ASSERT(temperature >= -40.0f && temperature <= 80.0f, "SENSORS", "Temperature out of valid range");
     }
     
     // Read HX711 weight sensor with error tracking
@@ -516,6 +531,13 @@ void readSensors(unsigned long now) {
                 DBG_SENSOR("[SENSORS] HX711 raw: %ld, scaled: %ld\n", raw, hx711_value);
             }
             #endif
+            
+            // Validate weight reading range
+            if (raw < HX711_MIN_VALID_VALUE || raw > HX711_MAX_VALID_VALUE) {
+                LOG_WARN("HX711", "Weight reading out of valid range");
+                DBG_SENSOR("[SENSORS] WARNING: HX711 raw value %ld outside valid range [%ld, %ld]\n",
+                          raw, HX711_MIN_VALID_VALUE, HX711_MAX_VALID_VALUE);
+            }
         } else {
             hx711_read_errors++;
             sensor_error_count++;
@@ -556,4 +578,7 @@ void readSensors(unsigned long now) {
         }
         #endif
     }
+    
+    PERF_END(readSensors);
+    TRACE_EXIT(SENSORS);
 }

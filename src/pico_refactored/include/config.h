@@ -20,7 +20,7 @@
 // DEBUG CONFIGURATION
 // ============================================================================
 
-// Uncomment to enable specific debug modules
+// Debug levels for conditional compilation
 // #define DEBUG_SENSORS
 // #define DEBUG_NETWORK
 // #define DEBUG_AUDIO
@@ -29,6 +29,8 @@
 // #define DEBUG_RADAR
 // #define DEBUG_EFFECTORS
 // #define DEBUG_ALL
+// #define DEBUG_VERBOSE      // Enable verbose tracing and assertions
+// #define DEBUG_PERF         // Enable performance monitoring
 
 // Master debug switch - enables all debug output when defined
 #ifdef DEBUG_ALL
@@ -39,6 +41,14 @@
 #define DEBUG_AIR
 #define DEBUG_RADAR
 #define DEBUG_EFFECTORS
+#define DEBUG_VERBOSE
+#endif
+
+// Auto-enable DEBUG_VERBOSE if DEBUG_SENSORS is defined (for detailed sensor debugging)
+#ifdef DEBUG_SENSORS
+#ifndef DEBUG_VERBOSE
+// #define DEBUG_VERBOSE  // Uncomment to enable verbose sensor tracing
+#endif
 #endif
 
 // Debug level macros for conditional compilation
@@ -163,6 +173,16 @@
     LOG_ERROR(module, "Unknown exception occurred"); \
 }
 
+// Try-catch with recovery action
+#define TRY_CATCH_RECOVER(module, recovery_action) try {
+#define CATCH_RECOVER(module, recovery_action) } catch(const std::exception& e) { \
+    LOG_ERROR(module, e.what()); \
+    recovery_action; \
+} catch(...) { \
+    LOG_ERROR(module, "Unknown exception occurred"); \
+    recovery_action; \
+}
+
 // Assert macro for development debugging with graceful failure
 #ifdef DEBUG_VERBOSE
 #define ASSERT_WITH_LOG(condition, module, msg) do { \
@@ -174,6 +194,48 @@
 #else
 #define ASSERT_WITH_LOG(condition, module, msg)
 #endif
+
+// Gentle assert - logs but continues execution
+#define GENTLE_ASSERT(condition, module, msg) do { \
+    if (!(condition)) { \
+        LOG_WARN(module, "Assertion failed (non-fatal): " msg); \
+        DBG_SENSOR("[GENTLE] %s:%d - %s\n", __FILE__, __LINE__, msg); \
+    } \
+} while(0)
+
+// Debug trace macro for function entry/exit
+#ifdef DEBUG_VERBOSE
+#define TRACE_ENTER(module) DBG_SENSOR("[TRACE] ENTER: %s\n", __func__)
+#define TRACE_EXIT(module) DBG_SENSOR("[TRACE] EXIT: %s\n", __func__)
+#define TRACE_VALUE(module, name, value) DBG_SENSOR("[TRACE] %s = %s\n", #name, String(value).c_str())
+#else
+#define TRACE_ENTER(module)
+#define TRACE_EXIT(module)
+#define TRACE_VALUE(module, name, value)
+#endif
+
+// Performance monitoring macros
+#ifdef DEBUG_PERF
+#define PERF_START(name) unsigned long perf_start_##name = micros()
+#define PERF_END(name) do { \
+    unsigned long perf_elapsed = micros() - perf_start_##name; \
+    DBG_SENSOR("[PERF] %s took %lu us (%.3f ms)\n", #name, perf_elapsed, perf_elapsed/1000.0); \
+} while(0)
+#else
+#define PERF_START(name)
+#define PERF_END(name)
+#endif
+
+// Memory monitoring for embedded systems
+#define CHECK_MEMORY(module) do { \
+    extern unsigned long __StackLimit; \
+    extern unsigned long __bss_end; \
+    uint32_t stack_free = (uint32_t)&__StackLimit - (uint32_t)&__bss_end; \
+    if (stack_free < 1024) { \
+        LOG_WARN(module, "Low memory warning"); \
+        DBG_SENSOR("[MEMORY] Stack free: %lu bytes\n", stack_free); \
+    } \
+} while(0)
 
 // ============================================================================
 // PIN DEFINITIONS (RP2040 PICO)

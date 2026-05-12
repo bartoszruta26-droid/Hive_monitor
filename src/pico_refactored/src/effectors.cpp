@@ -93,10 +93,12 @@ bool isSafeModeActive() {
  * @param duty Duty cycle value (0-255)
  * 
  * Controls heating element via PWM output
+ * Includes trace debugging and gentle assertions
  * 
  * DEBUG OUTPUT:
  * - [EFFECTORS] Heater PWM set to XX%
  * - [EFFECTORS] WARNING: Invalid duty cycle value
+ * - [TRACE] ENTER/EXIT setHeaterPWM (when DEBUG_VERBOSE enabled)
  * 
  * EXCEPTIONS HANDLED:
  * - Invalid duty cycle (>255)
@@ -104,15 +106,19 @@ bool isSafeModeActive() {
  * - Safe mode override
  */
 void setHeaterPWM(uint8_t duty) {
+    TRACE_ENTER(EFFECTORS);
     effector_op_count++;
     
     // Check if safe mode is active
     if (safe_mode_active) {
         DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
+        TRACE_EXIT(EFFECTORS);
         return;
     }
     
-    // Validate duty cycle
+    // Validate duty cycle using gentle assert
+    GENTLE_ASSERT(duty <= 255, "EFFECTORS", "Heater duty cycle exceeds maximum");
+    
     if (duty > 255) {
         #ifdef DEBUG_EFFECTORS
         Serial.printf("[EFFECTORS] WARNING: Invalid heater duty cycle: %d (clamping to 255)\n", duty);
@@ -127,6 +133,7 @@ void setHeaterPWM(uint8_t duty) {
     
     analogWrite(HEATER_PWM, duty);
     pwm_writes++;
+    TRACE_EXIT(EFFECTORS);
 }
 
 /**

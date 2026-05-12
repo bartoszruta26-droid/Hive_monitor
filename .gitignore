@@ -2,45 +2,37 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.out
-*.exe
-*.dll
-*.so
 *.a
-*.pyc
-__pycache__/
+*.so
+*.dll
+*.exe
+*.out
 
 # Dependencies
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
-
-# Build directories
-dist/
-build/
-target/
 .pio/
 .platformio/
+lib/
+src/*/include/
+src/*/src/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
 
-# Logs
-*.log
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# OS
-.DS_Store
-Thumbs.db
+# Build outputs (if any)
+build/
+dist/
+target/
 ```
