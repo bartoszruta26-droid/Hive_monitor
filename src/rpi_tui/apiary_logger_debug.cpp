@@ -429,6 +429,10 @@ void debug_counter_inc(const std::string& name, int value) {
     DebugCounter::getInstance().increment(name, value);
 }
 
+void debug_counter_dec(const std::string& name, int value) {
+    DebugCounter::getInstance().decrement(name, value);
+}
+
 int debug_counter_get(const std::string& name) {
     return DebugCounter::getInstance().get(name);
 }

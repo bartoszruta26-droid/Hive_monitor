@@ -1002,7 +1002,7 @@ public:
             std::string hive_id = getValue("hive_id");
             if (hive_id.empty()) {
                 hive_id = "UNKNOWN";
-                LOG_WARNING("Missing hive_id in JSON from " + source_ip, "PARSER");
+                apiary::Logger::getInstance().warning("Missing hive_id in JSON from " + source_ip, "PARSER");
             }
             
             HiveData data;
@@ -1071,7 +1071,7 @@ public:
                                (!getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0);
                 data.motion_detected = !getValue("motion").empty() ? std::stoi(getValue("motion")) : 0;
             } catch (const std::exception& e) {
-                LOG_ERROR(std::string("Error parsing basic values: ") + e.what(), "PARSER");
+                apiary::Logger::getInstance().error(std::string("Error parsing basic values: ") + e.what(), "PARSER");
                 DEBUG_RECORD_EXCEPTION(e);
             }
             
