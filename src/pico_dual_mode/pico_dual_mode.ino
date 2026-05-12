@@ -25,7 +25,7 @@
  * HX711 (Waga)     : DT -> GPIO 3 (Pin 5), SCK -> GPIO 4 (Pin 6)
  * SGP41 (NOx/VOC)  : I2C (SDA: GPIO 0/Pin 1, SCL: GPIO 1/Pin 2)
  * Mikrofon/Analog  : GPIO 26 (ADC0)
- * Radar LD2410B    : RX -> GPIO 4, TX -> GPIO 5 (UART1)
+ * Radar LD2410B    : RX -> GPIO 12, TX -> GPIO 13 (UART1)
  * 
  * --- Aktuary ---
  * Grzałka (PWM)    : GPIO 5 (Pin 7)
@@ -66,9 +66,9 @@
 
 #define PIN_ETH_CS 17
 
-// Radar LD2410B (UART1)
-#define RADAR_RX 4
-#define RADAR_TX 5
+// Radar LD2410B (UART1) - Use GPIO 12/13 to avoid conflicts with HX711_SCK (4) and Heater PWM (5)
+#define RADAR_RX 12
+#define RADAR_TX 13
 
 // ================= KONFIGURACJA SIECIOWA =================
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
@@ -220,8 +220,6 @@ bool relay2State = false;
 // Kalibracja wagi
 #define SCALE_CALIBRATION_FACTOR 11000.0f
 #define SCALE_TARE_OFFSET 0
-long hx711_offset = 0;
-float hx711_scale = SCALE_CALIBRATION_FACTOR;
 long hx711_value = 0;
 
 // Indeksy historii
@@ -541,7 +539,6 @@ void initDetectedSensors() {
     scale.begin(PIN_HX711_DT, PIN_HX711_SCK);
     scale.set_scale(SCALE_CALIBRATION_FACTOR);
     scale.tare(SCALE_TARE_OFFSET);
-    hx711_offset = scale.read_average(10);
     Serial.println(">> HX711 zainicjalizowany");
   }
 }
@@ -603,10 +600,10 @@ void readAllSensors(unsigned long now) {
 
   // HX711 - waga
   if (sensors.hx711.active && scale.is_ready()) {
-    long raw = scale.get_units(5);
-    if (raw != 0) {
-      hx711_value = (raw - hx711_offset) / hx711_scale;
-      weight = (float)hx711_value;
+    float rawWeight = scale.get_units(5);
+    if (rawWeight != 0.0f) {
+      weight = rawWeight;
+      hx711_value = (long)weight;
       resetSensorError(sensorErrors.hx711_errors);
       successCount++;
     } else {
@@ -776,8 +773,9 @@ void calculateHX711Metrics() {
   float samples[HX711_SHORT_WINDOW];
   int validCount = 0;
   
-  for (int i = HX711_BUFFER_SIZE - HX711_SHORT_WINDOW; i < HX711_BUFFER_SIZE; i++) {
-    int idx = i % HX711_BUFFER_SIZE;
+  // Read the most recent HX711_SHORT_WINDOW samples relative to hx711HistoryIdx
+  for (int i = 0; i < HX711_SHORT_WINDOW; i++) {
+    int idx = (hx711HistoryIdx - HX711_SHORT_WINDOW + i + HX711_BUFFER_SIZE) % HX711_BUFFER_SIZE;
     if (hx711Buffer[idx].is_valid && validCount < HX711_SHORT_WINDOW) {
       samples[validCount++] = hx711Buffer[idx].weight_filtered;
     }
