@@ -230,13 +230,108 @@ int airHistoryIdx = 0;
 int radarHistoryIdx = 0;
 bool historyInitialized = false;
 
+// Debug i Error Handling
+#define DEBUG_ENABLED true
+#define ERROR_BUFFER_SIZE 128
+char errorBuffer[ERROR_BUFFER_SIZE];
+int errorCount = 0;
+int warningCount = 0;
+unsigned long lastErrorTime = 0;
+
+// Sensor error tracking
+struct SensorErrors {
+  uint8_t dht_errors;
+  uint8_t hx711_errors;
+  uint8_t sgp41_errors;
+  uint8_t audio_errors;
+  uint8_t radar_errors;
+  uint8_t consecutive_failures;
+} sensorErrors = {0, 0, 0, 0, 0, 0};
+
+const uint8_t MAX_CONSECUTIVE_FAILURES = 5;  // Reset sensor after this many failures
+
+/**
+ * Debug print helper
+ */
+void debugPrint(const char* prefix, const String& message) {
+  if (DEBUG_ENABLED) {
+    Serial.print("[");
+    Serial.print(prefix);
+    Serial.print("] ");
+    Serial.println(message);
+  }
+}
+
+/**
+ * Error logging with timestamp and count
+ */
+void logError(const char* component, const char* message) {
+  errorCount++;
+  lastErrorTime = millis();
+  
+  snprintf(errorBuffer, ERROR_BUFFER_SIZE, "%s: %s", component, message);
+  
+  Serial.print("[ERR #");
+  Serial.print(errorCount);
+  Serial.print("] ");
+  Serial.print(component);
+  Serial.print(": ");
+  Serial.println(message);
+}
+
+/**
+ * Warning logging
+ */
+void logWarning(const char* component, const char* message) {
+  warningCount++;
+  
+  Serial.print("[WARN #");
+  Serial.print(warningCount);
+  Serial.print("] ");
+  Serial.print(component);
+  Serial.print(": ");
+  Serial.println(message);
+}
+
+/**
+ * Check sensor health and reset if needed
+ */
+bool checkSensorHealth(uint8_t& errorCounter, const char* sensorName) {
+  errorCounter++;
+  sensorErrors.consecutive_failures++;
+  
+  if (errorCounter >= MAX_CONSECUTIVE_FAILURES) {
+    logError(sensorName, "Max failures reached, attempting reset");
+    errorCounter = 0;
+    sensorErrors.consecutive_failures = 0;
+    return false;  // Sensor needs reset
+  }
+  
+  if (sensorErrors.consecutive_failures >= MAX_CONSECUTIVE_FAILURES * 2) {
+    logError("SYSTEM", "Multiple sensor failures detected");
+  }
+  
+  return true;  // Continue operation
+}
+
+/**
+ * Reset sensor error counters after successful read
+ */
+void resetSensorError(uint8_t& errorCounter) {
+  errorCounter = 0;
+  if (sensorErrors.consecutive_failures > 0) {
+    sensorErrors.consecutive_failures--;
+  }
+}
+
 void setup() {
   // Inicjalizacja Serial (USB) - zawsze startuje
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
   
-  Serial.println("\n=== ApiaryGuard Pico Dual Mode v2.0 ===");
+  Serial.println("\n=== ApiaryGuard Pico Dual Mode v2.1 ===");
   Serial.println(">> Pełna obsługa sensorów jak w pico_refactored");
+  Serial.println(">> Debug & Error Handling enabled");
 
   // Konfiguracja Pinów
   pinMode(PIN_HEATER, OUTPUT);
@@ -257,7 +352,7 @@ void setup() {
   
   // Inicjalizacja UART dla radaru
   radarSerial.begin(115200, SERIAL_8N1, RADAR_RX, RADAR_TX);
-  Serial.println(">> UART1 zainicjalizowany dla radaru");
+  debugPrint("UART1", "Zainicjalizowany dla radaru");
 
   // Detekcja sensorów
   Serial.println(">> Skanowanie sensorów...");
@@ -269,6 +364,16 @@ void setup() {
 
   // Sprawdzenie trybu połączenia
   detectConnectionMode();
+  
+  // Podsumowanie inicjalizacji
+  Serial.println("=======================");
+  Serial.print("Free heap: ");
+  Serial.println(rp2040.getFreeHeap());
+  Serial.print("Error/Warning counters: ");
+  Serial.print(errorCount);
+  Serial.print("/");
+  Serial.println(warningCount);
+  Serial.println("");
 }
 
 void loop() {
@@ -331,13 +436,15 @@ bool detectHX711() {
   unsigned long start = millis();
   while(digitalRead(PIN_HX711_DT)) {
     if (millis() - start > 50) {
-      Serial.println("  [!] HX711: Nie wykryto (timeout)");
+      logWarning("HX711", "Nie wykryto (timeout)");
+      sensorErrors.hx711_errors = MAX_CONSECUTIVE_FAILURES;
       return false;
     }
     delayMicroseconds(10);
   }
   
-  Serial.println("  [✓] HX711: Wykryto");
+  debugPrint("HX711", "Wykryto");
+  resetSensorError(sensorErrors.hx711_errors);
   return true;
 }
 
@@ -351,12 +458,14 @@ bool detectDHT() {
     
     if (!isnan(h) && !isnan(t)) {
       Serial.printf("  [✓] DHT: Wykryto (T=%.1f°C, H=%.1f%%)\n", t, h);
+      resetSensorError(sensorErrors.dht_errors);
       return true;
     }
     delay(100);
   }
   
-  Serial.println("  [!] DHT: Nie wykryto");
+  logWarning("DHT", "Nie wykryto");
+  sensorErrors.dht_errors = MAX_CONSECUTIVE_FAILURES;
   return false;
 }
 
@@ -365,11 +474,13 @@ bool detectSGP41() {
   uint8_t error = Wire.endTransmission();
   
   if (error == 0) {
-    Serial.println("  [✓] SGP41: Wykryto (0x59)");
+    debugPrint("SGP41", "Wykryto (0x59)");
+    resetSensorError(sensorErrors.sgp41_errors);
     return true;
   }
   
-  Serial.println("  [!] SGP41: Nie wykryto");
+  logWarning("SGP41", "Nie wykryto na I2C");
+  sensorErrors.sgp41_errors = MAX_CONSECUTIVE_FAILURES;
   return false;
 }
 
@@ -378,11 +489,12 @@ bool detectRadar() {
   delay(100);
   
   if (radarSerial.available()) {
-    Serial.println("  [✓] Radar: Dane na UART");
+    debugPrint("Radar", "Dane na UART");
+    resetSensorError(sensorErrors.radar_errors);
     return true;
   }
   
-  Serial.println("  [?] Radar: Brak odpowiedzi (może być podłączony)");
+  debugPrint("Radar", "Brak odpowiedzi (może być w trybie idle)");
   return true; // Nie blokuj - radar może być w trybie idle
 }
 
@@ -468,12 +580,25 @@ void initEthernet() {
 // ================= CZYTANIE SENSORÓW =================
 
 void readAllSensors(unsigned long now) {
+  unsigned long readStart = millis();
+  int successCount = 0;
+  int failCount = 0;
+  
   // DHT - temperatura i wilgotność
   if (sensors.tempHum.active) {
     float t = dht.readTemperature();
     float h = dht.readHumidity();
-    if (!isnan(t)) temperature = t;
-    if (!isnan(h)) humidity = h;
+    if (!isnan(t) && !isnan(h)) {
+      temperature = t;
+      humidity = h;
+      resetSensorError(sensorErrors.dht_errors);
+      successCount++;
+    } else {
+      if (checkSensorHealth(sensorErrors.dht_errors, "DHT")) {
+        logWarning("DHT", "Read failed");
+      }
+      failCount++;
+    }
   }
 
   // HX711 - waga
@@ -482,6 +607,13 @@ void readAllSensors(unsigned long now) {
     if (raw != 0) {
       hx711_value = (raw - hx711_offset) / hx711_scale;
       weight = (float)hx711_value;
+      resetSensorError(sensorErrors.hx711_errors);
+      successCount++;
+    } else {
+      if (checkSensorHealth(sensorErrors.hx711_errors, "HX711")) {
+        logWarning("HX711", "Zero reading");
+      }
+      failCount++;
     }
   }
 
@@ -490,10 +622,46 @@ void readAllSensors(unsigned long now) {
     sgp41.measureRawSignal();
     nox = sgp41.rawNOx;
     voc = sgp41.rawVoc;
+    if (nox > 0 && voc > 0) {
+      resetSensorError(sensorErrors.sgp41_errors);
+      successCount++;
+    } else {
+      if (checkSensorHealth(sensorErrors.sgp41_errors, "SGP41")) {
+        logWarning("SGP41", "Invalid readings");
+      }
+      failCount++;
+    }
   }
 
   // Mikrofon (ADC) - zawsze dostępny
   micLevel = analogRead(PIN_MIC);
+  if (micLevel >= 0) {
+    resetSensorError(sensorErrors.audio_errors);
+    successCount++;
+  } else {
+    if (checkSensorHealth(sensorErrors.audio_errors, "MIC")) {
+      logWarning("MIC", "Read failed");
+    }
+    failCount++;
+  }
+  
+  // Debug: raport z czytania sensorów
+  #if DEBUG_ENABLED
+  if (failCount > 0) {
+    Serial.print("[SENSOR] Read: ");
+    Serial.print(successCount);
+    Serial.print(" OK, ");
+    Serial.print(failCount);
+    Serial.print(" failed (");
+    Serial.print(millis() - readStart);
+    Serial.println("ms)");
+  }
+  #endif
+  
+  // Check for systemic issues
+  if (failCount >= 3) {
+    logError("SYSTEM", "Multiple sensor failures detected");
+  }
 }
 
 // ================= ANALIZA AUDIO =================
