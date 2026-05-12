@@ -559,6 +559,7 @@ void detectConnectionMode() {
 }
 
 void initEthernet() {
+  SPI.begin();
   Ethernet.init(PIN_ETH_CS);
   
   if (Ethernet.begin(mac) == 0) {
@@ -814,6 +815,16 @@ void calculateHX711Metrics() {
   
   currentHX711Metrics.trend_direction = constrain(currentHX711Metrics.current_rate / 100.0f, -1.0f, 1.0f);
   
+  // Calculate trend slope (grams per hour) based on recent samples
+  if (validCount >= 2 && historyInitialized) {
+    float timeSpanHours = (HX711_SHORT_WINDOW / 10.0f) / 60.0f;  // Convert minutes to hours
+    if (timeSpanHours > 0.0f) {
+      currentHX711Metrics.trend_slope_1h = (samples[validCount-1] - samples[0]) / timeSpanHours;
+    }
+  } else {
+    currentHX711Metrics.trend_slope_1h = 0.0f;
+  }
+  
   if (currentHX711Metrics.current_rate > HX711_WEIGHT_CHANGE_THRESH) {
     currentHX711Metrics.nectar_inflow_rate = currentHX711Metrics.current_rate;
     currentHX711Metrics.consumption_rate = 0.0f;
@@ -873,6 +884,24 @@ void calculateAirMetrics() {
   
   updateAirHistory();
   currentAirMetrics.mean_co2 = calculateMeanCO2(60);
+  
+  // Calculate trend slope for air quality (ppm per hour)
+  if (historyInitialized && airHistoryIdx >= 60) {
+    int oldIdx = (airHistoryIdx - 60 + AIRQUAL_BUFFER_SIZE) % AIRQUAL_BUFFER_SIZE;
+    float co2Change = (float)nox - (float)co2History[oldIdx];
+    currentAirMetrics.trend_slope_1h = co2Change;  // Change over last hour
+  } else {
+    currentAirMetrics.trend_slope_1h = 0.0f;
+  }
+  
+  // Trend direction: -1 (decreasing), 0 (stable), +1 (increasing)
+  if (currentAirMetrics.trend_slope_1h > 50.0f) {
+    currentAirMetrics.trend_direction = 1.0f;
+  } else if (currentAirMetrics.trend_slope_1h < -50.0f) {
+    currentAirMetrics.trend_direction = -1.0f;
+  } else {
+    currentAirMetrics.trend_direction = 0.0f;
+  }
   
   float co2Score = 100.0f - constrain((float)currentAirMetrics.co2_eq / CO2_WARNING_LEVEL * 100.0f, 0.0f, 100.0f);
   float vocScore = 100.0f - constrain((float)currentAirMetrics.voc_idx / VOC_ALERT_LEVEL * 100.0f, 0.0f, 100.0f);
@@ -961,7 +990,6 @@ void calculateRadarMetrics() {
     totalReadings = 0;
   }
   
-  float sum = 0.0f;
   int count = 0;
   int start = (RADAR_TREND_WINDOW > radarHistoryIdx) ? 0 : radarHistoryIdx - RADAR_TREND_WINDOW;
   
@@ -971,6 +999,22 @@ void calculateRadarMetrics() {
   
   currentRadarMetrics.activity_ratio = (count > 0) ? (float)count / RADAR_TREND_WINDOW : 0.0f;
   currentRadarMetrics.motion_intensity = constrain(currentRadarMetrics.energy / 100.0f, 0.0f, 1.0f);
+  
+  // Calculate trend slope for radar activity (change in activity ratio over time)
+  if (historyInitialized && radarHistoryIdx >= RADAR_TREND_WINDOW) {
+    int oldIdx = (radarHistoryIdx - RADAR_TREND_WINDOW + RADAR_BUFFER_SIZE) % RADAR_BUFFER_SIZE;
+    float oldActivity = 0.0f;
+    int oldCount = 0;
+    int oldStart = (RADAR_TREND_WINDOW > oldIdx) ? 0 : oldIdx - RADAR_TREND_WINDOW;
+    for (int i = oldStart; i < oldIdx && oldCount < RADAR_TREND_WINDOW; i++) {
+      if (energyHistory[i] > 30.0f) oldCount++;
+    }
+    oldActivity = (oldCount > 0) ? (float)oldCount / RADAR_TREND_WINDOW : 0.0f;
+    
+    currentRadarMetrics.trend_slope = currentRadarMetrics.activity_ratio - oldActivity;
+  } else {
+    currentRadarMetrics.trend_slope = 0.0f;
+  }
   
   float activityScore = currentRadarMetrics.activity_ratio * 100.0f;
   currentRadarMetrics.hive_health_index = (activityScore + currentRadarMetrics.signal_quality) / 2.0f;
