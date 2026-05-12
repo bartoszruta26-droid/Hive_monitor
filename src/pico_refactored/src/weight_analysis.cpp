@@ -5,6 +5,18 @@
  * DEBUG: Enable serial debugging by defining DEBUG_WEIGHT in config.h
  * LOGGING: All weight analysis operations are logged with metrics
  * EXCEPTIONS: Graceful handling of invalid data and sensor errors
+ * 
+ * DEBUG OUTPUT:
+ * - [WEIGHT] Buffer updated: index=X, total updates=Y
+ * - [WEIGHT] Metrics calculated: mean=X.XX, rate=X.XXX
+ * - [WEIGHT] WARNING/ERROR messages for validation failures
+ * - [DEBUG] Weight stats summary every 30 minutes
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Empty buffer (no valid samples)
+ * - Division by zero in calculations
+ * - Invalid metric values (NaN/Inf)
+ * - Sensor read errors
  */
 
 #include "weight_analysis.h"
@@ -239,34 +251,82 @@ HX711EventType detectHX711Events() {
 
 /**
  * Process weight data periodically
+ * 
+ * @param now Current time in milliseconds (from millis())
+ * 
+ * DEBUG OUTPUT:
+ * - [Weight] X.XX kg, Rate: X.XXX kg/min, Health: XX.X%
+ * - [DEBUG] Weight stats summary every 30 minutes
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Invalid sensor readings
+ * - Metric calculation errors
  */
 void processWeightPeriodically(unsigned long now) {
+    TRACE_ENTER(DEBUG_WEIGHT);
+    PERF_START(weight_process);
+    
     static unsigned long lastProcess = 0;
+    static unsigned long process_count = 0;
     
     // Process every 6 seconds
     if (now - lastProcess < 6000) return;
     lastProcess = now;
+    process_count++;
     
-    // Create new data point
+    // Create new data point with validation
     HX711DataPoint point;
     point.timestamp = now;
     point.weight_raw = (float)hx711_value;
     point.weight_filtered = point.weight_raw; // Could add more filtering here
-    point.is_valid = (hx711_value != 0);
     
-    // Update buffer
-    updateHX711Buffer(point);
+    // Validate weight reading against configured limits
+    if (hx711_value < HX711_MIN_VALID_VALUE || hx711_value > HX711_MAX_VALID_VALUE) {
+        #ifdef DEBUG_WEIGHT
+        Serial.printf("[WEIGHT] WARNING: Raw value out of range: %ld\n", hx711_value);
+        #endif
+        invalid_readings++;
+        point.is_valid = false;
+        GENTLE_ASSERT(false, "WEIGHT", "Weight value out of valid range");
+    } else {
+        point.is_valid = (hx711_value != 0);
+    }
     
-    // Recalculate metrics
-    calculateHX711Metrics(currentHX711Metrics);
+    TRY_CATCH_RECOVER("WEIGHT", weight_error_count++)
+        // Update buffer
+        updateHX711Buffer(point);
+        
+        // Recalculate metrics
+        calculateHX711Metrics(currentHX711Metrics);
+        
+        // Detect events
+        HX711EventType event = detectHX711Events();
+        
+        #ifdef DEBUG_WEIGHT
+        Serial.printf("[Weight] %.2f kg, Rate: %.3f kg/min, Health: %.1f%%\n",
+                      currentHX711Metrics.mean_weight,
+                      currentHX711Metrics.current_rate,
+                      currentHX711Metrics.hive_health_weight);
+        #endif
+    CATCH_RECOVER("WEIGHT", weight_error_count++)
+        LOG_ERROR("WEIGHT", "Exception during weight processing");
+    }
     
-    // Detect events
-    HX711EventType event = detectHX711Events();
-    
+    // Log stats summary every 30 minutes (300 cycles at 6s interval)
     #ifdef DEBUG_WEIGHT
-    Serial.printf("[Weight] %.2f kg, Rate: %.3f kg/min, Health: %.1f%%\n",
-                  currentHX711Metrics.mean_weight,
-                  currentHX711Metrics.current_rate,
-                  currentHX711Metrics.hive_health_weight);
+    static unsigned long stats_counter = 0;
+    stats_counter++;
+    if (stats_counter >= 300) {
+        Serial.printf("[DEBUG] Weight Stats:\n");
+        Serial.printf("  Process count: %lu\n", process_count);
+        Serial.printf("  Calculations: %lu\n", weight_calc_count);
+        Serial.printf("  Errors: %lu\n", weight_error_count);
+        Serial.printf("  Invalid readings: %lu\n", invalid_readings);
+        Serial.printf("  Buffer updates: %lu\n", buffer_updates);
+        stats_counter = 0;
+    }
     #endif
+    
+    PERF_END(weight_process);
+    TRACE_EXIT(DEBUG_WEIGHT);
 }

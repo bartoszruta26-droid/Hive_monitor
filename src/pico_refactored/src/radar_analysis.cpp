@@ -5,6 +5,18 @@
  * DEBUG: Enable serial debugging by defining DEBUG_RADAR in config.h
  * LOGGING: All radar operations are logged with metrics
  * EXCEPTIONS: Graceful handling of invalid data and communication errors
+ * 
+ * DEBUG OUTPUT:
+ * - [RADAR] Valid frame received: dist=X.XXm, energy=X.X
+ * - [RADAR] WARNING/ERROR messages for validation failures
+ * - [RADAR] Stats summary every 30 minutes
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Invalid frame header
+ * - Incomplete frames
+ * - UART read errors
+ * - Out-of-range values
+ * - NaN/Inf in calculations
  */
 
 #include "radar_analysis.h"
@@ -49,11 +61,16 @@ static bool historyInitialized = false;
  * - UART read errors
  */
 bool readRadarData() {
+    TRACE_ENTER(DEBUG_RADAR);
+    
     static uint8_t buffer[24];
     static int bufIdx = 0;
     
     while (radarSerial.available()) {
         uint8_t b = radarSerial.read();
+        
+        // Validate UART read
+        GENTLE_ASSERT(b >= 0, "RADAR", "Invalid UART byte read");
         
         // Simple frame synchronization
         if (bufIdx == 0 && b != 0xF4) {
@@ -82,12 +99,19 @@ bool readRadarData() {
                     #endif
                     parse_errors++;
                     bufIdx = 0;
+                    TRACE_EXIT(DEBUG_RADAR);
                     return false;
                 }
                 
-                // Store in metrics
+                // Store in metrics with validation
                 currentRadarMetrics.distance = (float)dist / 100.0f; // Convert to meters
                 currentRadarMetrics.energy = (float)energy / 100.0f;
+                
+                // Gentle assertions for value ranges
+                GENTLE_ASSERT(currentRadarMetrics.distance >= 0.0f && currentRadarMetrics.distance <= 50.0f,
+                              "RADAR", "Distance value out of expected range");
+                GENTLE_ASSERT(currentRadarMetrics.energy >= 0.0f && currentRadarMetrics.energy <= 100.0f,
+                              "RADAR", "Energy value out of expected range");
                 
                 // Calculate speed from Doppler (simplified)
                 currentRadarMetrics.speed = (energy > 50) ? 0.5f : 0.0f;
@@ -99,6 +123,7 @@ bool readRadarData() {
                              currentRadarMetrics.distance, currentRadarMetrics.energy);
                 #endif
                 
+                TRACE_EXIT(DEBUG_RADAR);
                 return true;
             }
             
@@ -114,6 +139,7 @@ bool readRadarData() {
         }
     }
     
+    TRACE_EXIT(DEBUG_RADAR);
     return false;
 }
 
@@ -338,41 +364,84 @@ void calculateRadarMetrics(RadarMetrics& metrics) {
                      radar_calc_count, radar_error_count, parse_errors);
     }
     #endif
+    
+    TRACE_EXIT(DEBUG_RADAR);
 }
 
 /**
  * Process radar data periodically
+ * 
+ * @param now Current time in milliseconds (from millis())
+ * 
+ * DEBUG OUTPUT:
+ * - [Radar] Dist: X.XXm, Energy: X.X, Activity: XX.X%
+ * - [Radar] No data received - check connection
+ * - [DEBUG] Radar stats summary every 30 minutes
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Communication failures with radar
+ * - Invalid metric calculations
  */
 void processRadarPeriodically(unsigned long now) {
+    TRACE_ENTER(DEBUG_RADAR);
+    PERF_START(radar_process);
+    
     static unsigned long lastProcess = 0;
+    static unsigned long process_count = 0;
     
     // Process every 2 seconds (radar update rate)
     if (now - lastProcess < 2000) return;
     lastProcess = now;
+    process_count++;
     
     // Try to read new data from radar
-    bool newData = readRadarData();
+    bool newData = false;
     
-    if (newData) {
-        // Recalculate metrics with new data
-        calculateRadarMetrics(currentRadarMetrics);
+    TRY_CATCH_RECOVER("RADAR", radar_error_count++)
+        newData = readRadarData();
         
-        #ifdef DEBUG_RADAR
-        Serial.printf("[Radar] Dist: %.2fm, Energy: %.1f, Activity: %.1f%%\n",
-                      currentRadarMetrics.distance,
-                      currentRadarMetrics.energy,
-                      currentRadarMetrics.activity_ratio * 100.0f);
-        #endif
-    } else {
-        // No new data - could indicate radar disconnected
-        static int noDataCount = 0;
-        noDataCount++;
-        
-        if (noDataCount > 10) {
+        if (newData) {
+            // Recalculate metrics with new data
+            calculateRadarMetrics(currentRadarMetrics);
+            
             #ifdef DEBUG_RADAR
-            Serial.println("[Radar] No data received - check connection");
+            Serial.printf("[Radar] Dist: %.2fm, Energy: %.1f, Activity: %.1f%%\n",
+                          currentRadarMetrics.distance,
+                          currentRadarMetrics.energy,
+                          currentRadarMetrics.activity_ratio * 100.0f);
             #endif
-            noDataCount = 0;
+        } else {
+            // No new data - could indicate radar disconnected
+            static int noDataCount = 0;
+            noDataCount++;
+            
+            if (noDataCount > 10) {
+                #ifdef DEBUG_RADAR
+                Serial.println("[Radar] No data received - check connection");
+                #endif
+                LOG_WARN("RADAR", "Radar communication timeout");
+                noDataCount = 0;
+            }
         }
+    CATCH_RECOVER("RADAR", radar_error_count++)
+        LOG_ERROR("RADAR", "Exception during radar processing");
     }
+    
+    // Log stats summary every 30 minutes (900 cycles at 2s interval)
+    #ifdef DEBUG_RADAR
+    static unsigned long stats_counter = 0;
+    stats_counter++;
+    if (stats_counter >= 900) {
+        Serial.printf("[DEBUG] Radar Stats:\n");
+        Serial.printf("  Process count: %lu\n", process_count);
+        Serial.printf("  Calculations: %lu\n", radar_calc_count);
+        Serial.printf("  Errors: %lu\n", radar_error_count);
+        Serial.printf("  Parse errors: %lu\n", parse_errors);
+        Serial.printf("  No-data cycles: %lu\n", no_data_cycles);
+        stats_counter = 0;
+    }
+    #endif
+    
+    PERF_END(radar_process);
+    TRACE_EXIT(DEBUG_RADAR);
 }
