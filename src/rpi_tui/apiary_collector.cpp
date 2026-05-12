@@ -95,6 +95,12 @@ using namespace apiary;
     #define DEBUG_FUNC_ENTER() do {} while(0)
     #define DEBUG_FUNC_EXIT() do {} while(0)
     #define DEBUG_CHECK(condition, msg) do {} while(0)
+    #define DEBUG_TRACE_FUNC() do {} while(0)
+    #define DEBUG_TRACE_POINT(label) do {} while(0)
+    #define DEBUG_START_TIMER(name) do {} while(0)
+    #define DEBUG_STOP_TIMER(name) do {} while(0)
+    #define DEBUG_COUNTER_INC(name) do {} while(0)
+    #define DEBUG_RECORD_EXCEPTION(e) do {} while(0)
 #else
     #define DEBUG_LOG(msg) apiary::Logger::getInstance().debug(msg, "DEBUG_MACRO")
     #define DEBUG_FUNC_ENTER() DEBUG_TRACE_FUNC()
