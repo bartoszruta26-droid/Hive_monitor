@@ -10,11 +10,31 @@
 #include "effectors.h"
 #include <Arduino.h>
 
+// External actuator settings (defined in main .ino)
+extern int heaterDuty;
+extern int fanDuty;
+extern int pumpDuty;
+extern bool relay1State;
+extern bool relay2State;
+
 // Debug counters for effector monitoring
 static unsigned long effector_op_count = 0;
 static unsigned long effector_error_count = 0;
 static unsigned long pwm_writes = 0;
 static unsigned long relay_switches = 0;
+
+/**
+ * @brief Update all outputs based on current duty cycles and states
+ * 
+ * Called periodically in loop() to apply actuator settings
+ */
+void updateOutputs() {
+    analogWrite(HEATER_PWM, constrain(heaterDuty, 0, 255));
+    analogWrite(FAN_PWM, constrain(fanDuty, 0, 255));
+    analogWrite(PUMP_RELAY, constrain(pumpDuty, 0, 255));
+    digitalWrite(RELAY_CH1, relay1State ? HIGH : LOW);
+    digitalWrite(RELAY_CH2, relay2State ? HIGH : LOW);
+}
 
 /**
  * @brief Set heater PWM duty cycle

@@ -1,38 +1,31 @@
 ```
-# Arduino/Pico build artifacts
+# Build artifacts
+*.o
+*.obj
+*.elf
 *.hex
 *.bin
-*.elf
-*.map
-*.o
-*.d
-*.a
-*.so
-*.dylib
-*.dll
-*.lib
-
-# Build directories
-build/
-cmake-build-*/
-.pio/
-.platformio/
+*.out
 
 # Dependencies
+.pio/
+.platformio/
 lib/
-.libs/
 
 # Temp files
 *.tmp
-*.log
 *.swp
 *~
 
-# IDE specific
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# IDE
 .vscode/
 .idea/
-*.cp
-*.cpp
-*.dep
-*.prefs
 ```
