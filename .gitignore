@@ -2,11 +2,11 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.out
 *.exe
 *.dll
 *.so
 *.a
+*.out
 
 # Dependencies
 venv/
@@ -20,22 +20,22 @@ build/
 target/
 .gradle/
 
-# Editors
-.vscode/
-.idea/
+# Logs and temp files
+*.log
+*.tmp
 *.swp
 *.swo
-*.tmp
-
-# Logs
-*.log
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# System
+# Editors
+.vscode/
+.idea/
+
+# System files
 .DS_Store
 Thumbs.db
 

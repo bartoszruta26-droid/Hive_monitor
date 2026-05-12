@@ -121,7 +121,7 @@ public:
     static DebugCounter& getInstance();
     
     void increment(const std::string& name, int value = 1);
-    void decrement(const std::string& name, int value = 1) { increment(name, -value); }
+    void decrement(const std::string& name, int value = 1);
     int get(const std::string& name);
     void reset(const std::string& name);
     void resetAll();

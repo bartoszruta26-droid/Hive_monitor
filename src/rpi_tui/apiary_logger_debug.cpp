@@ -232,6 +232,17 @@ void DebugCounter::increment(const std::string& name, int value) {
     }
 }
 
+void DebugCounter::decrement(const std::string& name, int value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    counters_[name] -= value;
+    
+    if (Logger::getInstance().isInitialized() && verbose_) {
+        std::ostringstream oss;
+        oss << "Counter '" << name << "' = " << counters_[name];
+        Logger::getInstance().debug(oss.str(), "COUNTER");
+    }
+}
+
 int DebugCounter::get(const std::string& name) {
     std::lock_guard<std::mutex> lock(mutex_);
     return counters_[name];
