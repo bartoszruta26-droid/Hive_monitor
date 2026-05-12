@@ -1006,7 +1006,7 @@ void calculateRadarMetrics() {
   static int validReadings = 0;
   static int totalReadings = 0;
   totalReadings++;
-  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance < 50.0f) {
+  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance <= 50.0f) {
     validReadings++;
   }
   if (totalReadings >= RADAR_TREND_WINDOW) {
