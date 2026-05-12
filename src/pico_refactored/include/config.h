@@ -100,6 +100,81 @@
     Serial.println(msg); \
 } while(0)
 
+// Info logging macro - enabled with DEBUG_VERBOSE
+#ifdef DEBUG_VERBOSE
+#define LOG_INFO(module, msg) do { \
+    Serial.print("[INFO] "); \
+    Serial.print(module); \
+    Serial.print(": "); \
+    Serial.println(msg); \
+} while(0)
+#else
+#define LOG_INFO(module, msg)
+#endif
+
+// Debug logging macros - enabled per module for detailed troubleshooting
+#ifdef DEBUG_SENSORS
+#define LOG_DEBUG_SENSOR(msg) DBG_SENSOR("[DEBUG-SENSOR] %s\n", msg)
+#else
+#define LOG_DEBUG_SENSOR(msg)
+#endif
+
+#ifdef DEBUG_NETWORK
+#define LOG_DEBUG_NET(msg) DBG_NET("[DEBUG-NET] %s\n", msg)
+#else
+#define LOG_DEBUG_NET(msg)
+#endif
+
+#ifdef DEBUG_AUDIO
+#define LOG_DEBUG_AUDIO(msg) DBG_AUDIO("[DEBUG-AUDIO] %s\n", msg)
+#else
+#define LOG_DEBUG_AUDIO(msg)
+#endif
+
+#ifdef DEBUG_HX711
+#define LOG_DEBUG_HX711(msg) DBG_HX711("[DEBUG-HX711] %s\n", msg)
+#else
+#define LOG_DEBUG_HX711(msg)
+#endif
+
+#ifdef DEBUG_AIR
+#define LOG_DEBUG_AIR(msg) DBG_AIR("[DEBUG-AIR] %s\n", msg)
+#else
+#define LOG_DEBUG_AIR(msg)
+#endif
+
+#ifdef DEBUG_RADAR
+#define LOG_DEBUG_RADAR(msg) DBG_RADAR("[DEBUG-RADAR] %s\n", msg)
+#else
+#define LOG_DEBUG_RADAR(msg)
+#endif
+
+#ifdef DEBUG_EFFECTORS
+#define LOG_DEBUG_EFF(msg) DBG_EFF("[DEBUG-EFF] %s\n", msg)
+#else
+#define LOG_DEBUG_EFF(msg)
+#endif
+
+// Exception handling macros for gentle code principles
+#define TRY_CATCH_LOG(module) try {
+#define CATCH_LOG(module) } catch(const std::exception& e) { \
+    LOG_ERROR(module, e.what()); \
+} catch(...) { \
+    LOG_ERROR(module, "Unknown exception occurred"); \
+}
+
+// Assert macro for development debugging with graceful failure
+#ifdef DEBUG_VERBOSE
+#define ASSERT_WITH_LOG(condition, module, msg) do { \
+    if (!(condition)) { \
+        LOG_ERROR(module, "ASSERTION FAILED: " msg); \
+        while(1) delay(1000); /* Halt on assertion failure in debug mode */ \
+    } \
+} while(0)
+#else
+#define ASSERT_WITH_LOG(condition, module, msg)
+#endif
+
 // ============================================================================
 // PIN DEFINITIONS (RP2040 PICO)
 // ============================================================================

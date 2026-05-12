@@ -114,7 +114,8 @@ std::string LogEntry::format() const {
     if (!file.empty() && line > 0) {
         oss << " (" << file << ":" << line << ")";
     }
-    oss << " {" << std::hex << std::this_thread::get_id() << std::dec << "}";
+    // Use captured thread_id from LogEntry instead of current thread
+    oss << " {" << std::hex << thread_id << std::dec << "}";
     oss << " " << message;
     return oss.str();
 }
@@ -173,6 +174,8 @@ void Logger::shutdown() noexcept {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_) return;
         running_ = false;
+        // Reset initialization state to allow re-initialization after shutdown
+        initialized_ = false;
     }
     cv_.notify_one();
     
