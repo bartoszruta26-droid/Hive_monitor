@@ -799,6 +799,14 @@ void calculateHX711Metrics() {
   }
   currentHX711Metrics.mean_weight = sum / validCount;
   
+  // Calculate standard deviation
+  float varianceSum = 0.0f;
+  for (int i = 0; i < validCount; i++) {
+    float diff = samples[i] - currentHX711Metrics.mean_weight;
+    varianceSum += diff * diff;
+  }
+  currentHX711Metrics.std_weight = sqrt(varianceSum / validCount);
+  
   if (validCount >= 2) {
     float timeSpanMinutes = HX711_SHORT_WINDOW / 10.0f;
     currentHX711Metrics.current_rate = (samples[validCount-1] - samples[0]) / timeSpanMinutes;
@@ -939,6 +947,19 @@ void updateRadarHistory() {
 
 void calculateRadarMetrics() {
   updateRadarHistory();
+  
+  // Calculate signal quality based on valid readings and distance validity
+  static int validReadings = 0;
+  static int totalReadings = 0;
+  totalReadings++;
+  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance < 50.0f) {
+    validReadings++;
+  }
+  if (totalReadings >= RADAR_TREND_WINDOW) {
+    currentRadarMetrics.signal_quality = (float)validReadings / totalReadings * 100.0f;
+    validReadings = 0;
+    totalReadings = 0;
+  }
   
   float sum = 0.0f;
   int count = 0;

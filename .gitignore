@@ -1,21 +1,22 @@
 ```
-# Arduino/Pico build artifacts
-*.hex
-*.bin
-*.elf
-*.map
-build/
+# Compiled and build artifacts
 *.o
-*.a
+*.obj
+*.hex
+*.elf
+*.bin
+*.out
 
 # Dependencies
 .pio/
 .platformio/
 lib/
+src/lib/
 
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
 # Environment
 .env
@@ -28,7 +29,16 @@ lib/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Build outputs
+build/
+dist/
+release/
+debug/
+
+# Arduino/Pico specific
+*.cpp.o
+*.c.o
+*.S.o
+.depend
+*.d
 ```
