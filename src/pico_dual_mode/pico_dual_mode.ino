@@ -559,6 +559,7 @@ void detectConnectionMode() {
 }
 
 void initEthernet() {
+  SPI.begin();
   Ethernet.init(PIN_ETH_CS);
   
   if (Ethernet.begin(mac) == 0) {
@@ -799,12 +800,30 @@ void calculateHX711Metrics() {
   }
   currentHX711Metrics.mean_weight = sum / validCount;
   
+  // Calculate standard deviation
+  float varianceSum = 0.0f;
+  for (int i = 0; i < validCount; i++) {
+    float diff = samples[i] - currentHX711Metrics.mean_weight;
+    varianceSum += diff * diff;
+  }
+  currentHX711Metrics.std_weight = sqrt(varianceSum / validCount);
+  
   if (validCount >= 2) {
     float timeSpanMinutes = HX711_SHORT_WINDOW / 10.0f;
     currentHX711Metrics.current_rate = (samples[validCount-1] - samples[0]) / timeSpanMinutes;
   }
   
   currentHX711Metrics.trend_direction = constrain(currentHX711Metrics.current_rate / 100.0f, -1.0f, 1.0f);
+  
+  // Calculate trend slope (grams per hour) based on recent samples
+  if (validCount >= 2 && historyInitialized) {
+    float timeSpanHours = (HX711_SHORT_WINDOW / 10.0f) / 60.0f;  // Convert minutes to hours
+    if (timeSpanHours > 0.0f) {
+      currentHX711Metrics.trend_slope_1h = (samples[validCount-1] - samples[0]) / timeSpanHours;
+    }
+  } else {
+    currentHX711Metrics.trend_slope_1h = 0.0f;
+  }
   
   if (currentHX711Metrics.current_rate > HX711_WEIGHT_CHANGE_THRESH) {
     currentHX711Metrics.nectar_inflow_rate = currentHX711Metrics.current_rate;
@@ -820,6 +839,11 @@ void calculateHX711Metrics() {
   float stabilityScore = 100.0f - constrain(currentHX711Metrics.std_weight * 10.0f, 0.0f, 100.0f);
   float activityScore = constrain(abs(currentHX711Metrics.nectar_inflow_rate - currentHX711Metrics.consumption_rate) * 10.0f, 0.0f, 100.0f);
   currentHX711Metrics.hive_health_weight = (stabilityScore + activityScore) / 2.0f;
+  
+  // Calculate anomaly score based on deviation from normal patterns
+  float weightAnomaly = abs(currentHX711Metrics.current_rate) / HX711_WEIGHT_CHANGE_THRESH;
+  float stabilityAnomaly = currentHX711Metrics.std_weight / 50.0f; // Normalize by expected std dev
+  currentHX711Metrics.anomaly_score = constrain((weightAnomaly + stabilityAnomaly) / 2.0f * 100.0f, 0.0f, 100.0f);
 }
 
 void processWeightPeriodically(unsigned long now) {
@@ -866,6 +890,36 @@ void calculateAirMetrics() {
   updateAirHistory();
   currentAirMetrics.mean_co2 = calculateMeanCO2(60);
   
+  // Calculate mean VOC (similar to CO2)
+  uint32_t vocSum = 0;
+  int vocCount = 0;
+  int vocStart = (60 > airHistoryIdx) ? 0 : airHistoryIdx - 60;
+  for (int i = vocStart; i < airHistoryIdx && vocCount < 60; i++) {
+    if (vocHistory[i] > 0) {
+      vocSum += vocHistory[i];
+      vocCount++;
+    }
+  }
+  currentAirMetrics.mean_voc = (vocCount > 0) ? (float)vocSum / vocCount : 0.0f;
+  
+  // Calculate trend slope for air quality (ppm per hour)
+  if (historyInitialized && airHistoryIdx >= 60) {
+    int oldIdx = (airHistoryIdx - 60 + AIRQUAL_BUFFER_SIZE) % AIRQUAL_BUFFER_SIZE;
+    float co2Change = (float)nox - (float)co2History[oldIdx];
+    currentAirMetrics.trend_slope_1h = co2Change;  // Change over last hour
+  } else {
+    currentAirMetrics.trend_slope_1h = 0.0f;
+  }
+  
+  // Trend direction: -1 (decreasing), 0 (stable), +1 (increasing)
+  if (currentAirMetrics.trend_slope_1h > 50.0f) {
+    currentAirMetrics.trend_direction = 1.0f;
+  } else if (currentAirMetrics.trend_slope_1h < -50.0f) {
+    currentAirMetrics.trend_direction = -1.0f;
+  } else {
+    currentAirMetrics.trend_direction = 0.0f;
+  }
+  
   float co2Score = 100.0f - constrain((float)currentAirMetrics.co2_eq / CO2_WARNING_LEVEL * 100.0f, 0.0f, 100.0f);
   float vocScore = 100.0f - constrain((float)currentAirMetrics.voc_idx / VOC_ALERT_LEVEL * 100.0f, 0.0f, 100.0f);
   currentAirMetrics.iaq_index = (co2Score + vocScore) / 2.0f;
@@ -878,6 +932,14 @@ void calculateAirMetrics() {
   } else {
     currentAirMetrics.ventilation_need = 0.0f;
   }
+  
+  // Calculate stress level based on IAQ index deviation from optimal
+  currentAirMetrics.stress_level = constrain(100.0f - currentAirMetrics.iaq_index, 0.0f, 100.0f);
+  
+  // Calculate anomaly score based on sudden changes in air quality
+  float co2Anomaly = abs(currentAirMetrics.trend_slope_1h) / 100.0f; // Normalize by expected change
+  float vocAnomaly = (currentAirMetrics.voc_idx > VOC_ALERT_LEVEL) ? 1.0f : 0.0f;
+  currentAirMetrics.anomaly_score = constrain((co2Anomaly + vocAnomaly) / 2.0f * 100.0f, 0.0f, 100.0f);
 }
 
 void processAirQualityPeriodically(unsigned long now) {
@@ -940,7 +1002,19 @@ void updateRadarHistory() {
 void calculateRadarMetrics() {
   updateRadarHistory();
   
-  float sum = 0.0f;
+  // Calculate signal quality based on valid readings and distance validity
+  static int validReadings = 0;
+  static int totalReadings = 0;
+  totalReadings++;
+  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance < 50.0f) {
+    validReadings++;
+  }
+  if (totalReadings >= RADAR_TREND_WINDOW) {
+    currentRadarMetrics.signal_quality = (float)validReadings / totalReadings * 100.0f;
+    validReadings = 0;
+    totalReadings = 0;
+  }
+  
   int count = 0;
   int start = (RADAR_TREND_WINDOW > radarHistoryIdx) ? 0 : radarHistoryIdx - RADAR_TREND_WINDOW;
   
@@ -951,8 +1025,41 @@ void calculateRadarMetrics() {
   currentRadarMetrics.activity_ratio = (count > 0) ? (float)count / RADAR_TREND_WINDOW : 0.0f;
   currentRadarMetrics.motion_intensity = constrain(currentRadarMetrics.energy / 100.0f, 0.0f, 1.0f);
   
+  // Calculate trend slope for radar activity (change in activity ratio over time)
+  if (historyInitialized && radarHistoryIdx >= RADAR_TREND_WINDOW) {
+    int oldIdx = (radarHistoryIdx - RADAR_TREND_WINDOW + RADAR_BUFFER_SIZE) % RADAR_BUFFER_SIZE;
+    float oldActivity = 0.0f;
+    int oldCount = 0;
+    int oldStart = (RADAR_TREND_WINDOW > oldIdx) ? 0 : oldIdx - RADAR_TREND_WINDOW;
+    for (int i = oldStart; i < oldIdx && oldCount < RADAR_TREND_WINDOW; i++) {
+      if (energyHistory[i] > 30.0f) oldCount++;
+    }
+    oldActivity = (oldCount > 0) ? (float)oldCount / RADAR_TREND_WINDOW : 0.0f;
+    
+    currentRadarMetrics.trend_slope = currentRadarMetrics.activity_ratio - oldActivity;
+  } else {
+    currentRadarMetrics.trend_slope = 0.0f;
+  }
+  
+  // Calculate mean distance over last minute
+  float distSum = 0.0f;
+  int distCount = 0;
+  int distStart = (60 > radarHistoryIdx) ? 0 : radarHistoryIdx - 60;
+  for (int i = distStart; i < radarHistoryIdx && distCount < 60; i++) {
+    if (distanceHistory[i] > 0.0f && distanceHistory[i] < 50.0f) {
+      distSum += distanceHistory[i];
+      distCount++;
+    }
+  }
+  currentRadarMetrics.mean_distance = (distCount > 0) ? distSum / distCount : 0.0f;
+  
   float activityScore = currentRadarMetrics.activity_ratio * 100.0f;
   currentRadarMetrics.hive_health_index = (activityScore + currentRadarMetrics.signal_quality) / 2.0f;
+  
+  // Calculate anomaly score based on unusual activity patterns
+  float activityAnomaly = abs(currentRadarMetrics.trend_slope) * 10.0f; // Normalize trend change
+  float distanceAnomaly = (currentRadarMetrics.mean_distance > 30.0f || currentRadarMetrics.mean_distance < 5.0f) ? 1.0f : 0.0f;
+  currentRadarMetrics.anomaly_score = constrain((activityAnomaly + distanceAnomaly) / 2.0f * 100.0f, 0.0f, 100.0f);
 }
 
 void processRadarPeriodically(unsigned long now) {
