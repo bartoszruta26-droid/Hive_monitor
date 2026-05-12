@@ -11,6 +11,8 @@
  * - Wyjście na konsolę z kolorami ANSI
  * - Specjalne metody dla uli i sieci
  * - Thread-safe operation z mutex i condition variable
+ * - Exception-safe design
+ * - Gentle code principles
  */
 
 #ifndef APIARY_LOGGER_H
@@ -24,6 +26,10 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <stdexcept>
+#include <functional>
+#include <memory>
+#include <map>
 
 namespace apiary {
 
@@ -47,8 +53,13 @@ struct LoggerConfig {
     LogLevel min_level;             // Minimalny poziom logowania
     bool rotation_enabled;          // Czy włączyć rotację plików
     int rotation_count;             // Liczba przechowywanych rotated files
+    bool include_timestamps;        // Czy dołączać timestampy
+    bool include_source;            // Czy dołączać źródło wiadomości
     
     LoggerConfig();
+    
+    // Walidacja konfiguracji
+    bool validate() const noexcept;
 };
 
 // Wpis logu (struktura wewnętrzna)
@@ -57,8 +68,31 @@ struct LogEntry {
     std::string message;            // Treść wiadomości
     std::string source;             // Źródło logu (moduł/funkcja)
     std::chrono::system_clock::time_point timestamp; // Czas zdarzenia
+    std::string file;               // Plik źródłowy (__FILE__)
+    int line;                       // Linia kodu (__LINE__)
+    std::thread::id thread_id;      // ID wątku
     
-    LogEntry(LogLevel lvl, const std::string& msg, const std::string& src = "");
+    LogEntry(LogLevel lvl, const std::string& msg, const std::string& src = "",
+             const std::string& fl = "", int ln = 0);
+    
+    // Formatowanie wpisu
+    std::string format() const;
+};
+
+// Wyjątki specyficzne dla loggera
+class LoggerException : public std::runtime_error {
+public:
+    explicit LoggerException(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+class LoggerInitException : public LoggerException {
+public:
+    explicit LoggerInitException(const std::string& msg) : LoggerException("Logger initialization failed: " + msg) {}
+};
+
+class LoggerWriteException : public LoggerException {
+public:
+    explicit LoggerWriteException(const std::string& msg) : LoggerException("Logger write failed: " + msg) {}
 };
 
 // Główna klasa Loggera (Singleton)
@@ -67,12 +101,20 @@ public:
     /**
      * @brief Pobiera instancję singletona Logger
      * @return Referencja do globalnej instancji Logger
+     * @throws LoggerInitException jeśli logger nie został zainicjalizowany
      */
     static Logger& getInstance();
     
     /**
+     * @brief Sprawdza czy logger jest zainicjalizowany
+     * @return true jeśli zainicjalizowany
+     */
+    bool isInitialized() const noexcept { return initialized_; }
+    
+    /**
      * @brief Inicjalizuje logger z podaną konfiguracją
      * @param config Konfiguracja loggera
+     * @throws LoggerInitException jeśli inicjalizacja nie powiedzie się
      * 
      * Tworzy katalogi dla plików logów, uruchamia wątek worker
      */
@@ -83,8 +125,12 @@ public:
      * @param level Poziom logowania
      * @param message Treść wiadomości
      * @param source Źródło wiadomości (domyślnie puste)
+     * @param file Plik źródłowy (automatycznie z __FILE__)
+     * @param line Linia kodu (automatycznie z __LINE__)
+     * @throws LoggerWriteException jeśli zapis nie powiedzie się
      */
-    void log(LogLevel level, const std::string& message, const std::string& source = "");
+    void log(LogLevel level, const std::string& message, const std::string& source = "",
+             const std::string& file = "", int line = 0);
     
     /**
      * @brief Ustawia minimalny poziom logowania
@@ -93,7 +139,14 @@ public:
     void setLogLevel(LogLevel level);
     
     /**
+     * @brief Pobiera aktualny poziom logowania
+     * @return Aktualny minimalny poziom
+     */
+    LogLevel getLogLevel() const noexcept;
+    
+    /**
      * @brief Wymusza zapisanie wszystkich oczekujących logów
+     * @throws LoggerWriteException jeśli flush nie powiedzie się
      */
     void flush();
     
@@ -102,7 +155,7 @@ public:
      * 
      * Czeka na przetworzenie kolejki, zamyka wątek worker
      */
-    void shutdown();
+    void shutdown() noexcept;
     
     // Metody wygodne dla poszczególnych poziomów logowania
     
@@ -136,10 +189,17 @@ public:
     
     /**
      * @brief Loguje wiadomość na poziomie CRITICAL
-     * @param message Treść wiadomości
+     * @param message Treść wiadomość
      * @param source Źródło wiadomości
      */
     void critical(const std::string& message, const std::string& source = "");
+    
+    /**
+     * @brief Loguje wyjątek
+     * @param e Wyjątek do zalogowania
+     * @param source Źródło wyjątku
+     */
+    void exception(const std::exception& e, const std::string& source = "EXCEPTION");
     
     /**
      * @brief Loguje zdarzenie związane z ulem
@@ -172,6 +232,18 @@ public:
      */
     std::vector<LogEntry> getRecentDebug(size_t count = 100);
     
+    /**
+     * @brief Pobiera statystyki loggera
+     * @return Mapa ze statystykami
+     */
+    std::map<std::string, size_t> getStats() const;
+    
+    /**
+     * @brief Rejestruje callback dla nowych logów
+     * @param callback Funkcja wywoływana przy każdym logu
+     */
+    void registerCallback(std::function<void(const LogEntry&)> callback);
+    
 private:
     Logger();
     ~Logger();
@@ -189,6 +261,7 @@ private:
     void outputToConsole(const std::string& message, LogLevel level); // Wyjście na konsolę
     void writeToFile(const std::string& message, LogLevel level); // Zapis do pliku
     void workerFunction(); // Funkcja wątku worker
+    void incrementCounter(LogLevel level); // Inkrementuje liczniki
     
     LoggerConfig config_;
     std::queue<LogEntry> log_queue_;
@@ -197,7 +270,29 @@ private:
     std::condition_variable cv_;
     std::thread worker_thread_;
     std::atomic<bool> running_;
+    std::atomic<bool> initialized_;
+    
+    // Statystyki
+    std::atomic<size_t> total_logs_{0};
+    std::atomic<size_t> debug_count_{0};
+    std::atomic<size_t> info_count_{0};
+    std::atomic<size_t> warning_count_{0};
+    std::atomic<size_t> error_count_{0};
+    std::atomic<size_t> critical_count_{0};
+    std::atomic<size_t> write_errors_{0};
+    
+    // Callbacks
+    std::vector<std::function<void(const LogEntry&)>> callbacks_;
+    std::mutex callback_mutex_;
 };
+
+// Makra pomocnicze do automatycznego dodawania informacji o pliku i linii
+#define LOG_DEBUG(msg) apiary::Logger::getInstance().debug(msg, __func__)
+#define LOG_INFO(msg) apiary::Logger::getInstance().info(msg, __func__)
+#define LOG_WARNING(msg) apiary::Logger::getInstance().warning(msg, __func__)
+#define LOG_ERROR(msg) apiary::Logger::getInstance().error(msg, __func__)
+#define LOG_CRITICAL(msg) apiary::Logger::getInstance().critical(msg, __func__)
+#define LOG_EXCEPTION(e) apiary::Logger::getInstance().exception(e, __func__)
 
 // Funkcje pomocnicze do logowania (free functions)
 void log_debug(const std::string& msg, const std::string& src = "");
