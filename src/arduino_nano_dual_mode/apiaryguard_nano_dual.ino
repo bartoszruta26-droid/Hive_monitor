@@ -73,6 +73,26 @@ CommunicationMode currentMode = MODE_NONE;
 bool ethernetAvailable = false;
 bool usbConnected = false;
 
+// Debug i Error Handling
+#define DEBUG_ENABLED true
+#define ERROR_BUFFER_SIZE 64
+char errorBuffer[ERROR_BUFFER_SIZE];
+int errorCount = 0;
+int warningCount = 0;
+unsigned long lastErrorTime = 0;
+
+// Sensor error tracking
+struct SensorErrors {
+  uint8_t dht_errors;
+  uint8_t hx711_errors;
+  uint8_t sgp41_errors;
+  uint8_t audio_errors;
+  uint8_t piezo_errors;
+  uint8_t consecutive_failures;
+} sensorErrors = {0, 0, 0, 0, 0, 0};
+
+const uint8_t MAX_CONSECUTIVE_FAILURES = 5;  // Reset sensor after this many failures
+
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 1000;  // 1 sekunda
 unsigned long lastHeartbeat = 0;
@@ -117,9 +137,82 @@ int cmdIndex = 0;
 // ============================================================================
 
 uint16_t getFreeRam() {
-  extern int __heap_start, *__brkval;
-  int v;
+  extern int __heap_start, *__brkval;\n  int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+
+/**
+ * Debug print helper
+ */
+void debugPrint(const char* prefix, const String& message) {
+  if (DEBUG_ENABLED) {
+    Serial.print("[");
+    Serial.print(prefix);
+    Serial.print("] ");
+    Serial.println(message);
+  }
+}
+
+/**
+ * Error logging with timestamp and count
+ */
+void logError(const char* component, const char* message) {
+  errorCount++;
+  lastErrorTime = millis();
+  
+  snprintf(errorBuffer, ERROR_BUFFER_SIZE, "%s: %s", component, message);
+  
+  Serial.print("[ERR #");
+  Serial.print(errorCount);
+  Serial.print("] ");
+  Serial.print(component);
+  Serial.print(": ");
+  Serial.println(message);
+}
+
+/**
+ * Warning logging
+ */
+void logWarning(const char* component, const char* message) {
+  warningCount++;
+  
+  Serial.print("[WARN #");
+  Serial.print(warningCount);
+  Serial.print("] ");
+  Serial.print(component);
+  Serial.print(": ");
+  Serial.println(message);
+}
+
+/**
+ * Check sensor health and reset if needed
+ */
+bool checkSensorHealth(uint8_t& errorCounter, const char* sensorName) {
+  errorCounter++;
+  sensorErrors.consecutive_failures++;
+  
+  if (errorCounter >= MAX_CONSECUTIVE_FAILURES) {
+    logError(sensorName, "Max failures reached, attempting reset");
+    errorCounter = 0;
+    sensorErrors.consecutive_failures = 0;
+    return false;  // Sensor needs reset
+  }
+  
+  if (sensorErrors.consecutive_failures >= MAX_CONSECUTIVE_FAILURES * 2) {
+    logError("SYSTEM", "Multiple sensor failures detected");
+  }
+  
+  return true;  // Continue operation
+}
+
+/**
+ * Reset sensor error counters after successful read
+ */
+void resetSensorError(uint8_t& errorCounter) {
+  errorCounter = 0;
+  if (sensorErrors.consecutive_failures > 0) {
+    sensorErrors.consecutive_failures--;
+  }
 }
 
 /**
@@ -150,10 +243,10 @@ bool detectUSB() {
 }
 
 /**
- * Inicjalizacja Ethernet ENC28J60
+ * Inicjalizacja Ethernet ENC28J60 z error handlingiem
  */
 bool initEthernet() {
-  Serial.println("Eth: Inicjalizacja ENC28J60...");
+  debugPrint("ETH", "Inicjalizacja ENC28J60...");
   
   // UIPEthernet nie wymaga Ethernet.init() - CS jest ustawiany w begin()
   
@@ -161,13 +254,14 @@ bool initEthernet() {
   delay(1500);
   
   if (ret == 0) {
-    Serial.println("Eth: Nie wykryto sprzetu lub brak polaczenia!");
+    logError("ETH", "Nie wykryto sprzetu lub brak polaczenia!");
     return false;
   }
   
   // Sprawdzenie linku przez odczyt statusu
-  if (Ethernet.linkStatus() == 0) {
-    Serial.println("Eth: Brak kabla!");
+  uint8_t linkStatus = Ethernet.linkStatus();
+  if (linkStatus == 0) {
+    logWarning("ETH", "Brak kabla sieciowego");
     return false;
   }
   
@@ -175,22 +269,30 @@ bool initEthernet() {
   Serial.println(Ethernet.localIP());
   
   server.begin();
-  Serial.println("Eth: Server na porcie 8080");
+  debugPrint("ETH", "Server na porcie 8080");
   
   return true;
 }
 
 /**
- * Inicjalizacja HX711
+ * Inicjalizacja HX711 z error handlingiem
  */
 void initHX711() {
   pinMode(HX711_SCK, OUTPUT);
   pinMode(HX711_DT, INPUT);
   digitalWrite(HX711_SCK, LOW);
   delay(100);
-  weightOffset = readHX711Raw();
-  Serial.print("HX711 Offset: ");
-  Serial.println(weightOffset);
+  
+  long offset = readHX711Raw();
+  if (offset == 0) {
+    logError("HX711", "Failed to initialize - check wiring");
+    sensorErrors.hx711_errors = MAX_CONSECUTIVE_FAILURES;
+  } else {
+    weightOffset = offset;
+    resetSensorError(sensorErrors.hx711_errors);
+    Serial.print("HX711 Offset: ");
+    Serial.println(weightOffset);
+  }
 }
 
 /**
@@ -276,7 +378,7 @@ void setRelay(int relay, bool state) {
 }
 
 /**
- * Odczyt SGP41 przez I2C
+ * Odczyt SGP41 przez I2C z error handlingiem
  */
 bool readSGP41() {
   if (!sgpConnected) {
@@ -288,45 +390,157 @@ bool readSGP41() {
   Wire.beginTransmission(0x59);
   Wire.write((uint8_t)0x21);
   Wire.write((uint8_t)0x08);
-  if (Wire.endTransmission() == 0) {
-    delay(50);
-    Wire.requestFrom(0x59, (uint8_t)6);
-    if (Wire.available() >= 6) {
-      uint8_t data[6];
-      for (int i = 0; i < 6; i++) data[i] = Wire.read();
-      sensors.co2_raw = data[0] * 256 + data[1];
-      sensors.voc_raw = data[3] * 256 + data[4];
-      return true;
-    }
+  uint8_t err = Wire.endTransmission();
+  
+  if (err != 0) {
+    sensorErrors.sgp41_errors++;
+    #if DEBUG_ENABLED
+    Serial.print("[SGP41] I2C write error: ");
+    Serial.println(err);
+    #endif
+    return false;
   }
-  return false;
+  
+  delay(50);
+  int available = Wire.requestFrom(0x59, (uint8_t)6);
+  
+  if (available < 6) {
+    sensorErrors.sgp41_errors++;
+    #if DEBUG_ENABLED
+    Serial.print("[SGP41] I2C read error: got ");
+    Serial.print(available);
+    Serial.println(" bytes, expected 6");
+    #endif
+    return false;
+  }
+  
+  uint8_t data[6];
+  for (int i = 0; i < 6; i++) {
+    data[i] = Wire.read();
+  }
+  
+  // Validate data
+  if (data[2] != ((data[0] * 256 + data[1]) >> 8 & 0xFF)) {
+    logWarning("SGP41", "CRC check failed for CO2");
+  }
+  
+  sensors.co2_raw = data[0] * 256 + data[1];
+  sensors.voc_raw = data[3] * 256 + data[4];
+  
+  resetSensorError(sensorErrors.sgp41_errors);
+  return true;
 }
 
 /**
- * Odczyt wszystkich sensorów
+ * Odczyt DHT22 z obsługa błędów
  */
-void readAllSensors() {
-  // DHT22
+bool readDHT22() {
   float t = dht.readTemperature();
   float h = dht.readHumidity();
-  sensors.temp_raw = isnan(t) ? -99.9 : t;
-  sensors.hum_raw = isnan(h) ? -99.9 : h;
+  
+  if (isnan(t) || isnan(h)) {
+    if (checkSensorHealth(sensorErrors.dht_errors, "DHT22")) {
+      logWarning("DHT22", "Read failed, retrying next cycle");
+    }
+    sensors.temp_raw = -99.9;
+    sensors.hum_raw = -99.9;
+    return false;
+  }
+  
+  resetSensorError(sensorErrors.dht_errors);
+  sensors.temp_raw = t;
+  sensors.hum_raw = h;
+  return true;
+}
+
+/**
+ * Odczyt wszystkich sensorów z error handlingiem
+ */
+void readAllSensors() {
+  unsigned long readStart = millis();
+  int successCount = 0;
+  int failCount = 0;
+  
+  // DHT22
+  if (readDHT22()) {
+    successCount++;
+  } else {
+    failCount++;
+  }
   
   // HX711
-  sensors.weight_raw = readHX711();
+  long weightVal = readHX711();
+  if (weightVal != 0 || sensorErrors.hx711_errors == 0) {
+    sensors.weight_raw = weightVal;
+    resetSensorError(sensorErrors.hx711_errors);
+    successCount++;
+  } else {
+    if (checkSensorHealth(sensorErrors.hx711_errors, "HX711")) {
+      logWarning("HX711", "Invalid reading");
+    }
+    failCount++;
+  }
   
   // Audio
-  sensors.audio_raw = readMic();
+  int audioVal = readMic();
+  if (audioVal >= 0) {
+    sensors.audio_raw = audioVal;
+    resetSensorError(sensorErrors.audio_errors);
+    successCount++;
+  } else {
+    if (checkSensorHealth(sensorErrors.audio_errors, "MIC")) {
+      logWarning("MIC", "Read failed");
+    }
+    failCount++;
+  }
   
   // Piezo
-  sensors.vibration_raw = readPiezo();
+  int piezoVal = readPiezo();
+  if (piezoVal >= 0) {
+    sensors.vibration_raw = piezoVal;
+    resetSensorError(sensorErrors.piezo_errors);
+    successCount++;
+  } else {
+    if (checkSensorHealth(sensorErrors.piezo_errors, "PIEZO")) {
+      logWarning("PIEZO", "Read failed");
+    }
+    failCount++;
+  }
   
   // SGP41
-  readSGP41();
+  if (readSGP41()) {
+    resetSensorError(sensorErrors.sgp41_errors);
+    successCount++;
+  } else {
+    if (sgpConnected) {  // Only warn if we think sensor should be there
+      if (checkSensorHealth(sensorErrors.sgp41_errors, "SGP41")) {
+        logWarning("SGP41", "I2C read failed");
+      }
+    }
+    failCount++;
+  }
   
   // Metadane
   sensors.timestamp = millis();
   sensors.free_ram = getFreeRam();
+  
+  // Debug: raport z czytania sensorów
+  #if DEBUG_ENABLED
+  if (failCount > 0) {
+    Serial.print("[SENSOR] Read: ");
+    Serial.print(successCount);
+    Serial.print(" OK, ");
+    Serial.print(failCount);
+    Serial.print(" failed (");
+    Serial.print(millis() - readStart);
+    Serial.println("ms)");
+  }
+  #endif
+  
+  // Check for systemic issues
+  if (failCount >= 4) {
+    logError("SYSTEM", "Multiple sensor failures detected");
+  }
 }
 
 // ============================================================================
@@ -429,12 +643,28 @@ void handleUSBInput() {
 }
 
 /**
- * Wysyłanie heartbeat przez USB
+ * Wysyłanie heartbeat przez USB z diagnostyką
  */
 void sendUSBHeartbeat() {
   Serial.print("[HB] USB Mode | Uptime: ");
   Serial.print(millis() / 1000);
-  Serial.println("s");
+  Serial.print("s | Err: ");
+  Serial.print(errorCount);
+  Serial.print("/Warn: ");
+  Serial.print(warningCount);
+  
+  if (sensorErrors.consecutive_failures > 0) {
+    Serial.print(" | SensorFail: ");
+    Serial.print(sensorErrors.consecutive_failures);
+  }
+  
+  uint16_t ram = getFreeRam();
+  if (ram < 200) {
+    Serial.print(" | [LOW RAM] ");
+  }
+  Serial.print(" | RAM: ");
+  Serial.print(ram);
+  Serial.println("B");
 }
 
 // ============================================================================
@@ -588,14 +818,25 @@ void handleEthernetServer() {
 }
 
 /**
- * Wysyłanie heartbeat przez Ethernet (log)
+ * Wysyłanie heartbeat przez Ethernet (log) z diagnostyką
  */
 void sendEthernetHeartbeat() {
   Serial.print("[HB] ETH Mode | IP: ");
   Serial.print(Ethernet.localIP());
   Serial.print(" | Uptime: ");
   Serial.print(millis() / 1000);
-  Serial.println("s");
+  Serial.print("s | Err: ");
+  Serial.print(errorCount);
+  Serial.print("/Warn: ");
+  Serial.print(warningCount);
+  
+  uint16_t ram = getFreeRam();
+  if (ram < 200) {
+    Serial.print(" | [LOW RAM] ");
+  }
+  Serial.print(" | RAM: ");
+  Serial.print(ram);
+  Serial.println("B");
 }
 
 // ============================================================================
@@ -616,14 +857,15 @@ void setup() {
   Serial.println("=== ApiaryGuard Nano ===");
   Serial.println("Dual Mode: USB + Ethernet");
   Serial.println("Priority: USB > Ethernet");
+  Serial.println("Version: 2.1 with Debug & Error Handling");
   Serial.println("");
   
   // Sprawdź dostępność USB
   usbConnected = detectUSB();
   if (usbConnected) {
-    Serial.println("USB: Podlaczono");
+    debugPrint("USB", "Podlaczono");
   } else {
-    Serial.println("USB: Nie wykryto");
+    debugPrint("USB", "Nie wykryto");
   }
   
   // Inicjalizacja pinów
@@ -674,6 +916,10 @@ void setup() {
   
   Serial.print("RAM free: ");
   Serial.println(getFreeRam());
+  Serial.print("Error/Warning counters: ");
+  Serial.print(errorCount);
+  Serial.print("/");
+  Serial.println(warningCount);
   Serial.println("=======================");
   Serial.println("");
 }

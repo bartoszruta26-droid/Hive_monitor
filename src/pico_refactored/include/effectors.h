@@ -19,5 +19,6 @@ void setValve1(bool state);
 void setValve2(bool state);
 void setRelay(uint8_t channel, bool state);
 void printEffectorStatus(); // New function for status reporting
+void updateOutputs(); // Dual mode support
 
 #endif // EFFECTORS_H
