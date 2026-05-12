@@ -4,57 +4,36 @@
 *.bin
 *.elf
 *.map
-*.lst
-*.sym
-*.d
+build/
 *.o
 *.a
 *.so
 *.dylib
 *.dll
 
-# Build directories
-build/
-cmake-build-*/
+# Dependencies
 .pio/
 .platformio/
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.egg-info/
 
-# Dependencies
-lib/
-libraries/
-
-# IDE specific
+# IDE/Editor
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# System files
+# System
 .DS_Store
 Thumbs.db
-
-# Logs
 *.log
 
 # Environment
 .env
 .env.local
 *.env.*
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python artifacts (if any Python tools used)
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# Temporary files
-*.tmp
-*~
 ```
