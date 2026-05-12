@@ -5,6 +5,19 @@
  * DEBUG: Enable serial debugging by defining DEBUG_AUDIO in config.h
  * LOGGING: All audio processing operations are logged with error tracking
  * EXCEPTIONS: Graceful handling of invalid data and processing errors
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] FFT completed: XX bins processed
+ * - [AUDIO] ADC read completed: XX samples
+ * - [AUDIO] Metrics calculated: ZCR=X.XX, RMS=XXX
+ * - [AUDIO] WARNING/ERROR messages for validation failures
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Null pointer access
+ * - Invalid buffer sizes
+ * - ADC read errors
+ * - NaN/Inf in calculations
+ * - Division by zero
  */
 
 #include "audio_analysis.h"
@@ -40,6 +53,8 @@ extern AudioMetrics currentAudioMetrics;
  * - Invalid size parameter
  */
 void performFFT(int16_t* input, float* output, int size) {
+    TRACE_ENTER(DEBUG_AUDIO);
+    
     // Validate input parameters
     if (input == nullptr || output == nullptr) {
         #ifdef DEBUG_AUDIO
@@ -47,6 +62,7 @@ void performFFT(int16_t* input, float* output, int size) {
         #endif
         fft_errors++;
         audio_error_count++;
+        TRACE_EXIT(DEBUG_AUDIO);
         return;
     }
     
@@ -56,8 +72,11 @@ void performFFT(int16_t* input, float* output, int size) {
         #endif
         fft_errors++;
         audio_error_count++;
+        TRACE_EXIT(DEBUG_AUDIO);
         return;
     }
+    
+    TRACE_VALUE(DEBUG_AUDIO, size, size);
     
     // Check for zero-filled input (no signal)
     bool hasSignal = false;
@@ -75,6 +94,7 @@ void performFFT(int16_t* input, float* output, int size) {
     }
     
     // Simplified DFT for demonstration (replace with proper FFT in production)
+    PERF_START(fft_compute);
     for (int k = 0; k < size / 2; k++) {
         float real = 0.0f;
         float imag = 0.0f;
@@ -85,9 +105,21 @@ void performFFT(int16_t* input, float* output, int size) {
             imag -= input[n] * sin(angle);
         }
         
-        // Calculate magnitude
-        output[k] = sqrt(real * real + imag * imag) / size;
+        // Calculate magnitude with validation
+        float magnitude = sqrt(real * real + imag * imag) / size;
+        
+        // Check for NaN/Inf before storing
+        if (isnan(magnitude) || isinf(magnitude)) {
+            #ifdef DEBUG_AUDIO
+            Serial.printf("[AUDIO] WARNING: Invalid magnitude at bin %d\n", k);
+            #endif
+            magnitude = 0.0f;
+            fft_errors++;
+        }
+        
+        output[k] = magnitude;
     }
+    PERF_END(fft_compute);
     
     // Increment process counter for throttled debug logs
     audio_process_count++;
@@ -97,6 +129,8 @@ void performFFT(int16_t* input, float* output, int size) {
         Serial.printf("[AUDIO] FFT completed: %d bins processed\n", size / 2);
     }
     #endif
+    
+    TRACE_EXIT(DEBUG_AUDIO);
 }
 
 /**
@@ -106,14 +140,20 @@ void performFFT(int16_t* input, float* output, int size) {
  * DEBUG OUTPUT:
  * - [AUDIO] ADC read completed: XX samples
  * - [AUDIO] WARNING: ADC reading out of expected range
+ * - [AUDIO] ERROR: Too many ADC errors, using fallback data
  * 
  * EXCEPTIONS HANDLED:
  * - ADC read timeout
  * - Values outside valid range
+ * - Persistent ADC failures
  */
 static void readAudioSignal() {
+    TRACE_ENTER(DEBUG_AUDIO);
+    PERF_START(adc_read);
+    
     int validSamples = 0;
     int outOfRangeCount = 0;
+    int consecutiveErrors = 0;
     
     for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
         // Read from MEMS mic (ADC0)
@@ -126,8 +166,14 @@ static void readAudioSignal() {
             #endif
             outOfRangeCount++;
             adc_read_errors++;
+            consecutiveErrors++;
             raw = 2048; // Default to center value
+        } else {
+            consecutiveErrors = 0; // Reset on successful read
         }
+        
+        // Gentle assertion for ADC health monitoring
+        GENTLE_ASSERT(raw >= 0 && raw <= 4095, "AUDIO", "ADC value validation failed");
         
         audioBuffer[i] = raw - 2048; // Center around 0
         
@@ -136,7 +182,22 @@ static void readAudioSignal() {
         }
         
         delayMicroseconds(250); // ~4kHz sample rate
+        
+        // Check for persistent ADC failure - switch to safe mode
+        if (consecutiveErrors > 10) {
+            #ifdef DEBUG_AUDIO
+            Serial.println("[AUDIO] ERROR: Persistent ADC failure, using fallback data");
+            #endif
+            LOG_ERROR("AUDIO", "Persistent ADC failure detected");
+            // Fill remaining buffer with safe defaults
+            for (int j = i + 1; j < AUDIO_BUFFER_SIZE; j++) {
+                audioBuffer[j] = 0;
+            }
+            break;
+        }
     }
+    
+    PERF_END(adc_read);
     
     #ifdef DEBUG_AUDIO
     if (outOfRangeCount > 0) {
@@ -146,7 +207,10 @@ static void readAudioSignal() {
     if (validSamples < AUDIO_BUFFER_SIZE / 2) {
         Serial.printf("[AUDIO] WARNING: Low signal quality (%d valid samples)\n", validSamples);
     }
+    Serial.printf("[AUDIO] ADC read completed: %d samples\n", AUDIO_BUFFER_SIZE);
     #endif
+    
+    TRACE_EXIT(DEBUG_AUDIO);
 }
 
 /**
@@ -164,19 +228,26 @@ static void readAudioSignal() {
  * DEBUG OUTPUT:
  * - [AUDIO] Metrics calculated: ZCR=X.XX, RMS=XXX, DominantFreq=XXX Hz
  * - [AUDIO] WARNING: Invalid metric calculation (NaN detected)
+ * - [AUDIO] ERROR: Null buffer access
  * 
  * EXCEPTIONS HANDLED:
  * - Division by zero in spectral calculations
  * - NaN/Inf results from FFT
  * - Out-of-range metric values
+ * - Null pointer access
  */
 void calculateAudioMetrics(AudioMetrics& metrics) {
+    TRACE_ENTER(DEBUG_AUDIO);
+    PERF_START(metrics_calc);
+    
     // Validate buffer state before processing
     if (audioBuffer == nullptr || audioFFT == nullptr) {
         #ifdef DEBUG_AUDIO
         Serial.println("[AUDIO] ERROR: Null buffer in calculateAudioMetrics");
         #endif
+        LOG_ERROR("AUDIO", "Null audio buffer");
         audio_error_count++;
+        TRACE_EXIT(DEBUG_AUDIO);
         return;
     }
     
@@ -190,7 +261,9 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     }
     metrics.zero_crossing_rate = (float)zeroCrossings / AUDIO_BUFFER_SIZE;
     
-    // Validate ZCR range
+    // Validate ZCR range with gentle assertion
+    GENTLE_ASSERT(metrics.zero_crossing_rate >= 0.0f && metrics.zero_crossing_rate <= 1.0f,
+                  "AUDIO", "ZCR out of expected range");
     if (isnan(metrics.zero_crossing_rate) || metrics.zero_crossing_rate > 1.0f) {
         #ifdef DEBUG_AUDIO
         Serial.printf("[AUDIO] WARNING: Invalid ZCR: %.3f\n", metrics.zero_crossing_rate);
@@ -313,6 +386,12 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
         audio_error_count++;
     }
     
+    // Final validation of all metrics
+    GENTLE_ASSERT(!isnan(metrics.zero_crossing_rate), "AUDIO", "ZCR is NaN after calculation");
+    GENTLE_ASSERT(!isnan(metrics.rms_amplitude), "AUDIO", "RMS is NaN after calculation");
+    GENTLE_ASSERT(!isnan(metrics.dominant_frequency) || metrics.dominant_frequency >= 0, 
+                  "AUDIO", "Dominant frequency invalid");
+    
     #ifdef DEBUG_AUDIO
     if (audio_process_count % 5 == 0) {
         Serial.printf("[AUDIO] Metrics: ZCR=%.3f, RMS=%.1f, DomFreq=%.1fHz, BeeIdx=%.2f\n",
@@ -322,12 +401,39 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
                      metrics.bee_activity_index);
     }
     #endif
+    
+    PERF_END(metrics_calc);
+    TRACE_EXIT(DEBUG_AUDIO);
 }
 
 /**
  * Classify audio event based on metrics
+ * 
+ * @param event Reference to AudioEvent struct to populate
+ * @param metrics AudioMetrics with calculated values
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] Event classified: TYPE with XX% confidence
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Invalid metric inputs
+ * - Buffer overflow in description
  */
 void classifyAudioEvent(AudioEvent& event, const AudioMetrics& metrics) {
+    TRACE_ENTER(DEBUG_AUDIO);
+    
+    // Validate input metrics
+    if (isnan(metrics.bee_activity_index) || isnan(metrics.swarm_probability)) {
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] WARNING: NaN metrics in classification, using defaults");
+        #endif
+        event.type = AudioEventType::NORMAL_ACTIVITY;
+        event.confidence = 0.5f;
+        snprintf(event.description, sizeof(event.description), "Classification unavailable (sensor error)");
+        TRACE_EXIT(DEBUG_AUDIO);
+        return;
+    }
+    
     event.timestamp = millis();
     
     if (metrics.bee_activity_index > 0.8f) {
@@ -335,49 +441,103 @@ void classifyAudioEvent(AudioEvent& event, const AudioMetrics& metrics) {
         event.confidence = metrics.bee_activity_index;
         snprintf(event.description, sizeof(event.description), 
                  "High bee activity detected (%.1f%%)", event.confidence * 100.0f);
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] Event classified: INCREASED_ACTIVITY (%.1f%%)\n", event.confidence * 100.0f);
+        #endif
     } else if (metrics.swarm_probability > 0.6f) {
         event.type = AudioEventType::SWARM_PREPARATION;
         event.confidence = metrics.swarm_probability;
         snprintf(event.description, sizeof(event.description), 
                  "Swarm preparation likely (%.1f%%)", event.confidence * 100.0f);
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] Event classified: SWARM_PREPARATION (%.1f%%)\n", event.confidence * 100.0f);
+        #endif
     } else if (metrics.bee_activity_index < 0.2f) {
         event.type = AudioEventType::LOW_ACTIVITY;
         event.confidence = 1.0f - metrics.bee_activity_index;
         snprintf(event.description, sizeof(event.description), 
                  "Low hive activity (%.1f%%)", event.confidence * 100.0f);
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[AUDIO] Event classified: LOW_ACTIVITY (%.1f%%)\n", event.confidence * 100.0f);
+        #endif
     } else {
         event.type = AudioEventType::NORMAL_ACTIVITY;
         event.confidence = 0.8f;
         snprintf(event.description, sizeof(event.description), "Normal hive activity");
+        #ifdef DEBUG_AUDIO
+        Serial.println("[AUDIO] Event classified: NORMAL_ACTIVITY");
+        #endif
     }
+    
+    TRACE_EXIT(DEBUG_AUDIO);
 }
 
 /**
  * Process audio signal periodically
+ * 
+ * @param now Current time in milliseconds (from millis())
+ * 
+ * DEBUG OUTPUT:
+ * - [AUDIO] Processing audio data...
+ * - [Audio] Event: TYPE - description
+ * - [AUDIO] Stats summary every 30 minutes
+ * 
+ * EXCEPTIONS HANDLED:
+ * - Processing errors in any stage are logged and counted
  */
 void processAudioPeriodically(unsigned long now) {
+    TRACE_ENTER(DEBUG_AUDIO);
+    PERF_START(audio_process);
+    
     static unsigned long lastProcess = 0;
+    static unsigned long process_count = 0;
     
     // Process every 5 seconds
     if (now - lastProcess < 5000) return;
     lastProcess = now;
-    
-    // Read audio signal
-    readAudioSignal();
-    
-    // Perform FFT
-    performFFT(audioBuffer, audioFFT, AUDIO_BUFFER_SIZE);
-    
-    // Calculate metrics
-    calculateAudioMetrics(currentAudioMetrics);
-    
-    // Classify event (optional logging)
-    AudioEvent event;
-    classifyAudioEvent(event, currentAudioMetrics);
+    process_count++;
     
     #ifdef DEBUG_AUDIO
-    Serial.printf("[Audio] Event: %s - %s\n", 
-                  event.type == AudioEventType::NORMAL_ACTIVITY ? "NORMAL" : "ALERT",
-                  event.description);
+    Serial.println("[AUDIO] Processing audio data...");
     #endif
+    
+    TRY_CATCH_RECOVER("AUDIO", audio_error_count++)
+        // Read audio signal
+        readAudioSignal();
+        
+        // Perform FFT
+        performFFT(audioBuffer, audioFFT, AUDIO_BUFFER_SIZE);
+        
+        // Calculate metrics
+        calculateAudioMetrics(currentAudioMetrics);
+        
+        // Classify event (optional logging)
+        AudioEvent event;
+        classifyAudioEvent(event, currentAudioMetrics);
+        
+        #ifdef DEBUG_AUDIO
+        Serial.printf("[Audio] Event: %s - %s\n", 
+                      event.type == AudioEventType::NORMAL_ACTIVITY ? "NORMAL" : "ALERT",
+                      event.description);
+        #endif
+    CATCH_RECOVER("AUDIO", audio_error_count++)
+        LOG_ERROR("AUDIO", "Exception during audio processing");
+    }
+    
+    // Log stats summary every 30 minutes (360 cycles)
+    #ifdef DEBUG_AUDIO
+    static unsigned long stats_counter = 0;
+    stats_counter++;
+    if (stats_counter >= 360) {
+        Serial.printf("[DEBUG] Audio Stats:\n");
+        Serial.printf("  Process count: %lu\n", process_count);
+        Serial.printf("  Errors: %lu\n", audio_error_count);
+        Serial.printf("  FFT errors: %lu\n", fft_errors);
+        Serial.printf("  ADC read errors: %lu\n", adc_read_errors);
+        stats_counter = 0;
+    }
+    #endif
+    
+    PERF_END(audio_process);
+    TRACE_EXIT(DEBUG_AUDIO);
 }

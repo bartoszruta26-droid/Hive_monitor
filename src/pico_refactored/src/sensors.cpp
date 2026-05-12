@@ -454,12 +454,26 @@ void initSensors() {
  * 
  * Reads sensors every 2 seconds to avoid over-sampling
  * Implements error counting for each sensor type
+ * Uses new logging macros from config.h for consistent output
+ * Validates readings against configured limits
+ * Includes performance monitoring and trace debugging
  * 
  * DEBUG OUTPUT:
  * - [SENSORS] Read error: DHT returned NaN (count: X)
  * - [SENSORS] HX711 raw value: XXXXX
+ * - [SENSORS] Invalid CO2/VOC readings with range info
+ * - [TRACE] ENTER/EXIT readSensors (when DEBUG_VERBOSE enabled)
+ * - [PERF] Execution time (when DEBUG_PERF enabled)
+ * 
+ * EXCEPTIONS HANDLED:
+ * - NaN values from DHT sensor
+ * - Invalid HX711 readings
+ * - Out-of-range air quality values
  */
 void readSensors(unsigned long now) {
+    TRACE_ENTER(SENSORS);
+    PERF_START(readSensors);
+    
     static unsigned long lastRead = 0;
     
     // Rate limiting - read every 2 seconds
@@ -474,7 +488,7 @@ void readSensors(unsigned long now) {
     }
     #endif
     
-    // Read temperature/humidity
+    // Read temperature/humidity with exception handling
     if (sensors.tempHum.active) {
         float h = dht.readHumidity();
         float t = dht.readTemperature();
@@ -487,6 +501,7 @@ void readSensors(unsigned long now) {
             dht_read_errors++;
             #ifdef DEBUG_SENSORS
             if (sensors.tempHum.error_count % 5 == 0) {
+                LOG_WARN("DHT", "Humidity read error");
                 Serial.printf("[SENSORS] WARNING: DHT humidity read error (consecutive: %lu)\n", 
                              sensors.tempHum.error_count);
             }
@@ -500,39 +515,70 @@ void readSensors(unsigned long now) {
             Serial.println("[SENSORS] WARNING: DHT temperature read returned NaN");
             #endif
         }
+        
+        // Validate temperature and humidity ranges
+        GENTLE_ASSERT(humidity >= 0.0f && humidity <= 100.0f, "SENSORS", "Humidity out of valid range");
+        GENTLE_ASSERT(temperature >= -40.0f && temperature <= 80.0f, "SENSORS", "Temperature out of valid range");
     }
     
-    // Read HX711 weight sensor
+    // Read HX711 weight sensor with error tracking
     if (sensors.hx711.active) {
         long raw = readHX711();
         if (raw != 0) {
             hx711_value = (raw - hx711_offset) / hx711_scale;
             #ifdef DEBUG_SENSORS
             if (read_cycle % 50 == 0) {
-                Serial.printf("[SENSORS] HX711 raw: %ld, scaled: %ld\n", raw, hx711_value);
+                DBG_SENSOR("[SENSORS] HX711 raw: %ld, scaled: %ld\n", raw, hx711_value);
             }
             #endif
+            
+            // Validate weight reading range
+            if (raw < HX711_MIN_VALID_VALUE || raw > HX711_MAX_VALID_VALUE) {
+                LOG_WARN("HX711", "Weight reading out of valid range");
+                DBG_SENSOR("[SENSORS] WARNING: HX711 raw value %ld outside valid range [%ld, %ld]\n",
+                          raw, HX711_MIN_VALID_VALUE, HX711_MAX_VALID_VALUE);
+            }
         } else {
             hx711_read_errors++;
             sensor_error_count++;
             #ifdef DEBUG_SENSORS
             if (hx711_read_errors % 10 == 0) {
+                LOG_WARN("HX711", "Read error detected");
                 Serial.printf("[SENSORS] WARNING: HX711 read error (total: %lu)\n", hx711_read_errors);
             }
             #endif
         }
     }
     
-    // Read SGP41 air quality sensor
+    // Read SGP41 air quality sensor with validation
     if (sensors.airQual.active) {
         sgp.measureGas();
         co2_eq = sgp.CO2eq;
         voc_idx = sgp.VOCindex;
         
+        // Validate readings against configured limits from config.h
+        if (co2_eq < CO2_MIN_VALID || co2_eq > CO2_MAX_VALID) {
+            #ifdef DEBUG_SENSORS
+            LOG_WARN("SGP41", "CO2 reading out of valid range");
+            DBG_SENSOR("[SENSORS] Invalid CO2: %d ppm (valid: %d-%d)\n", 
+                      co2_eq, CO2_MIN_VALID, CO2_MAX_VALID);
+            #endif
+        }
+        if (voc_idx < VOC_MIN_VALID || voc_idx > VOC_MAX_VALID) {
+            #ifdef DEBUG_SENSORS
+            LOG_WARN("SGP41", "VOC reading out of valid range");
+            DBG_SENSOR("[SENSORS] Invalid VOC: %d (valid: %d-%d)\n", 
+                      voc_idx, VOC_MIN_VALID, VOC_MAX_VALID);
+            #endif
+        }
+        
         #ifdef DEBUG_SENSORS
         if (read_cycle % 30 == 0) {
-            Serial.printf("[SENSORS] SGP41 - CO2: %d ppm, VOC: %d\n", co2_eq, voc_idx);
+            DBG_SENSOR("[SENSORS] SGP41 - CO2: %d ppm, VOC: %d\n", co2_eq, voc_idx);
         }
         #endif
     }
+    
+    PERF_END(readSensors);
+    TRACE_EXIT(SENSORS);
 }

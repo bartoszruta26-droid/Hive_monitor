@@ -50,6 +50,8 @@ static unsigned long link_losses = 0;
  * - [NETWORK] DHCP successful / failed
  * - [NETWORK] Ethernet link established / lost
  * - [NETWORK] ERROR: SPI initialization failed
+ * - [TRACE] ENTER/EXIT initW6100 (when DEBUG_VERBOSE enabled)
+ * - [PERF] Initialization time (when DEBUG_PERF enabled)
  * 
  * EXCEPTIONS HANDLED:
  * - DHCP failure (fallback to static IP)
@@ -57,6 +59,9 @@ static unsigned long link_losses = 0;
  * - SPI communication errors
  */
 void initW6100() {
+    TRACE_ENTER(NETWORK);
+    PERF_START(initW6100);
+    
     network_init_count++;
     
     Serial.println(">> Initializing W6100 Ethernet...");
@@ -164,6 +169,9 @@ void initW6100() {
     Serial.printf("[DEBUG] Network stats - Init: %lu, Errors: %lu, DHCP failures: %lu\n",
                   network_init_count, network_error_count, dhcp_failures);
     #endif
+    
+    PERF_END(initW6100);
+    TRACE_EXIT(NETWORK);
 }
 
 /**
