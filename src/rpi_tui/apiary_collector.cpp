@@ -61,9 +61,50 @@
 
 // Dołączamy nagłówek loggera (nie implementację .cpp)
 #include "apiary_logger.h"
+#ifdef DEBUG_BUILD
+#include "apiary_logger_debug.h"
+#endif
 
 // Używamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
+
+// ============================================================================
+// KONFIGURACJA DEBUGOWANIA I GENTLE CODE
+// ============================================================================
+
+#ifndef GENTLE_CODE_ENABLED
+#define GENTLE_CODE_ENABLED 1
+#endif
+
+// Tryb bezpieczny - nie przerywa działania przy błędach, tylko loguje i kontynuuje
+#if GENTLE_CODE_ENABLED
+    #define GENTLE_TRY try {
+    #define GENTLE_CATCH(action_on_error) } catch (const std::exception& e) { \
+        LOG_ERROR(std::string("Gentle error: ") + e.what(), action_on_error); \
+    } catch (...) { \
+        LOG_ERROR("Unknown exception in gentle block", action_on_error); \
+    }
+#else
+    #define GENTLE_TRY try {
+    #define GENTLE_CATCH(action) } catch (...) { action; throw; }
+#endif
+
+// Debug macros z fallbackiem gdy DEBUG_BUILD nie jest zdefiniowane
+#ifndef DEBUG_BUILD
+    #define DEBUG_LOG(msg) do {} while(0)
+    #define DEBUG_FUNC_ENTER() do {} while(0)
+    #define DEBUG_FUNC_EXIT() do {} while(0)
+    #define DEBUG_CHECK(condition, msg) do {} while(0)
+#else
+    #define DEBUG_LOG(msg) apiary::Logger::getInstance().debug(msg, "DEBUG_MACRO")
+    #define DEBUG_FUNC_ENTER() DEBUG_TRACE_FUNC()
+    #define DEBUG_FUNC_EXIT() do { DEBUG_TRACE_POINT("EXIT"); } while(0)
+    #define DEBUG_CHECK(condition, msg) do { \
+        if (!(condition)) { \
+            apiary::Logger::getInstance().warning(std::string("Debug check failed: ") + (msg), "DEBUG_CHECK"); \
+        } \
+    } while(0)
+#endif
 
 // ============================================================================
 // STRUKTURA DANYCH Z ULA - PEŁNA LISTA 338+ PARAMETRÓW Z .md i pico.ino
@@ -932,6 +973,9 @@ public:
     
     // Parsowanie JSON - pełna obsługa wszystkich parametrów (300+)
     void parseJSON(const std::string& json_str, const std::string& source_ip, long long timestamp) {
+        DEBUG_FUNC_ENTER();
+        GENTLE_TRY
+        
         try {
             // Prosty parser JSON bez zewnętrznych bibliotek
             auto getValue = [&json_str](const std::string& key) -> std::string {
@@ -956,12 +1000,18 @@ public:
             };
             
             std::string hive_id = getValue("hive_id");
-            if (hive_id.empty()) hive_id = "UNKNOWN";
+            if (hive_id.empty()) {
+                hive_id = "UNKNOWN";
+                apiary::Logger::getInstance().warning("Missing hive_id in JSON from " + source_ip, "PARSER");
+            }
             
             HiveData data;
             data.hive_id = hive_id;
             data.timestamp = timestamp;
             data.is_online = true;
+            
+            DEBUG_LOG("Parsing JSON for hive: " + hive_id);
+            DEBUG_COUNTER_INC("json_parsed");
             
             // ====================================================================
             // DETEKCJA ŹRÓDŁA DANYCH I TYPU (PICO vs NANO)
@@ -970,6 +1020,7 @@ public:
             if (!source.empty()) {
                 data.data_source = source;
                 data.is_precomputed = (source == "pico" || source == "precomputed");
+                DEBUG_LOG("Data source specified: " + source);
             } else {
                 // Automatyczna detekcja: sprawdź czy są parametry wyliczone
                 bool has_computed_params = !getValue("audio_spectral_centroid").empty() ||
@@ -979,33 +1030,52 @@ public:
                 if (has_computed_params) {
                     data.data_source = "pico";
                     data.is_precomputed = true;
+                    DEBUG_LOG("Auto-detected PICO (precomputed data)");
                 } else {
                     data.data_source = "nano";
                     data.is_precomputed = false;
+                    DEBUG_LOG("Auto-detected NANO (raw data only)");
                 }
             }
             
+            DEBUG_START_TIMER("json_parse_raw");
+            
             // Pobierz surowe dane z Arduino Nano (jeśli obecne)
-            data.temp_raw = !getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f;
-            data.hum_raw = !getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f;
-            data.weight_raw = !getValue("weight_raw").empty() ? std::stol(getValue("weight_raw")) : 0;
-            data.audio_raw = !getValue("audio_raw").empty() ? std::stoi(getValue("audio_raw")) : 0;
-            data.vibration_raw = !getValue("vibration_raw").empty() ? std::stoi(getValue("vibration_raw")) : 0;
-            data.co2_raw = !getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0;
-            data.voc_raw = !getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0;
+            try {
+                data.temp_raw = !getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f;
+                data.hum_raw = !getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f;
+                data.weight_raw = !getValue("weight_raw").empty() ? std::stol(getValue("weight_raw")) : 0;
+                data.audio_raw = !getValue("audio_raw").empty() ? std::stoi(getValue("audio_raw")) : 0;
+                data.vibration_raw = !getValue("vibration_raw").empty() ? std::stoi(getValue("vibration_raw")) : 0;
+                data.co2_raw = !getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0;
+                data.voc_raw = !getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0;
+            } catch (const std::exception& e) {
+                apiary::Logger::getInstance().warning(std::string("Error parsing raw values: ") + e.what(), "PARSER");
+                DEBUG_RECORD_EXCEPTION(e);
+            }
+            
+            DEBUG_STOP_TIMER("json_parse_raw");
+            DEBUG_START_TIMER("json_parse_basic");
             
             // Podstawowe parametry (9)
-            data.temperature = !getValue("temp").empty() ? std::stof(getValue("temp")) : 
-                               (!getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f);
-            data.humidity = !getValue("hum").empty() ? std::stof(getValue("hum")) : 
-                            (!getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f);
-            data.weight = !getValue("weight").empty() ? std::stof(getValue("weight")) : 0.0f;
-            data.battery_level = !getValue("bat").empty() ? std::stoi(getValue("bat")) : 0;
-            data.co2_eq = !getValue("co2").empty() ? std::stoi(getValue("co2")) : 
-                          (!getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0);
-            data.voc_idx = !getValue("voc").empty() ? std::stoi(getValue("voc")) : 
-                           (!getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0);
-            data.motion_detected = !getValue("motion").empty() ? std::stoi(getValue("motion")) : 0;
+            try {
+                data.temperature = !getValue("temp").empty() ? std::stof(getValue("temp")) : 
+                                   (!getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f);
+                data.humidity = !getValue("hum").empty() ? std::stof(getValue("hum")) : 
+                                (!getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f);
+                data.weight = !getValue("weight").empty() ? std::stof(getValue("weight")) : 0.0f;
+                data.battery_level = !getValue("bat").empty() ? std::stoi(getValue("bat")) : 0;
+                data.co2_eq = !getValue("co2").empty() ? std::stoi(getValue("co2")) : 
+                              (!getValue("co2_raw").empty() ? std::stoi(getValue("co2_raw")) : 0);
+                data.voc_idx = !getValue("voc").empty() ? std::stoi(getValue("voc")) : 
+                               (!getValue("voc_raw").empty() ? std::stoi(getValue("voc_raw")) : 0);
+                data.motion_detected = !getValue("motion").empty() ? std::stoi(getValue("motion")) : 0;
+            } catch (const std::exception& e) {
+                apiary::Logger::getInstance().error(std::string("Error parsing basic values: ") + e.what(), "PARSER");
+                DEBUG_RECORD_EXCEPTION(e);
+            }
+            
+            DEBUG_STOP_TIMER("json_parse_basic");
             
             // ====================================================================
             // JEŚLI DANE SĄ SUROWE (NANO), OBLICZ PARAMETRY NA RASPBERRY PI
@@ -1115,6 +1185,9 @@ public:
     
     // Parsowanie CSV - kompatybilność wsteczna
     void parseCSV(const std::string& raw_data, const std::string& source_ip, long long timestamp) {
+        DEBUG_FUNC_ENTER();
+        GENTLE_TRY
+        
         std::stringstream ss(raw_data);
         std::string segment;
         std::vector<std::string> parts;
@@ -1126,8 +1199,14 @@ public:
         // Wymagane minimum 9 pól dla podstawowych danych
         if (parts.size() < 9) {
             Logger::getInstance().warning("Niepoprawny format CSV z " + source_ip + ": " + raw_data);
+            DEBUG_COUNTER_INC("csv_parse_errors");
+            DEBUG_FUNC_EXIT();
             return;
         }
+
+        DEBUG_LOG("Parsing CSV with " + std::to_string(parts.size()) + " fields from " + source_ip);
+        DEBUG_COUNTER_INC("csv_parsed");
+        DEBUG_START_TIMER("csv_parse");
 
         try {
             std::string hive_id = parts[0];
@@ -1511,6 +1590,8 @@ public:
 
 // Funkcja główna do samodzielnego uruchomienia jako demon
 int main(int argc, char* argv[]) {
+    DEBUG_FUNC_ENTER();
+    
     // Inicjalizacja loggera z pełną konfiguracją
     LoggerConfig loggerConfig;
     loggerConfig.log_file = "/var/log/apiaryguard/collector.log";
@@ -1522,13 +1603,30 @@ int main(int argc, char* argv[]) {
     loggerConfig.max_file_size = 5 * 1024 * 1024; // 5MB
     loggerConfig.max_queue_size = 500;
     
-    Logger::getInstance().initialize(loggerConfig);
+    try {
+        Logger::getInstance().initialize(loggerConfig);
+        DEBUG_COUNTER_INC("logger_initialized");
+    } catch (const LoggerInitException& e) {
+        std::cerr << "[CRITICAL] Failed to initialize logger: " << e.what() << std::endl;
+        DEBUG_RECORD_EXCEPTION(e);
+        return 1;
+    }
     
     Logger::getInstance().info("========================================", "MAIN");
     Logger::getInstance().info("Apiary Collector v1.0.0 - Start", "MAIN");
     Logger::getInstance().info("========================================", "MAIN");
     Logger::getInstance().debug("PID procesu: " + std::to_string(getpid()), "MAIN");
     Logger::getInstance().debug("Argumenty linii poleceń: " + std::string(argc > 1 ? argv[1] : "brak"), "MAIN");
+    
+#ifdef DEBUG_BUILD
+    Logger::getInstance().info("Build: DEBUG z funkcjami debugowania", "MAIN");
+    apiary::debug::DebugTracer::getInstance().enable();
+    apiary::debug::PerformanceMonitor::getInstance().enable();
+#else
+    Logger::getInstance().info("Build: RELEASE (bez rozszerzonego debugowania)", "MAIN");
+#endif
+    
+    GENTLE_TRY
     
     ApiaryCollector collector;
 
@@ -1551,9 +1649,12 @@ int main(int argc, char* argv[]) {
     if (server_fd < 0) {
         Logger::getInstance().error("Nie udało się utworzyć socketu HTTP: " + std::string(strerror(errno)), "HTTP");
         Logger::getInstance().critical("Krytyczny błąd - zakończenie działania", "MAIN");
+        DEBUG_COUNTER_INC("socket_creation_failed");
+        DEBUG_FUNC_EXIT();
         return 1;
     }
     Logger::getInstance().debug("Socket HTTP utworzony pomyślnie: fd=" + std::to_string(server_fd), "HTTP");
+    DEBUG_COUNTER_INC("sockets_created");
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -1571,16 +1672,22 @@ int main(int argc, char* argv[]) {
         Logger::getInstance().error("Sprawdź czy port 8080 nie jest zajęty przez inny proces", "HTTP");
         Logger::getInstance().error("Możesz sprawdzić: netstat -tlnp | grep 8080", "HTTP");
         close(server_fd);
+        DEBUG_COUNTER_INC("bind_failed");
+        DEBUG_FUNC_EXIT();
         return 1;
     }
     Logger::getInstance().info("Port 8080 zbindowany pomyślnie", "HTTP");
+    DEBUG_COUNTER_INC("binds_successful");
 
     if (listen(server_fd, 10) < 0) {
         Logger::getInstance().error("Błąd listen na porcie HTTP: " + std::string(strerror(errno)), "HTTP");
         close(server_fd);
+        DEBUG_COUNTER_INC("listen_failed");
+        DEBUG_FUNC_EXIT();
         return 1;
     }
     Logger::getInstance().info("Nasłuchiwanie na porcie 8080 rozpoczęte", "HTTP");
+    DEBUG_COUNTER_INC("listens_successful");
 
     Logger::getInstance().info("Serwer HTTP API JSON uruchomiony na porcie 8080", "HTTP");
     Logger::getInstance().info("Endpointy: GET /api/status, GET /api/hives, GET /health", "HTTP");
@@ -1590,7 +1697,8 @@ int main(int argc, char* argv[]) {
     fd_set readfds;
     struct timeval tv;
 
-    // Główna pętla demona - obsługa HTTP API i danych z Pico
+    DEBUG_START_TIMER("main_loop");
+    DEBUG_COUNTER_INC("main_started");
     while (true) {
         FD_ZERO(&readfds);
         FD_SET(server_fd, &readfds);
