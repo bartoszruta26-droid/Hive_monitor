@@ -736,7 +736,7 @@ void calculateAudioMetrics() {
     }
   }
   
-  currentAudioMetrics.dominant_frequency = (dominantBin * AUDIO_SAMPLE_RATE) / AUDIO_BUFFER_SIZE;
+  currentAudioMetrics.dominant_frequency = ((float)dominantBin * AUDIO_SAMPLE_RATE) / (float)AUDIO_BUFFER_SIZE;
   currentAudioMetrics.power_in_bee_band = (totalPower > 0) ? beePower / totalPower : 0.0f;
   currentAudioMetrics.power_in_swarm_band = (totalPower > 0) ? swarmPower / totalPower : 0.0f;
   currentAudioMetrics.bee_activity_index = currentAudioMetrics.power_in_bee_band * currentAudioMetrics.rms_amplitude / 1000.0f;
@@ -809,7 +809,7 @@ void calculateHX711Metrics() {
   currentHX711Metrics.std_weight = sqrt(varianceSum / validCount);
   
   if (validCount >= 2) {
-    float timeSpanMinutes = HX711_SHORT_WINDOW / 10.0f;
+    float timeSpanMinutes = (float)HX711_SHORT_WINDOW / 10.0f;
     currentHX711Metrics.current_rate = (samples[validCount-1] - samples[0]) / timeSpanMinutes;
   }
   
@@ -817,7 +817,7 @@ void calculateHX711Metrics() {
   
   // Calculate trend slope (grams per hour) based on recent samples
   if (validCount >= 2 && historyInitialized) {
-    float timeSpanHours = (HX711_SHORT_WINDOW / 10.0f) / 60.0f;  // Convert minutes to hours
+    float timeSpanHours = ((float)HX711_SHORT_WINDOW / 10.0f) / 60.0f;  // Convert minutes to hours
     if (timeSpanHours > 0.0f) {
       currentHX711Metrics.trend_slope_1h = (samples[validCount-1] - samples[0]) / timeSpanHours;
     }
@@ -900,7 +900,7 @@ void calculateAirMetrics() {
       vocCount++;
     }
   }
-  currentAirMetrics.mean_voc = (vocCount > 0) ? (float)vocSum / vocCount : 0.0f;
+  currentAirMetrics.mean_voc = (vocCount > 0) ? (float)vocSum / (float)vocCount : 0.0f;
   
   // Calculate trend slope for air quality (ppm per hour)
   if (historyInitialized && airHistoryIdx >= 60) {
@@ -1006,11 +1006,11 @@ void calculateRadarMetrics() {
   static int validReadings = 0;
   static int totalReadings = 0;
   totalReadings++;
-  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance < 50.0f) {
+  if (currentRadarMetrics.distance > 0.0f && currentRadarMetrics.distance <= 50.0f) {
     validReadings++;
   }
   if (totalReadings >= RADAR_TREND_WINDOW) {
-    currentRadarMetrics.signal_quality = (float)validReadings / totalReadings * 100.0f;
+    currentRadarMetrics.signal_quality = ((float)validReadings / (float)totalReadings) * 100.0f;
     validReadings = 0;
     totalReadings = 0;
   }
@@ -1022,7 +1022,7 @@ void calculateRadarMetrics() {
     if (energyHistory[i] > 30.0f) count++;
   }
   
-  currentRadarMetrics.activity_ratio = (count > 0) ? (float)count / RADAR_TREND_WINDOW : 0.0f;
+  currentRadarMetrics.activity_ratio = (count > 0) ? (float)count / (float)RADAR_TREND_WINDOW : 0.0f;
   currentRadarMetrics.motion_intensity = constrain(currentRadarMetrics.energy / 100.0f, 0.0f, 1.0f);
   
   // Calculate trend slope for radar activity (change in activity ratio over time)
@@ -1034,7 +1034,7 @@ void calculateRadarMetrics() {
     for (int i = oldStart; i < oldIdx && oldCount < RADAR_TREND_WINDOW; i++) {
       if (energyHistory[i] > 30.0f) oldCount++;
     }
-    oldActivity = (oldCount > 0) ? (float)oldCount / RADAR_TREND_WINDOW : 0.0f;
+    oldActivity = (oldCount > 0) ? (float)oldCount / (float)RADAR_TREND_WINDOW : 0.0f;
     
     currentRadarMetrics.trend_slope = currentRadarMetrics.activity_ratio - oldActivity;
   } else {
@@ -1046,12 +1046,12 @@ void calculateRadarMetrics() {
   int distCount = 0;
   int distStart = (60 > radarHistoryIdx) ? 0 : radarHistoryIdx - 60;
   for (int i = distStart; i < radarHistoryIdx && distCount < 60; i++) {
-    if (distanceHistory[i] > 0.0f && distanceHistory[i] < 50.0f) {
+    if (distanceHistory[i] > 0.0f && distanceHistory[i] <= 50.0f) {
       distSum += distanceHistory[i];
       distCount++;
     }
   }
-  currentRadarMetrics.mean_distance = (distCount > 0) ? distSum / distCount : 0.0f;
+  currentRadarMetrics.mean_distance = (distCount > 0) ? distSum / (float)distCount : 0.0f;
   
   float activityScore = currentRadarMetrics.activity_ratio * 100.0f;
   currentRadarMetrics.hive_health_index = (activityScore + currentRadarMetrics.signal_quality) / 2.0f;

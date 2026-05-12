@@ -7,28 +7,33 @@
 build/
 *.o
 *.a
+*.so
+*.dylib
+*.dll
 
 # Dependencies
 .pio/
 .platformio/
-lib/
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.egg-info/
 
-# Logs and temp files
-*.log
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
 *.tmp
+
+# System
+.DS_Store
+Thumbs.db
+*.log
 
 # Environment
 .env
 .env.local
 *.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
 ```
