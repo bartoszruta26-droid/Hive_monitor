@@ -1,40 +1,26 @@
 ```
-# Arduino build artifacts
+# Arduino/Pico build artifacts
 *.hex
-*.elf
 *.bin
+*.elf
 *.map
 build/
 *.o
 *.a
 
-# PlatformIO
-.pio/
-pioenvs/
-piolib/
-
-# Arduino IDE
-applet/
-core/
-*.cpp.o
-*.S.o
-
-# General build artifacts
-*.out
-*.obj
-*.so
-*.dll
-*.exe
-
 # Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
+.pio/
+.platformio/
+lib/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
 
 # Editors
 .vscode/
@@ -42,16 +28,7 @@ target/
 *.swp
 *.swo
 
-# System
+# OS
 .DS_Store
 Thumbs.db
-*.tmp
-
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-*.env.*
 ```
