@@ -174,17 +174,29 @@ void Logger::shutdown() noexcept {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!running_) return;
         running_ = false;
-        // Reset initialization state to allow re-initialization after shutdown
-        initialized_ = false;
+        // Don't reset initialized_ yet - wait until thread is joined
+        // This prevents race condition where initialize() could be called
+        // while shutdown() is still in progress, which would cause
+        // std::terminate when trying to create a new thread on joinable one
     }
     cv_.notify_one();
     
+    // Join the worker thread outside the lock to avoid deadlock
     if (worker_thread_.joinable()) {
         try {
             worker_thread_.join();
+        } catch (const std::exception& e) {
+            std::cerr << "[LOGGER ERROR] Exception during thread join: " << e.what() << std::endl;
         } catch (...) {
-            // Gentle code: swallow exceptions during shutdown
+            // Gentle code: swallow unknown exceptions during shutdown
+            std::cerr << "[LOGGER ERROR] Unknown exception during thread join" << std::endl;
         }
+    }
+    
+    // Now safe to reset initialization state after thread has fully stopped
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        initialized_ = false;
     }
 }
 
