@@ -5,6 +5,12 @@
  * DEBUG: Enable serial debugging by defining DEBUG_HX711 in config.h
  * LOGGING: All errors are logged to Serial with timestamps
  * EXCEPTIONS: Timeout and communication errors are handled gracefully
+ * 
+ * IMPROVEMENTS IN THIS VERSION:
+ * - Enhanced error handling with validation ranges
+ * - Debug macros from config.h for consistent logging
+ * - Watchdog feed integration for RP2040 stability
+ * - Rate-limited error reporting to prevent log flooding
  */
 
 #include "hx711.h"
@@ -22,6 +28,8 @@ const float hx711_scale = 1.0f; // Set during calibration
 static unsigned long hx711_error_count = 0;
 static unsigned long hx711_read_count = 0;
 static unsigned long hx711_timeout_count = 0;
+static unsigned long hx711_invalid_count = 0;
+static unsigned long last_error_log_time = 0;
 
 /**
  * @brief Read HX711 weight sensor with proper timeout handling
@@ -32,6 +40,7 @@ static unsigned long hx711_timeout_count = 0;
  * - Proper pin management with state validation
  * - Error logging via Serial with rate limiting
  * - Watchdog feed for RP2040 stability
+ * - Input validation using configured limits
  * 
  * DEBUG OUTPUT:
  * - [HX711] ERROR: Timeout - sensor not detected (every 5s)
@@ -63,16 +72,13 @@ long readHX711() {
             hx711_error_count++;
             
             // Rate-limited error logging (every 5 seconds)
-            static unsigned long last_error_log = 0;
-            if (millis() - last_error_log > 5000) {
-                Serial.print("[HX711] ERROR: Timeout - sensor not detected (");
-                Serial.print(millis() - start_time);
-                Serial.print("ms elapsed, max=");
-                Serial.print(HX711_TIMEOUT_MS);
-                Serial.println("ms)");
-                Serial.print("[DEBUG] Error count: ");
-                Serial.println(hx711_error_count);
-                last_error_log = millis();
+            if (millis() - last_error_log_time > 5000) {
+                LOG_ERROR("HX711", "Timeout - sensor not detected");
+                DBG_HX711("[HX711] DEBUG: Timeout after %lums (max=%dms)\n", 
+                          millis() - start_time, HX711_TIMEOUT_MS);
+                DBG_HX711("[HX711] Error count: %lu, Timeout count: %lu\n", 
+                          hx711_error_count, hx711_timeout_count);
+                last_error_log_time = millis();
             }
             
             #ifdef DEBUG_HX711
@@ -112,25 +118,45 @@ long readHX711() {
     count = count ^ 0x800000; // Convert to signed (two's complement)
     digitalWrite(HX711_SCK, LOW);
     
-    // Validate reading - check for out-of-range values
-    if (count < -8388608 || count > 8388607) {
+    // Validate reading - check for out-of-range values using config constants
+    if (count < HX711_MIN_VALID_VALUE || count > HX711_MAX_VALID_VALUE) {
+        hx711_invalid_count++;
         hx711_error_count++;
+        
         #ifdef DEBUG_HX711
-        Serial.print("[HX711] WARNING: Invalid reading: ");
-        Serial.println(count);
+        Serial.printf("[HX711] WARNING: Invalid reading: %ld (out of range [%ld, %ld])\n", 
+                      count, HX711_MIN_VALID_VALUE, HX711_MAX_VALID_VALUE);
         #endif
+        
+        // Rate-limited invalid reading warnings
+        if (millis() - last_error_log_time > 10000) {
+            LOG_WARN("HX711", "Invalid readings detected - check connections");
+            DBG_HX711("[HX711] Invalid count: %lu times\n", hx711_invalid_count);
+            last_error_log_time = millis();
+        }
+        
         return 0;
+    }
+    
+    // Additional validation - check for stuck values (same value repeated)
+    static long last_valid_count = 0;
+    static unsigned long same_value_count = 0;
+    if (count == last_valid_count && count != 0) {
+        same_value_count++;
+        if (same_value_count > 10) {
+            DBG_HX711("[HX711] WARNING: Stuck value detected (%ld repeated %lu times)\n", 
+                      count, same_value_count);
+        }
+    } else {
+        same_value_count = 0;
+        last_valid_count = count;
     }
     
     // DEBUG: Log successful reads periodically
     #ifdef DEBUG_HX711
     if (hx711_read_count % 100 == 0) {
-        Serial.print("[HX711] DEBUG: Successful reads: ");
-        Serial.print(hx711_read_count);
-        Serial.print(", Errors: ");
-        Serial.print(hx711_error_count);
-        Serial.print(", Timeouts: ");
-        Serial.println(hx711_timeout_count);
+        Serial.printf("[HX711] DEBUG: Successful reads: %lu, Errors: %lu, Timeouts: %lu, Invalid: %lu\n", 
+                      hx711_read_count, hx711_error_count, hx711_timeout_count, hx711_invalid_count);
     }
     #endif
     

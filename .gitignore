@@ -1,39 +1,42 @@
 ```
-# Arduino/Pico build artifacts
-*.hex
-*.bin
-*.elf
-*.map
-build/
+# Compiled and build artifacts
 *.o
+*.obj
 *.a
 *.so
-*.dylib
 *.dll
+*.exe
+build/
+dist/
 
 # Dependencies
 .pio/
 .platformio/
-node_modules/
-venv/
-.venv/
-__pycache__/
-*.egg-info/
+lib/
+*.lib
 
-# IDE/Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# System
-.DS_Store
-Thumbs.db
+# Logs and temp files
 *.log
+*.tmp
+*.swp
 
 # Environment
 .env
 .env.local
 *.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# System
+.DS_Store
+Thumbs.db
 ```

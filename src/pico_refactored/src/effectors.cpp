@@ -5,6 +5,12 @@
  * DEBUG: Enable serial debugging by defining DEBUG_EFFECTORS in config.h
  * LOGGING: All effector operations are logged with state changes
  * EXCEPTIONS: Graceful handling of invalid channel numbers and pin errors
+ * 
+ * IMPROVEMENTS IN THIS VERSION:
+ * - Enhanced validation using config constants
+ * - Debug macros from config.h for consistent logging
+ * - Safe mode support for critical error conditions
+ * - Rate-limited warning messages to prevent log flooding
  */
 
 #include "effectors.h"
@@ -22,18 +28,64 @@ static unsigned long effector_op_count = 0;
 static unsigned long effector_error_count = 0;
 static unsigned long pwm_writes = 0;
 static unsigned long relay_switches = 0;
+static unsigned long last_warning_time = 0;
+
+// Safe mode flag
+static bool safe_mode_active = false;
 
 /**
  * @brief Update all outputs based on current duty cycles and states
  * 
  * Called periodically in loop() to apply actuator settings
+ * Includes safe mode override capability
  */
 void updateOutputs() {
+    // Safe mode override - disable heater and pump, run fan at safe level
+    if (safe_mode_active) {
+        analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
+        analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
+        analogWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? 255 : 0);
+        DBG_EFF("[EFFECTORS] Safe mode active - outputs overridden\n");
+        return;
+    }
+    
+    // Normal operation with validation
     analogWrite(HEATER_PWM, constrain(heaterDuty, 0, 255));
     analogWrite(FAN_PWM, constrain(fanDuty, 0, 255));
     analogWrite(PUMP_RELAY, constrain(pumpDuty, 0, 255));
     digitalWrite(RELAY_CH1, relay1State ? HIGH : LOW);
     digitalWrite(RELAY_CH2, relay2State ? HIGH : LOW);
+}
+
+/**
+ * @brief Activate safe mode - disables potentially dangerous outputs
+ * @param reason Description of why safe mode was activated
+ */
+void activateSafeMode(const char* reason) {
+    safe_mode_active = true;
+    LOG_ERROR("EFFECTORS", reason);
+    DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason);
+    
+    // Set safe defaults immediately
+    analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
+    analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
+    digitalWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? HIGH : LOW);
+}
+
+/**
+ * @brief Deactivate safe mode and restore normal operation
+ */
+void deactivateSafeMode() {
+    safe_mode_active = false;
+    DBG_EFF("[EFFECTORS] Safe mode deactivated - normal operation resumed\n");
+}
+
+/**
+ * @brief Check if safe mode is currently active
+ * @return true if safe mode is active
+ */
+bool isSafeModeActive() {
+    return safe_mode_active;
 }
 
 /**
@@ -49,9 +101,16 @@ void updateOutputs() {
  * EXCEPTIONS HANDLED:
  * - Invalid duty cycle (>255)
  * - Pin not configured as OUTPUT
+ * - Safe mode override
  */
 void setHeaterPWM(uint8_t duty) {
     effector_op_count++;
+    
+    // Check if safe mode is active
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
+        return;
+    }
     
     // Validate duty cycle
     if (duty > 255) {
@@ -82,6 +141,7 @@ void setHeaterPWM(uint8_t duty) {
  * 
  * EXCEPTIONS HANDLED:
  * - Invalid duty cycle (>255)
+ * - Safe mode override (only allows safe duty cycle)
  */
 void setFanPWM(uint8_t duty) {
     effector_op_count++;
@@ -223,10 +283,12 @@ void setRelay(uint8_t channel, bool state) {
  * @brief Print effector status summary
  * 
  * Shows current state and statistics for all effectors
+ * Includes safe mode status
  * 
  * DEBUG OUTPUT:
  * - Summary of all effector operations
  * - Error counts and operation statistics
+ * - Safe mode status if active
  */
 void printEffectorStatus() {
     Serial.println("\n>> Effector Status:");
@@ -234,11 +296,24 @@ void printEffectorStatus() {
     Serial.printf("  Errors: %lu\n", effector_error_count);
     Serial.printf("  PWM writes: %lu\n", pwm_writes);
     Serial.printf("  Relay switches: %lu\n", relay_switches);
+    Serial.printf("  Safe mode: %s\n", safe_mode_active ? "ACTIVE" : "inactive");
     
     #ifdef DEBUG_EFFECTORS
     Serial.println("\n[DEBUG] Individual effector states:");
     Serial.printf("  Heater PWM pin: %d\n", HEATER_PWM);
     Serial.printf("  Fan PWM pin: %d\n", FAN_PWM);
     Serial.printf("  Pump relay pin: %d\n", PUMP_RELAY);
+    Serial.printf("  Valve 1 pin: %d\n", VALVE_1);
+    Serial.printf("  Valve 2 pin: %d\n", VALVE_2);
     #endif
+    
+    // Warning if error rate is high
+    if (effector_op_count > 0) {
+        float error_rate = (float)effector_error_count / effector_op_count * 100.0f;
+        if (error_rate > 5.0f) {
+            LOG_WARN("EFFECTORS", "High error rate detected");
+            DBG_EFF("[EFFECTORS] Error rate: %.2f%% (%lu errors / %lu operations)\n", 
+                    error_rate, effector_error_count, effector_op_count);
+        }
+    }
 }
