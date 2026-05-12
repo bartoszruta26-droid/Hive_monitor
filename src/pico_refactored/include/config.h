@@ -1,10 +1,104 @@
 /*
  * ApiaryGuard - Configuration Header
  * Pin definitions, network settings, and global constants
+ * 
+ * DEBUG LEVELS:
+ * - DEBUG_SENSORS: Enable sensor debugging
+ * - DEBUG_NETWORK: Enable network debugging
+ * - DEBUG_AUDIO: Enable audio analysis debugging
+ * - DEBUG_HX711: Enable weight sensor debugging
+ * - DEBUG_AIR: Enable air quality debugging
+ * - DEBUG_RADAR: Enable radar debugging
+ * - DEBUG_EFFECTORS: Enable effector control debugging
+ * - DEBUG_ALL: Enable all debugging (use sparingly)
  */
 
 #ifndef CONFIG_H
 #define CONFIG_H
+
+// ============================================================================
+// DEBUG CONFIGURATION
+// ============================================================================
+
+// Uncomment to enable specific debug modules
+// #define DEBUG_SENSORS
+// #define DEBUG_NETWORK
+// #define DEBUG_AUDIO
+// #define DEBUG_HX711
+// #define DEBUG_AIR
+// #define DEBUG_RADAR
+// #define DEBUG_EFFECTORS
+// #define DEBUG_ALL
+
+// Master debug switch - enables all debug output when defined
+#ifdef DEBUG_ALL
+#define DEBUG_SENSORS
+#define DEBUG_NETWORK
+#define DEBUG_AUDIO
+#define DEBUG_HX711
+#define DEBUG_AIR
+#define DEBUG_RADAR
+#define DEBUG_EFFECTORS
+#endif
+
+// Debug level macros for conditional compilation
+#ifdef DEBUG_SENSORS
+#define DBG_SENSOR(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_SENSOR(...)
+#endif
+
+#ifdef DEBUG_NETWORK
+#define DBG_NET(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_NET(...)
+#endif
+
+#ifdef DEBUG_AUDIO
+#define DBG_AUDIO(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_AUDIO(...)
+#endif
+
+#ifdef DEBUG_HX711
+#define DBG_HX711(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_HX711(...)
+#endif
+
+#ifdef DEBUG_AIR
+#define DBG_AIR(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_AIR(...)
+#endif
+
+#ifdef DEBUG_RADAR
+#define DBG_RADAR(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_RADAR(...)
+#endif
+
+#ifdef DEBUG_EFFECTORS
+#define DBG_EFF(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_EFF(...)
+#endif
+
+// Error logging macro - always enabled for critical errors
+#define LOG_ERROR(module, msg) do { \
+    Serial.print("[ERROR] "); \
+    Serial.print(module); \
+    Serial.print(": "); \
+    Serial.println(msg); \
+} while(0)
+
+// Warning logging macro - always enabled
+#define LOG_WARN(module, msg) do { \
+    Serial.print("[WARN] "); \
+    Serial.print(module); \
+    Serial.print(": "); \
+    Serial.println(msg); \
+} while(0)
 
 // ============================================================================
 // PIN DEFINITIONS (RP2040 PICO)
@@ -63,6 +157,11 @@
 #define HTTP_PORT     8080
 #define UDP_PORT      5005
 
+// Network timeout configuration
+#define NETWORK_TIMEOUT_MS        5000
+#define NETWORK_RETRY_COUNT       3
+#define NETWORK_RETRY_DELAY_MS    1000
+
 // ============================================================================
 // AUDIO ANALYSIS CONSTANTS
 // ============================================================================
@@ -77,6 +176,11 @@
 #define QUEEN_PIP_FREQ_MAX    500
 #define AUDIO_HISTORY_SIZE    60
 
+// Audio validation thresholds
+#define AUDIO_RMS_MIN         0.0f
+#define AUDIO_RMS_MAX         1.0f
+#define AUDIO_ZCR_MAX         0.5f
+
 // ============================================================================
 // WEIGHT ANALYSIS CONSTANTS (HX711)
 // ============================================================================
@@ -90,6 +194,10 @@
 #define HX711_CONSUMPTION_MIN       0.01f
 #define HX711_TIMEOUT_MS            50
 
+// Weight validation limits
+#define HX711_MIN_VALID_VALUE       -1000000L
+#define HX711_MAX_VALID_VALUE       1000000L
+
 // ============================================================================
 // AIR QUALITY CONSTANTS (SGP41)
 // ============================================================================
@@ -99,6 +207,12 @@
 #define CO2_ALERT_LEVEL             1500
 #define VOC_ALERT_LEVEL             250
 
+// Air quality validation
+#define CO2_MIN_VALID               400
+#define CO2_MAX_VALID               5000
+#define VOC_MIN_VALID               0
+#define VOC_MAX_VALID               500
+
 // ============================================================================
 // RADAR CONSTANTS (LD2410B)
 // ============================================================================
@@ -107,6 +221,12 @@
 #define RADAR_TREND_WINDOW          20
 #define RADAR_ANOMALY_THRESHOLD     2.0f
 
+// Radar validation
+#define RADAR_MIN_DISTANCE          0.0f
+#define RADAR_MAX_DISTANCE          500.0f  // cm
+#define RADAR_MIN_ENERGY            0.0f
+#define RADAR_MAX_ENERGY            100.0f
+
 // ============================================================================
 // SYSTEM CONSTANTS
 // ============================================================================
@@ -114,5 +234,15 @@
 #define WATCHDOG_TIMEOUT_MS         8000
 #define SENSOR_DETECT_TIMEOUT_MS    100
 #define DHT_READ_RETRY              3
+
+// System health monitoring
+#define MAX_SENSOR_ERRORS           10
+#define ERROR_RESET_WINDOW_MS       60000  // Reset error count after 1 minute
+#define CRITICAL_ERROR_THRESHOLD    50     // Trigger safe mode after this many errors
+
+// Safe mode configuration
+#define SAFE_MODE_HEATER_DUTY       0
+#define SAFE_MODE_FAN_DUTY          128
+#define SAFE_MODE_PUMP_STATE        false
 
 #endif // CONFIG_H
