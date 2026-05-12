@@ -4,50 +4,31 @@
 *.bin
 *.elf
 *.map
-*.lst
-*.sym
-*.d
+build/
 *.o
 *.a
-*.so
-*.dylib
-*.dll
-*.lib
-*.obj
-
-# Build directories
-build/
-dist/
-output/
 
 # Dependencies
-.libs/
 .pio/
 .platformio/
+lib/
 
-# IDE files
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
-.env.*
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Temporary files
-*.tmp
-*.temp
-*~
+# OS
 .DS_Store
 Thumbs.db
 ```
