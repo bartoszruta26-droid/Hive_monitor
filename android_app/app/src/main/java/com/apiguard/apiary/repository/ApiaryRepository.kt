@@ -17,6 +17,10 @@ class ApiaryRepository(private val context: Context) {
         private const val PREF_IP_ADDRESS = "pref_ip_address"
         private const val PREF_API_PORT = "pref_api_port"
         private const val DEFAULT_PORT = 8080  // Zmieniono z 5000 na 8080 - zgodność z APIARY_COLLECTOR
+        
+        // Walidacja zakresu portów
+        private const val MIN_PORT = 1
+        private const val MAX_PORT = 65535
     }
 
     private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
@@ -26,6 +30,11 @@ class ApiaryRepository(private val context: Context) {
     private var apiService: ApiaryApiService? = null
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
+        // Walidacja zakresu portów przed zapisem
+        if (port < MIN_PORT || port > MAX_PORT) {
+            throw IllegalArgumentException("Port musi być w zakresie $MIN_PORT-$MAX_PORT")
+        }
+        
         preferences.edit().apply {
             putString(PREF_IP_ADDRESS, ipAddress)
             putInt(PREF_API_PORT, port)
@@ -66,6 +75,16 @@ class ApiaryRepository(private val context: Context) {
     }
 
     suspend fun verifyConnection(ipAddress: String, port: Int = DEFAULT_PORT): ConnectionResult {
+        // Walidacja zakresu portów przed próbą połączenia
+        if (port < MIN_PORT || port > MAX_PORT) {
+            return ConnectionResult.Error("Nieprawidłowy numer portu: musi być w zakresie $MIN_PORT-$MAX_PORT")
+        }
+        
+        // Walidacja formatu adresu IP
+        if (!isValidIpAddress(ipAddress)) {
+            return ConnectionResult.Error("Nieprawidłowy format adresu IP")
+        }
+        
         return withContext(Dispatchers.IO) {
             try {
                 val baseUrl = "http://$ipAddress:$port/"
@@ -81,6 +100,17 @@ class ApiaryRepository(private val context: Context) {
                 ConnectionResult.Error("Nie udało się połączyć: ${e.message}")
             }
         }
+    }
+    
+    /**
+     * Waliduje format adresu IPv4
+     */
+    private fun isValidIpAddress(ip: String): Boolean {
+        val ipPattern = Regex(
+            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
+            "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        )
+        return ipPattern.matches(ip)
     }
 
     suspend fun fetchApiaries(): Result<List<ApiaryData>> {

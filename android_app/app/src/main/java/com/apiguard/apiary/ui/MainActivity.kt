@@ -16,6 +16,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
     private lateinit var adapter: ApiaryAdapter
+    
+    // Klucze do zapisywania stanu
+    companion object {
+        private const val KEY_SCROLL_POSITION = "scroll_position"
+        private const val KEY_DIALOG_SHOWING = "dialog_showing"
+    }
+    
+    // Zmienna do śledzenia czy dialog jest wyświetlany
+    private var isIpDialogShowing = false
+    private var scrollPosition = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,8 +36,33 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupClickListeners()
         
-        // Sprawdź czy mamy zapisany adres IP
-        viewModel.checkSavedConnection()
+        // Przywróć stan z savedInstanceState jeśli istnieje
+        savedInstanceState?.let {
+            scrollPosition = it.getInt(KEY_SCROLL_POSITION, 0)
+            isIpDialogShowing = it.getBoolean(KEY_DIALOG_SHOWING, false)
+            
+            // Przywróć pozycję przewijania
+            if (scrollPosition > 0) {
+                binding.recyclerView.scrollToPosition(scrollPosition)
+            }
+            
+            // Reset flagi dialogu - Observer i tak wywoła showIpInputDialog() jeśli potrzeba
+        } else {
+            // Sprawdź czy mamy zapisany adres IP tylko przy pierwszym uruchomieniu
+            viewModel.checkSavedConnection()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        
+        // Zapisz pozycję przewijania listy
+        val layoutManager = binding.recyclerView.layoutManager as? LinearLayoutManager
+        scrollPosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
+        outState.putInt(KEY_SCROLL_POSITION, scrollPosition)
+        
+        // Zapisz stan dialogu
+        outState.putBoolean(KEY_DIALOG_SHOWING, isIpDialogShowing)
     }
 
     private fun setupViewModel() {
@@ -81,6 +116,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showIpInputDialog() {
+        // Jeśli dialog już jest wyświetlany, nie pokazuj ponownie (zapobiega wyciekowi przy rotacji)
+        if (isIpDialogShowing) return
+        
         val savedIp = viewModel.getSavedIpAddress() ?: ""
         val savedPort = viewModel.getSavedPort().toString()
         
@@ -97,16 +135,53 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .setPositiveButton("Połącz") { _, _ ->
                 val ipAddress = ipEditText.text.toString().trim()
-                val port = portEditText.text.toString().toIntOrNull() ?: 5000
+                val portText = portEditText.text.toString()
                 
-                if (ipAddress.isNotEmpty()) {
-                    viewModel.verifyAndSaveConnection(ipAddress, port)
-                } else {
+                // Walidacja adresu IP
+                if (ipAddress.isEmpty()) {
                     Toast.makeText(this, "Podaj poprawny adres IP", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
                 }
+                
+                // Walidacja formatu IP
+                if (!isValidIpAddress(ipAddress)) {
+                    Toast.makeText(this, "Nieprawidłowy format adresu IP", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
+                }
+                
+                // Walidacja portu
+                val port = portText.toIntOrNull()
+                if (port == null || port < 1 || port > 65535) {
+                    Toast.makeText(this, "Port musi być w zakresie 1-65535", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
+                }
+                
+                viewModel.verifyAndSaveConnection(ipAddress, port)
             }
-            .setNegativeButton("Anuluj", null)
+            .setNegativeButton("Anuluj") { _, _ ->
+                isIpDialogShowing = false
+            }
+            .setOnDismissListener {
+                isIpDialogShowing = false
+            }
             .show()
+        
+        // Oznacz że dialog jest wyświetlany
+        isIpDialogShowing = true
+    }
+
+    /**
+     * Waliduje format adresu IPv4
+     */
+    private fun isValidIpAddress(ip: String): Boolean {
+        val ipPattern = Regex(
+            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
+            "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        )
+        return ipPattern.matches(ip)
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {
