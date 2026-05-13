@@ -9,6 +9,7 @@
  */
 
 #include "apiary_database.h"
+#include "apiary_collector_types.h"
 #include "apiary_logger.h"
 #include <iostream>
 #include <fstream>
@@ -508,99 +509,36 @@ int ApiaryDatabase::cleanupOldData() {
     
     int total_deleted = 0;
     
-    // Czyszczenie danych surowych
-    std::string sql_raw = "DELETE FROM raw_data WHERE id IN ("
-        "SELECT id FROM raw_data ORDER BY timestamp DESC LIMIT -1 OFFSET " + 
-        std::to_string(config_.max_raw_records) + ")";
+    // UWAGA: Usuwamy TYLKO najstarsze dane surowe (RAW), aby zwolnić miejsce.
+    // Dane zagregowane (MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER, YEAR) NIE SĄ usuwane,
+    // aby umożliwić analizę trendów z kilkunastu lat.
+    
+    // Czyszczenie danych surowych - zachowaj ostatnie 7 dni (604800 sekund)
+    std::string sql_raw = "DELETE FROM raw_data WHERE timestamp < (strftime('%s', 'now') - 604800)";
     
     sqlite3_exec(db_, sql_raw.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
+    int raw_deleted = sqlite3_changes(db_);
+    total_deleted += raw_deleted;
     
-    // Czyszczenie minutówek
-    std::string sql_minute = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::MINUTE)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::MINUTE)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_minute_records) + ")";
+    if (raw_deleted > 0) {
+        LOG_INFO("Usunięto " + std::to_string(raw_deleted) + " starych rekordów surowych (>7 dni)");
+    }
     
-    sqlite3_exec(db_, sql_minute.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie godzinówek
-    std::string sql_hour = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::HOUR)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::HOUR)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_hour_records) + ")";
-    
-    sqlite3_exec(db_, sql_hour.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie dziennych
-    std::string sql_day = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::DAY)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::DAY)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_day_records) + ")";
-    
-    sqlite3_exec(db_, sql_day.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie tygodniowych
-    std::string sql_week = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::WEEK)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::WEEK)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_week_records) + ")";
-    
-    sqlite3_exec(db_, sql_week.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie miesięcznych
-    std::string sql_month = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::MONTH)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::MONTH)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_month_records) + ")";
-    
-    sqlite3_exec(db_, sql_month.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie kwartalnych
-    std::string sql_quarter = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::QUARTER)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::QUARTER)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_quarter_records) + ")";
-    
-    sqlite3_exec(db_, sql_quarter.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
-    
-    // Czyszczenie rocznych
-    std::string sql_year = "DELETE FROM aggregated_data WHERE agg_type = " + 
-        std::to_string(static_cast<int>(AggregationType::YEAR)) +
-        " AND id IN (SELECT id FROM aggregated_data WHERE agg_type = " +
-        std::to_string(static_cast<int>(AggregationType::YEAR)) +
-        " ORDER BY timestamp_start DESC LIMIT -1 OFFSET " +
-        std::to_string(config_.max_year_records) + ")";
-    
-    sqlite3_exec(db_, sql_year.c_str(), nullptr, nullptr, nullptr);
-    total_deleted += sqlite3_changes(db_);
+    // Nie czyścimy danych zagregowanych - zachowujemy pełną historię!
+    // Dzięki temu użytkownik ma dostęp do:
+    // - kilkunastu lat danych rocznych
+    // - kilkudziesięciu kwartałów
+    // - kilkudziesięciu miesięcy
+    // - kilkudziesięciu tygodni
+    // - kilkudziesięciu godzin
+    // - kilkudziesięciu minut
     
     cleaned_records_ += total_deleted;
     
+    // VACUUM tylko jeśli coś usunięto
     if (total_deleted > 0) {
-        LOG_INFO("Wyczyszczono " + std::to_string(total_deleted) + " starych rekordów");
+        sqlite3_exec(db_, "VACUUM;", nullptr, nullptr, nullptr);
     }
-    
-    // VACUUM po czyszczeniu
-    sqlite3_exec(db_, "VACUUM;", nullptr, nullptr, nullptr);
     
     return total_deleted;
 }

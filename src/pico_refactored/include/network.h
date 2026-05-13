@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+#include "config.h"
 
 // External network objects
 extern EthernetServer server;
