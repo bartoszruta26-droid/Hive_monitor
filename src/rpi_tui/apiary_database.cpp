@@ -155,7 +155,7 @@ void ApiaryDatabase::createTables() {
             th_vpd REAL,
             
             -- Air Quality
-            aq_iaq_index REAL,
+            aq_gas_idx REAL,
             
             created_at INTEGER DEFAULT (strftime('%s', 'now'))
         );
@@ -296,7 +296,7 @@ void ApiaryDatabase::flushBuffer() {
             radar_distance, radar_energy, radar_activity,
             hx711_current, hx711_slope_24h,
             th_heat_index, th_dew_point, th_vpd,
-            aq_iaq_index
+            aq_gas_idx
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
@@ -337,7 +337,7 @@ void ApiaryDatabase::flushBuffer() {
         sqlite3_bind_double(stmt, 20, data.th_dew_point);
         sqlite3_bind_double(stmt, 21, data.th_vpd);
         
-        sqlite3_bind_double(stmt, 22, data.aq_iaq_index);
+        sqlite3_bind_double(stmt, 22, data.aq_gas_idx);
         
         if (sqlite3_step(stmt) != SQLITE_DONE) {
             write_errors_++;

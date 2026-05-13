@@ -396,6 +396,51 @@ struct HiveData {
     float light_spectrum_red = 0.0f;    // Czerwone światło
     float light_spectrum_ir = 0.0f;     // Podczerwień
     
+            float aq_co2_alert = 0.0f;            // Alert CO2
+        float aq_co2_base = 0.0f;             // Bazowe CO2
+        float aq_co2_peak = 0.0f;             // Szczytowe CO2
+        float aq_co2_trend = 0.0f;            // Trend CO2
+        float aq_co2_variability = 0.0f;      // Zmienność CO2
+        float aq_comfort_score = 0.0f;        // Wynik komfortu
+        float aq_env_correlation = 0.0f;      // Korelacja środowiskowa
+        float aq_stress_level = 0.0f;         // Poziom stresu
+        float aq_variability_idx = 0.0f;      // Indeks zmienności
+        float aq_voc_base = 0.0f;             // Bazowe VOC
+        float aq_voc_peak = 0.0f;             // Szczytowe VOC
+        float aq_voc_variability = 0.0f;      // Zmienność VOC
+        float aq_voc_warning = 0.0f;          // Ostrzeżenie VOC
+        float baro_activity_pred = 0.0f;      // Przewidywana aktywność
+        int baro_alert_flag = 0;              // Flaga alertu
+        float baro_foraging_idx = 0.0f;       // Indeks wylotów
+        float baro_improving_flag = 0.0f;     // Flaga poprawy
+        float baro_rain_risk = 0.0f;          // Ryzyko deszczu
+        float baro_reliability_idx = 0.0f;    // Indeks wiarygodności
+        float baro_severity = 0.0f;           // Wskaźnik dotkliwości
+        float baro_storm_risk = 0.0f;         // Ryzyko burzy
+        float baro_temperature = 0.0f;        // Temperatura z barometru
+        float baro_trend_medium = 0.0f;       // Trend średnioterminowy
+        float baro_trend_short = 0.0f;        // Trend krótkoterminowy
+        float baro_weather_idx = 0.0f;        // Indeks pogodowy
+        float hx711_anomaly_flag = 0.0f;      // Flaga anomalii
+        float hx711_health_score = 0.0f;      // Wynik zdrowia
+        float light_ir_ratio = 0.0f;          // Stosunek IR
+        float light_lux_std = 0.0f;           // Odchylenie lux
+        float light_spectrum_data = 0.0f;     // Dane spektralne
+        float pv_alien_detected = 0.0f;       // Wykrycie obcego gatunku
+        float pv_confidence = 0.0f;           // Pewność detekcji
+        float pv_continuous_vib = 0.0f;       // Ciągłe wibracje
+        float pv_event_count = 0.0f;          // Liczba zdarzeń
+        float pv_impact_flag = 0.0f;          // Flaga uderzenia
+        float pv_severity = 0.0f;             // Dotkliwość
+        float pv_source_type = 0.0f;          // Typ źródła
+        float pv_vib_mean = 0.0f;             // Średnia wibracji
+        float pv_vib_std = 0.0f;              // Odchylenie wibracji
+        float pv_wind_noise = 0.0f;           // Szum wiatru
+        float pv_zcr = 0.0f;                  // Zero Crossing Rate
+        float th_hum_stability_1h = 0.0f;     // Stabilność wilgotności 1h
+        float th_hum_trend = 0.0f;            // Trend wilgotności
+        float th_temp_trend = 0.0f;           // Trend temperatury
+    
     // -------------------------------------------------------------------------
     // DODATKOWE POLA (backward compatibility)
     // -------------------------------------------------------------------------
