@@ -16,6 +16,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <functional>
 
 namespace apiary {
 namespace collector {
