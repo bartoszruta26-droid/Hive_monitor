@@ -80,9 +80,11 @@ using namespace apiary;
 #if GENTLE_CODE_ENABLED
     #define GENTLE_TRY try {
     #define GENTLE_CATCH(action_on_error) } catch (const std::exception& e) { \
-        LOG_ERROR(std::string("Gentle error: ") + e.what(), action_on_error); \
+        Logger::getInstance().error(std::string("Gentle error: ") + e.what()); \
+        action_on_error; \
     } catch (...) { \
-        LOG_ERROR("Unknown exception in gentle block", action_on_error); \
+        Logger::getInstance().error("Unknown exception in gentle block"); \
+        action_on_error; \
     }
 #else
     #define GENTLE_TRY try {
@@ -1634,7 +1636,7 @@ int main(int argc, char* argv[]) {
     Logger::getInstance().info("Build: RELEASE (bez rozszerzonego debugowania)", "MAIN");
 #endif
     
-    GENTLE_TRY
+    try {
     
     ApiaryCollector collector;
 
@@ -1653,7 +1655,8 @@ int main(int argc, char* argv[]) {
 
     // Serwer HTTP API JSON na porcie 8080
     Logger::getInstance().debug("Tworzenie socketu HTTP...", "HTTP");
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int server_fd = -1;
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         Logger::getInstance().error("Nie udalo sie utworzyc socketu HTTP: " + std::string(strerror(errno)), "HTTP");
         Logger::getInstance().critical("Krytyczny blad - zakonczenie dzialania", "MAIN");
@@ -1776,7 +1779,13 @@ int main(int argc, char* argv[]) {
             // Mozna dodac okresowe logowanie statystyk
         }
     }
-
-    close(server_fd);
+    
+    } catch (const std::exception& e) {
+        Logger::getInstance().critical(std::string("Critical error in main: ") + e.what(), "MAIN");
+        if (server_fd >= 0) close(server_fd);
+        return 1;
+    }
+    
+    if (server_fd >= 0) close(server_fd);
     return 0;
 }
