@@ -40,6 +40,7 @@ declare -A LANG_EN=(
     [MENU_7]="Historical Data Browser"
     [MENU_8]="System Status Check"
     [MENU_9]="Reset to Defaults"
+    [MENU_10]="Install Apiary Collector (Full)"
     [MENU_0]="Exit"
     [SELECTED]="Selected language: English"
     [PRESS_KEY]="Press any key to continue..."
@@ -59,6 +60,7 @@ declare -A LANG_PL=(
     [MENU_7]="Przeglądaj dane historyczne"
     [MENU_8]="Sprawdź status systemu"
     [MENU_9]="Przywróć ustawienia domyślne"
+    [MENU_10]="Zainstaluj Apiary Collector (Pełny)"
     [MENU_0]="Wyjście"
     [SELECTED]="Wybrany język: Polski"
     [PRESS_KEY]="Naciśnij dowolny klawisz, aby kontynuować..."
@@ -3355,6 +3357,84 @@ option_system_status() {
     wait_for_key
 }
 
+option_install_apirray() {
+    print_header "${LANG[MENU_10]}"
+    
+    echo "🚀 Instalacja Apiary Collector (pełna)..."
+    echo ""
+    echo "Ta opcja uruchomi skrypt instalacyjny install_apiary.sh z katalogu src/rpi_tui"
+    echo ""
+    echo "Skrypt wykona następujące kroki:"
+    echo "  • Aktualizacja systemu i instalacja zależności"
+    echo "  • Kompilacja projektu C++"
+    echo "  • Konfiguracja bazy danych SQLite"
+    echo "  • Konfiguracja serwera Apache2 z WebUI i API"
+    echo "  • Instalacja usługi systemd apiary-collector"
+    echo ""
+    
+    # Check if running as root or with sudo
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${YELLOW}Note: You may be prompted for sudo password${NC}"
+    fi
+    
+    # Determine the path to install_apiary.sh
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    APIARY_SCRIPT="${SCRIPT_DIR}/src/rpi_tui/install_apiary.sh"
+    
+    # Check if the script exists
+    if [[ ! -f "$APIARY_SCRIPT" ]]; then
+        echo -e "${RED}Error: install_apiary.sh not found at $APIARY_SCRIPT${NC}"
+        echo ""
+        echo "Please ensure you have cloned the repository with all subdirectories."
+        log_message "ERROR" "install_apiary.sh not found at $APIARY_SCRIPT"
+        wait_for_key
+        return 1
+    fi
+    
+    echo "Found install script at: $APIARY_SCRIPT"
+    echo ""
+    read -p "Continue with installation? (y/N): " confirm
+    
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled."
+        log_message "INFO" "Apiary Collector installation cancelled by user"
+        wait_for_key
+        return 0
+    fi
+    
+    # Make sure the script is executable
+    chmod +x "$APIARY_SCRIPT"
+    
+    echo ""
+    echo "Starting installation..."
+    echo "=================================================="
+    
+    # Execute the install script
+    cd "$(dirname "$APIARY_SCRIPT")" || {
+        echo -e "${RED}Failed to change directory${NC}"
+        log_message "ERROR" "Failed to cd to $(dirname "$APIARY_SCRIPT")"
+        wait_for_key
+        return 1
+    }
+    
+    if bash "$APIARY_SCRIPT"; then
+        echo ""
+        echo "=================================================="
+        echo -e "${GREEN}✅ Apiary Collector installation completed successfully!${NC}"
+        echo "=================================================="
+        log_message "INFO" "Apiary Collector installation completed successfully"
+    else
+        echo ""
+        echo "=================================================="
+        echo -e "${RED}❌ Installation failed. Check the error messages above.${NC}"
+        echo "=================================================="
+        log_message "ERROR" "Apiary Collector installation failed"
+    fi
+    
+    cd - > /dev/null || true
+    wait_for_key
+}
+
 option_reset_defaults() {
     print_header "${LANG[MENU_9]}"
     
@@ -3680,6 +3760,7 @@ show_main_menu() {
     echo "7) ${LANG[MENU_7]}"
     echo "8) ${LANG[MENU_8]}"
     echo "9) ${LANG[MENU_9]}"
+    echo "10) ${LANG[MENU_10]}"
     echo "0) ${LANG[MENU_0]}"
     echo ""
 }
@@ -3693,7 +3774,7 @@ main() {
     
     while true; do
         show_main_menu
-        read -p "Select option (0-9): " choice
+        read -p "Select option (0-10): " choice
         
         case $choice in
             1) option_language ;;
@@ -3705,6 +3786,7 @@ main() {
             7) option_historical_data ;;
             8) option_system_status ;;
             9) option_reset_defaults ;;
+            10) option_install_apirray ;;
             0)
                 echo -e "${GREEN}Exiting... Goodbye!${NC}"
                 log_message "INFO" "Application exited"
