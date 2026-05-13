@@ -4,7 +4,7 @@
 
 **Enterprise Multi-Apiary Monitoring & Management System**
 
-[![Version](https://img.shields.io/badge/version-2.5.0-blue.svg?style=for-the-badge)](../../releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg?style=for-the-badge)](../../releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%202%20%7C%20Pico-orange.svg?style=for-the-badge)](docs/03_specyfikacja_sprzetowa.md)
 [![Connectivity](https://img.shields.io/badge/connectivity-LTE%20%7C%20Ethernet%20PoE-red.svg?style=for-the-badge)](docs/02_architektura_systemu.md)
