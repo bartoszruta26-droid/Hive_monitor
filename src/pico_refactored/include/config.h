@@ -332,6 +332,9 @@
 #define HTTP_PORT     8080
 #define UDP_PORT      5005
 
+// DHCP fallback configuration
+#define USE_DHCP_FALLBACK true
+
 // Network timeout configuration
 #define NETWORK_TIMEOUT_MS        5000
 #define NETWORK_RETRY_COUNT       3

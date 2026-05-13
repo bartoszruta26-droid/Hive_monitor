@@ -14,7 +14,7 @@ long readHX711();
 
 // Calibration variables (to be set during calibration)
 extern long hx711_value;
-extern const long hx711_offset;
-extern const float hx711_scale;
+extern long hx711_offset;    // NOT const - allows runtime calibration
+extern float hx711_scale;    // NOT const - allows runtime calibration
 
 #endif // HX711_H
