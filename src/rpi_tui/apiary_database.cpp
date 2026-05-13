@@ -312,31 +312,31 @@ void ApiaryDatabase::flushBuffer() {
         sqlite3_bind_int64(stmt, 1, data.timestamp);
         sqlite3_bind_text(stmt, 2, data.hive_id.c_str(), -1, SQLITE_STATIC);
         
-        sqlite3_bind_float(stmt, 3, data.temperature);
-        sqlite3_bind_float(stmt, 4, data.humidity);
-        sqlite3_bind_float(stmt, 5, data.weight);
+        sqlite3_bind_double(stmt, 3, data.temperature);
+        sqlite3_bind_double(stmt, 4, data.humidity);
+        sqlite3_bind_double(stmt, 5, data.weight);
         sqlite3_bind_int(stmt, 6, data.battery_level);
         sqlite3_bind_int(stmt, 7, data.co2_eq);
         sqlite3_bind_int(stmt, 8, data.voc_idx);
         sqlite3_bind_int(stmt, 9, data.motion_detected);
         
-        sqlite3_bind_float(stmt, 10, data.audio_rms);
-        sqlite3_bind_float(stmt, 11, data.audio_dominant_freq);
-        sqlite3_bind_float(stmt, 12, data.audio_swarm_prob);
-        sqlite3_bind_float(stmt, 13, data.audio_bee_activity);
+        sqlite3_bind_double(stmt, 10, data.audio_rms);
+        sqlite3_bind_double(stmt, 11, data.audio_dominant_freq);
+        sqlite3_bind_double(stmt, 12, data.audio_swarm_prob);
+        sqlite3_bind_double(stmt, 13, data.audio_bee_activity);
         
-        sqlite3_bind_float(stmt, 14, data.radar_distance);
-        sqlite3_bind_float(stmt, 15, data.radar_energy);
-        sqlite3_bind_float(stmt, 16, data.radar_activity);
+        sqlite3_bind_double(stmt, 14, data.radar_distance);
+        sqlite3_bind_double(stmt, 15, data.radar_energy);
+        sqlite3_bind_double(stmt, 16, data.radar_activity);
         
-        sqlite3_bind_float(stmt, 17, data.hx711_current);
-        sqlite3_bind_float(stmt, 18, data.hx711_slope_24h);
+        sqlite3_bind_double(stmt, 17, data.hx711_current);
+        sqlite3_bind_double(stmt, 18, data.hx711_slope_24h);
         
-        sqlite3_bind_float(stmt, 19, data.th_heat_index);
-        sqlite3_bind_float(stmt, 20, data.th_dew_point);
-        sqlite3_bind_float(stmt, 21, data.th_vpd);
+        sqlite3_bind_double(stmt, 19, data.th_heat_index);
+        sqlite3_bind_double(stmt, 20, data.th_dew_point);
+        sqlite3_bind_double(stmt, 21, data.th_vpd);
         
-        sqlite3_bind_float(stmt, 22, data.aq_iaq_index);
+        sqlite3_bind_double(stmt, 22, data.aq_iaq_index);
         
         if (sqlite3_step(stmt) != SQLITE_DONE) {
             write_errors_++;
@@ -437,60 +437,47 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
     
     // SQL do agregacji
     std::stringstream sql;
-    sql << R"(
-        INSERT INTO aggregated_data (
-            timestamp_start, timestamp_end, hive_id, agg_type,
-            temperature_avg, temperature_min, temperature_max,
-            humidity_avg, humidity_min, humidity_max,
-            weight_avg, weight_min, weight_max,
-            battery_avg, co2_avg, voc_avg,
-            audio_rms_avg, audio_dominant_freq_avg, audio_swarm_prob_avg, audio_bee_activity_avg,
-            radar_distance_avg, radar_energy_avg, radar_activity_avg,
-            hx711_current_avg, hx711_slope_24h_avg,
-            record_count
-        )
-        SELECT 
-            )" << source_filter << " / " << interval_sec << " * " << interval_sec << " AS ts_start,";
-    sql << R"(
-            ()" << source_filter << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,
-            hive_id,
-            )" << static_cast<int>(target_type) << R"(,
-            
-            AVG(temperature) as temp_avg,
-            MIN(temperature) as temp_min,
-            MAX(temperature) as temp_max,
-            
-            AVG(humidity) as hum_avg,
-            MIN(humidity) as hum_min,
-            MAX(humidity) as hum_max,
-            
-            AVG(weight) as weight_avg,
-            MIN(weight) as weight_min,
-            MAX(weight) as weight_max,
-            
-            AVG(battery_level) as batt_avg,
-            AVG(co2_eq) as co2_avg,
-            AVG(voc_idx) as voc_avg,
-            
-            AVG(audio_rms) as audio_avg,
-            AVG(audio_dominant_freq) as freq_avg,
-            AVG(audio_swarm_prob) as swarm_avg,
-            AVG(audio_bee_activity) as activity_avg,
-            
-            AVG(radar_distance) as dist_avg,
-            AVG(radar_energy) as energy_avg,
-            AVG(radar_activity) as rad_act_avg,
-            
-            AVG(hx711_current) as hx_avg,
-            AVG(hx711_slope_24h) as hx_slope_avg,
-            
-            COUNT(*) as cnt
-            
-        FROM )" << source_table << R"(
-        WHERE )" << source_filter << " < (strftime('%s', 'now') - )" << interval_sec << R"()
-        GROUP BY )" << source_filter << " / " << interval_sec << ", hive_id
-        HAVING cnt >= )" << (interval_sec / 10) << R"(  -- Minimalna liczba rekordów
-    )";
+    sql << "INSERT INTO aggregated_data ("
+           "timestamp_start, timestamp_end, hive_id, agg_type,"
+           "temperature_avg, temperature_min, temperature_max,"
+           "humidity_avg, humidity_min, humidity_max,"
+           "weight_avg, weight_min, weight_max,"
+           "battery_avg, co2_avg, voc_avg,"
+           "audio_rms_avg, audio_dominant_freq_avg, audio_swarm_prob_avg, audio_bee_activity_avg,"
+           "radar_distance_avg, radar_energy_avg, radar_activity_avg,"
+           "hx711_current_avg, hx711_slope_24h_avg,"
+           "record_count"
+        ") SELECT "
+        << source_filter << " / " << interval_sec << " * " << interval_sec << " AS ts_start,"
+        << "(" << source_filter << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,"
+        << "hive_id,"
+        << static_cast<int>(target_type) << ","
+        << "AVG(temperature) as temp_avg,"
+           "MIN(temperature) as temp_min,"
+           "MAX(temperature) as temp_max,"
+           "AVG(humidity) as hum_avg,"
+           "MIN(humidity) as hum_min,"
+           "MAX(humidity) as hum_max,"
+           "AVG(weight) as weight_avg,"
+           "MIN(weight) as weight_min,"
+           "MAX(weight) as weight_max,"
+           "AVG(battery_level) as batt_avg,"
+           "AVG(co2_eq) as co2_avg,"
+           "AVG(voc_idx) as voc_avg,"
+           "AVG(audio_rms) as audio_avg,"
+           "AVG(audio_dominant_freq) as freq_avg,"
+           "AVG(audio_swarm_prob) as swarm_avg,"
+           "AVG(audio_bee_activity) as activity_avg,"
+           "AVG(radar_distance) as dist_avg,"
+           "AVG(radar_energy) as energy_avg,"
+           "AVG(radar_activity) as rad_act_avg,"
+           "AVG(hx711_current) as hx_avg,"
+           "AVG(hx711_slope_24h) as hx_slope_avg,"
+           "COUNT(*) as cnt "
+        "FROM " << source_table
+        << " WHERE " << source_filter << " < (strftime('%s', 'now') - " << interval_sec << ")"
+        << " GROUP BY " << source_filter << " / " << interval_sec << ", hive_id"
+        << " HAVING cnt >= " << (interval_sec / 10) << "  -- Minimalna liczba rekordów";
     
     char* errMsg = nullptr;
     int rc = sqlite3_exec(db_, sql.str().c_str(), nullptr, nullptr, &errMsg);

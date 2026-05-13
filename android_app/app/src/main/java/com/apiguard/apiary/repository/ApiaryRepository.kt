@@ -16,7 +16,7 @@ class ApiaryRepository(private val context: Context) {
     companion object {
         private const val PREF_IP_ADDRESS = "pref_ip_address"
         private const val PREF_API_PORT = "pref_api_port"
-        private const val DEFAULT_PORT = 5000
+        private const val DEFAULT_PORT = 8080  // Zmieniono z 5000 na 8080 - zgodność z APIARY_COLLECTOR
     }
 
     private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
