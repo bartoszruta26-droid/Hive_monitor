@@ -1,3 +1,6 @@
+<<<<<<< recenzja-webui-i-zależności-9ce02
+Nothing should be ignored since the changes only include source files (.php, .js) without any build artifacts, dependencies, or temporary files.
+=======
 ```
 # Compiled and build artifacts
 *.class
@@ -79,3 +82,4 @@ htmlcov/
 *.tar.xz
 *.tar.zst
 ```
+>>>>>>> main
