@@ -9,6 +9,7 @@
  */
 
 #include "apiary_database.h"
+#include "apiary_collector_types.h"
 #include "apiary_logger.h"
 #include <iostream>
 #include <fstream>

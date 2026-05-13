@@ -12,6 +12,7 @@
 #ifndef APIARY_DATABASE_H
 #define APIARY_DATABASE_H
 
+#include "apiary_collector_types.h"
 #include <string>
 #include <vector>
 #include <mutex>
@@ -23,45 +24,9 @@
 #include <stdexcept>
 #include <sqlite3.h>
 
-// Struktura HiveData - minimalna definicja potrzebna dla bazy danych
-// Pełna definicja znajduje się w apiary_collector.cpp
-struct HiveDataMinimal {
-    std::string hive_id;
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    float weight = 0.0f;
-    int battery_level = 0;
-    int co2_eq = 0;
-    int voc_idx = 0;
-    int motion_detected = 0;
-    long long timestamp = 0;
-    
-    // Audio
-    float audio_rms = 0.0f;
-    float audio_dominant_freq = 0.0f;
-    float audio_swarm_prob = 0.0f;
-    float audio_bee_activity = 0.0f;
-    
-    // Radar
-    float radar_distance = 0.0f;
-    float radar_energy = 0.0f;
-    float radar_activity = 0.0f;
-    
-    // HX711 Waga
-    float hx711_current = 0.0f;
-    float hx711_slope_24h = 0.0f;
-    
-    // Temp/Humidity rozszerzone
-    float th_heat_index = 0.0f;
-    float th_dew_point = 0.0f;
-    float th_vpd = 0.0f;
-    
-    // Air Quality
-    float aq_iaq_index = 0.0f;
-};
-
-// Aliasy dla kompatybilności
-using HiveData = HiveDataMinimal;
+// Struktura HiveDataMinimal - alias do pełnej struktury HiveData z apiary_collector_types.h
+// Używamy aliasu dla kompatybilności wstecznej
+using HiveDataMinimal = HiveData;
 
 namespace apiary {
 
