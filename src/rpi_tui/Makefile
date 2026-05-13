@@ -1,14 +1,15 @@
-# Makefile dla APIARY Guard - Logger i Kolektor Danych Uli
+# Makefile dla APIARY Guard - Logger, Baza Danych i Kolektor Danych Uli
 # Kompilacja na Raspberry Pi 2
 
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -pthread
-LDFLAGS = -pthread
+LDFLAGS = -pthread -lsqlite3
 
 # Pliki źródłowe
 LOGGER_SRCS = apiary_logger.cpp
+DATABASE_SRCS = apiary_database.cpp
 COLLECTOR_SRCS = apiary_collector.cpp
-ALL_SRCS = $(LOGGER_SRCS) $(COLLECTOR_SRCS)
+ALL_SRCS = $(LOGGER_SRCS) $(DATABASE_SRCS) $(COLLECTOR_SRCS)
 
 # Pliki wynikowe
 LOGGER_TARGET = apiary_logger
@@ -30,10 +31,10 @@ $(LOGGER_TARGET): apiary_logger.o
 	@echo "Budowanie biblioteki loggera..."
 	@echo "Logger zbudowany jako plik nagłówkowy - użyj w swoim projekcie"
 
-# Budowanie kolektora danych z uli
-$(COLLECTOR_TARGET): $(ALL_SRCS)
-	@echo "Budowanie kolektora danych uli..."
-	$(CXX) $(CXXFLAGS) -DCOLLECTOR_BUILD $(COLLECTOR_SRCS) $(LOGGER_SRCS) -o $@ $(LDFLAGS)
+# Budowanie kolektora danych z uli (z obsługą bazy danych)
+$(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h
+	@echo "Budowanie kolektora danych uli z bazą danych SQLite..."
+	$(CXX) $(CXXFLAGS) -DCOLLECTOR_BUILD $(COLLECTOR_SRCS) $(DATABASE_SRCS) $(LOGGER_SRCS) -o $@ $(LDFLAGS)
 	@echo "Gotowe: ./$(COLLECTOR_TARGET)"
 
 # Budowanie wersji testowej standalone loggera
