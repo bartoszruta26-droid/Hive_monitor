@@ -15,8 +15,9 @@
 // KONFIGURACJA
 // ============================================================================
 const CONFIG = {
-    apiBaseUrl: window.location.hostname ? `http://${window.location.hostname}:8080` : '',
+    apiBaseUrl: window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:8080` : '',
     refreshInterval: 10000, // 10 sekund
+    maxRetries: 3,
     endpoints: {
         status: '/api/status',
         hives: '/api/hives',
@@ -60,11 +61,55 @@ let appState = {
         alertThreshold: 35
     },
     isConnected: false,
-    lastRefresh: null
+    lastRefresh: null,
+    isLoading: true,
+    isRefreshing: false,
+    retryCount: 0
 };
 
-// Chart instance
-let historyChart = null;
+// ============================================================================
+// NARZĘDZIA POMOCNICZE
+// ============================================================================
+
+/**
+ * Bezpieczne escapowanie danych przed wstawieniem do HTML (ochrona XSS)
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return text;
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Logowanie z poziomami (wyłączalne w produkcji)
+ */
+function logMessage(level, message, data = null) {
+    if (!CONFIG.debug && level === 'debug') return;
+    
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+    
+    if (level === 'error') {
+        logMessage("error", prefix, message, data || '');
+    } else if (level === 'warn') {
+        logMessage("warn", prefix, message, data || '');
+    } else {
+        logMessage("info", prefix, message, data || '');
+    }
+}
+
+/**
+ * Opóźnienie (promise)
+ */
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // ============================================================================
 // INICJALIZACJA
@@ -85,7 +130,8 @@ async function loadConfigFromBackend() {
     try {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000
         });
         
         if (response.ok) {
@@ -120,11 +166,11 @@ async function loadConfigFromBackend() {
                     CONFIG.settings.refreshInterval = intv.sensor_update_interval || CONFIG.settings.refreshInterval;
                 }
                 
-                console.log('✅ Konfiguracja załadowana z backendu:', data.config);
+                logMessage('info', 'Konfiguracja załadowana z backendu', data.config);
             }
         }
     } catch (error) {
-        console.log('⚠️ Nie udało się załadować konfiguracji z backendu, używam domyślnych:', error.message);
+        logMessage('warn', 'Nie udało się załadować konfiguracji z backendu, używam domyślnych', error.message);
     }
 }
 
@@ -172,7 +218,7 @@ async function checkCollectorConnection() {
     
     // Guard clause - sprawdź czy elementy istnieją
     if (!statusEl || !progressEl) {
-        console.warn('DOM elements not found for connection status - checking alternative elements');
+        logMessage("warn", 'DOM elements not found for connection status - checking alternative elements');
         // Spróbuj zaktualizować przynajmniej wskaźnik połączenia w headerze
         updateConnectionStatus(false);
         return false;
@@ -197,7 +243,7 @@ async function checkCollectorConnection() {
             return true;
         }
     } catch (error) {
-        console.log('Brak połączenia z APIARY_COLLECTOR, używam danych demo:', error.message);
+        logMessage("info", 'Brak połączenia z APIARY_COLLECTOR, używam danych demo:', error.message);
     }
     
     // Fallback do demo danych
@@ -240,10 +286,10 @@ async function fetchHiveData() {
             appState.hives = data.hives || data;
             return appState.hives;
         } else {
-            console.warn(`HTTP error ${response.status}: ${response.statusText}`);
+            logMessage("warn", `HTTP error ${response.status}: ${response.statusText}`);
         }
     } catch (error) {
-        console.error('Błąd pobierania danych:', error.message);
+        logMessage("error", 'Błąd pobierania danych:', error.message);
         // Zwróć puste dane zamiast null - zapobiega błędom w renderowaniu
         appState.hives = [];
         return appState.hives;
@@ -261,7 +307,7 @@ function renderDashboard() {
     const hiveCardsContainer = document.getElementById('hiveCards');
     
     if (!hiveCardsContainer) {
-        console.warn('hiveCardsContainer element not found');
+        logMessage("warn", 'hiveCardsContainer element not found');
         return;
     }
     
@@ -281,11 +327,12 @@ function renderDashboard() {
     hiveCardsContainer.innerHTML = appState.hives.map(hive => {
         const statusClass = hive.is_online ? 'status-online' : 'status-offline';
         const statusText = hive.is_online ? 'ONLINE' : 'OFFLINE';
+        const safeHiveId = escapeHtml(hive.hive_id || 'UL-' + hive.id);
         
         return `
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">🐝 ${hive.hive_id || 'UL-' + hive.id}</h3>
+                    <h3 class="card-title">🐝 ${safeHiveId}</h3>
                     <span class="card-status ${statusClass}">${statusText}</span>
                 </div>
                 
@@ -328,10 +375,10 @@ function renderDashboard() {
                 ` : ''}
                 
                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                    <button class="btn btn-primary" onclick="viewHiveDetails('${hive.hive_id}')" style="flex: 1;">
+                    <button class="btn btn-primary" onclick="viewHiveDetails('${safeHiveId}')" style="flex: 1;">
                         📊 Szczegóły
                     </button>
-                    <button class="btn btn-secondary" onclick="toggleEffector('${hive.hive_id}')" style="flex: 1;">
+                    <button class="btn btn-secondary" onclick="toggleEffector('${safeHiveId}')" style="flex: 1;">
                         ⚙️ Efektory
                     </button>
                 </div>
@@ -354,7 +401,7 @@ function updateSummaryMetrics() {
     const alertsCountEl = document.getElementById('alertsCount');
     
     if (!totalHivesEl || !onlineHivesEl || !avgTempEl || !avgHumidityEl || !totalWeightEl || !alertsCountEl) {
-        console.warn('Some summary metrics DOM elements not found');
+        logMessage("warn", 'Some summary metrics DOM elements not found');
         return;
     }
     
@@ -402,9 +449,9 @@ function renderSensorsTable() {
     
     tbody.innerHTML = sensors.map(sensor => `
         <tr>
-            <td><strong>${sensor.id}</strong></td>
-            <td><span class="sensor-badge badge-${sensor.type}">${sensor.type}</span></td>
-            <td>${sensor.hive}</td>
+            <td><strong>${escapeHtml(sensor.id)}</strong></td>
+            <td><span class="sensor-badge badge-${escapeHtml(sensor.type)}">${escapeHtml(sensor.type)}</span></td>
+            <td>${escapeHtml(sensor.hive)}</td>
             <td>
                 <span class="card-status ${sensor.status === 'active' ? 'status-online' : 'status-offline'}">
                     ${sensor.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
@@ -412,8 +459,8 @@ function renderSensorsTable() {
             </td>
             <td>${new Date(sensor.lastRead).toLocaleString('pl-PL')}</td>
             <td>
-                <button class="btn btn-secondary" onclick="editSensor('${sensor.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
-                <button class="btn btn-danger" onclick="deleteSensor('${sensor.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🗑️</button>
+                <button class="btn btn-secondary" onclick="editSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
+                <button class="btn btn-danger" onclick="deleteSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🗑️</button>
             </td>
         </tr>
     `).join('');
@@ -432,7 +479,7 @@ function updateHiveSelects() {
         if (!select) return;
         
         const currentValue = select.value;
-        const options = appState.hives.map(h => `<option value="${h.hive_id}">${h.hive_id}</option>`).join('');
+        const options = (appState.hives || []).map(h => `<option value="${escapeHtml(h.hive_id)}">${escapeHtml(h.hive_id)}</option>`).join('');
         
         if (selectId === 'historyHiveSelect') {
             select.innerHTML = '<option value="all">Wszystkie ule</option>' + options;
@@ -464,9 +511,9 @@ function renderEffectorsTable() {
     
     tbody.innerHTML = effectors.map(eff => `
         <tr>
-            <td><strong>${eff.id}</strong></td>
+            <td><strong>${escapeHtml(eff.id)}</strong></td>
             <td>${getEffectorName(eff.type)}</td>
-            <td>${eff.hive}</td>
+            <td>${escapeHtml(eff.hive)}</td>
             <td>
                 <span class="card-status ${eff.status === 'active' ? 'status-online' : 'status-offline'}">
                     ${eff.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
@@ -479,11 +526,11 @@ function renderEffectorsTable() {
             </td>
             <td>
                 <button class="btn ${eff.state === 'on' ? 'btn-danger' : 'btn-success'}" 
-                        onclick="toggleEffectorState('${eff.id}')" 
+                        onclick="toggleEffectorState('${escapeHtml(eff.id)}')" 
                         style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">
                     ${eff.state === 'on' ? '🔴 WYŁ' : '🟢 WŁ'}
                 </button>
-                <button class="btn btn-secondary" onclick="editEffector('${eff.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
+                <button class="btn btn-secondary" onclick="editEffector('${escapeHtml(eff.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
             </td>
         </tr>
     `).join('');
@@ -534,41 +581,61 @@ function loadHistoryData() {
 }
 
 function renderHistoryChart(labels, data, label) {
-    const ctx = document.getElementById('historyChart').getContext('2d');
-    
-    if (historyChart) {
-        historyChart.destroy();
+    const canvas = document.getElementById('historyChart');
+    if (!canvas) {
+        logMessage("error", "Canvas element not found for history chart");
+        return;
     }
     
-    historyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: label,
-                data: data,
-                borderColor: '#2c5f2d',
-                backgroundColor: 'rgba(44, 95, 45, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                }
+    let ctx;
+    try {
+        ctx = canvas.getContext('2d');
+    } catch (error) {
+        logMessage("error", "Failed to get 2D context from canvas", error.message);
+        return;
+    }
+    
+    if (historyChart) {
+        try {
+            historyChart.destroy();
+        } catch (error) {
+            logMessage("warn", "Error destroying previous chart instance", error.message);
+        }
+    }
+    
+    try {
+        historyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: data,
+                    borderColor: '#2c5f2d',
+                    backgroundColor: 'rgba(44, 95, 45, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
             },
-            scales: {
-                y: {
-                    beginAtZero: false
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
                 }
             }
-        }
-    });
+        });
+    } catch (error) {
+        logMessage("error", "Failed to create Chart.js instance", error.message);
+    }
 }
 
 // ============================================================================
@@ -663,12 +730,12 @@ async function saveConfigToBackend() {
         });
         
         if (response.ok) {
-            console.log('✅ Konfiguracja zapisana do backendu');
+            logMessage("info", '✅ Konfiguracja zapisana do backendu');
         } else {
-            console.error('❌ Błąd zapisu konfiguracji');
+            logMessage("error", '❌ Błąd zapisu konfiguracji');
         }
     } catch (error) {
-        console.error('⚠️ Nie udało się zapisać konfiguracji:', error.message);
+        logMessage("error", '⚠️ Nie udało się zapisać konfiguracji:', error.message);
     }
 }
 
@@ -680,7 +747,11 @@ let countdownInterval = null;
 
 function startAutoRefresh() {
     refreshTimer = setInterval(() => {
-        refreshAllData();
+        try {
+            refreshAllData();
+        } catch (error) {
+            logMessage("error", "Błąd podczas automatycznego odświeżania", error.message);
+        }
     }, CONFIG.refreshInterval);
     
     startCountdown();
@@ -695,25 +766,52 @@ function startCountdown() {
     let seconds = CONFIG.refreshInterval / 1000;
     
     countdownInterval = setInterval(() => {
-        seconds--;
-        document.getElementById('refreshTimer').textContent = `Odświeżanie za: ${seconds}s`;
-        
-        if (seconds <= 0) {
-            seconds = CONFIG.refreshInterval / 1000;
+        try {
+            seconds--;
+            const timerElement = document.getElementById('refreshTimer');
+            if (timerElement) {
+                timerElement.textContent = `Odświeżanie za: ${seconds}s`;
+            }
+            
+            if (seconds <= 0) {
+                seconds = CONFIG.refreshInterval / 1000;
+            }
+        } catch (error) {
+            logMessage("error", "Błąd w odliczaniu", error.message);
         }
     }, 1000);
 }
 
 function refreshAllData() {
-    if (appState.isConnected) {
-        fetchHiveData().then(data => {
-            if (data) {
-                renderDashboard();
-                renderSensorsTable();
-                renderEffectorsTable();
-            }
-        });
+    // Guard against concurrent refreshes
+    if (appState.isRefreshing) {
+        logMessage("debug", "Refresh already in progress, skipping");
+        return;
     }
+    
+    appState.isRefreshing = true;
+    
+    try {
+        if (appState.isConnected) {
+            fetchHiveData().then(data => {
+                if (data && data.length > 0) {
+                    renderDashboard();
+                    renderSensorsTable();
+                    renderEffectorsTable();
+                }
+                appState.isRefreshing = false;
+            }).catch(error => {
+                logMessage("error", "Błąd pobierania danych", error.message);
+                appState.isRefreshing = false;
+            });
+        } else {
+            appState.isRefreshing = false;
+        }
+    } catch (error) {
+        logMessage("error", "Błąd w refreshAllData", error.message);
+        appState.isRefreshing = false;
+    }
+    
     appState.lastRefresh = new Date();
 }
 
@@ -949,7 +1047,7 @@ function editSensor(sensorId) {
                 const newStatus = document.getElementById('editSensorStatus').value;
                 
                 // TODO: Wysyłanie do API
-                console.log(`Updating sensor ${sensorId}: hive=${newHive}, status=${newStatus}`);
+                logMessage("info", `Updating sensor ${sensorId}: hive=${newHive}, status=${newStatus}`);
                 alert(`✅ Zapisano zmiany dla sensora ${sensorId}`);
                 closeModal('editSensorModal');
                 renderSensorsTable();
@@ -964,7 +1062,7 @@ function editSensor(sensorId) {
 function deleteSensor(sensorId) {
     if (confirm(`Czy na pewno chcesz usunąć sensor ${sensorId}? Ta operacja jest nieodwracalna.`)) {
         // TODO: Wysyłanie DELETE request do API
-        console.log(`Deleting sensor ${sensorId}`);
+        logMessage("info", `Deleting sensor ${sensorId}`);
         
         // Symulacja usunięcia
         const index = appState.sensors.findIndex(s => s.id === sensorId);
@@ -1029,7 +1127,7 @@ function editEffector(effectorId) {
                 const newStatus = document.getElementById('editEffectorStatus').value;
                 
                 // TODO: Wysyłanie do API
-                console.log(`Updating effector ${effectorId}: type=${newType}, hive=${newHive}, status=${newStatus}`);
+                logMessage("info", `Updating effector ${effectorId}: type=${newType}, hive=${newHive}, status=${newStatus}`);
                 alert(`✅ Zapisano zmiany dla efektora ${effectorId}`);
                 closeModal('editEffectorModal');
                 renderEffectorsTable();

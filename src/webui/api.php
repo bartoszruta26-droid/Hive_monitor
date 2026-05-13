@@ -76,6 +76,12 @@ $errorLogFile = '/var/log/apiaryguard/webui_errors.log';
 $accessLogFile = '/var/log/apiaryguard/webui_access.log';
 
 // Funkcja tworząca katalogi rekurencyjnie z obsługą błędów i walidacją ścieżki
+/**
+ * Tworzy katalogi rekurencyjnie z obsługą błędów i walidacją ścieżki
+ * 
+ * @param string $path Ścieżka do katalogu
+ * @return bool Czy operacja się powiodła
+ */
 function ensureDirectoryExists($path) {
     // Walidacja ścieżki - zapobiegaj directory traversal attacks
     if (strpos($path, '..') !== false || strpos($path, "\0") !== false) {
@@ -96,6 +102,11 @@ function ensureDirectoryExists($path) {
         }
     }
     return true;
+}
+
+// Alias dla ensureConfigDir - używamy tej samej funkcji (DRY principle)
+function ensureConfigDir($path) {
+    return ensureDirectoryExists($path);
 }
 
 // Utwórz katalogi dla logów
