@@ -311,7 +311,7 @@ inline void computeParametersFromRaw(HiveData& data) {
         data.radar_range = data.radar_distance_max - data.radar_distance_min;
         data.radar_energy_variance = data.radar_energy_std * data.radar_energy_std;
         data.radar_cv = data.radar_energy_std / data.radar_energy;
-        data.radar_activity = data.motion_detected / 100.0f;
+        data.radar_activity = static_cast<float>(data.motion_detected);
         data.radar_idle_percent = 100.0f - data.radar_activity * 100.0f;
         data.radar_motion_intensity = data.radar_activity;
         data.radar_target_rate = data.radar_activity * 10.0f;
@@ -331,8 +331,9 @@ inline void computeParametersFromRaw(HiveData& data) {
     // =========================================================================
     // --- HX711 WAGA DERIVED (105+ parametrów) ---
     // =========================================================================
-    if (data.weight > 0) {
-        float w = data.weight;
+    if (data.weight_raw > 0) {
+        // Derive kilograms from raw ADC counts (HX711)
+        float w = static_cast<float>(data.weight_raw) / 1000.0f;
         
         // Podstawowe statystyki
         data.hx711_current = w;
