@@ -28,6 +28,8 @@
 // #define DEBUG_AIR
 // #define DEBUG_RADAR
 // #define DEBUG_EFFECTORS
+// #define DEBUG_FLOW       // Enable flow sensor debugging
+// #define DEBUG_SERVO      // Enable servo control debugging
 // #define DEBUG_ALL
 // #define DEBUG_VERBOSE      // Enable verbose tracing and assertions
 // #define DEBUG_PERF         // Enable performance monitoring
@@ -92,6 +94,20 @@
 #define DBG_EFF(...) Serial.printf(__VA_ARGS__)
 #else
 #define DBG_EFF(...)
+#endif
+
+// Flow sensor debug macro
+#ifdef DEBUG_FLOW
+#define DBG_FLOW(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_FLOW(...)
+#endif
+
+// Servo debug macro
+#ifdef DEBUG_SERVO
+#define DBG_SERVO(...) Serial.printf(__VA_ARGS__)
+#else
+#define DBG_SERVO(...)
 #endif
 
 // Error logging macro - always enabled for critical errors
@@ -163,6 +179,18 @@
 #define LOG_DEBUG_EFF(msg) DBG_EFF("[DEBUG-EFF] %s\n", msg)
 #else
 #define LOG_DEBUG_EFF(msg)
+#endif
+
+#ifdef DEBUG_FLOW
+#define LOG_DEBUG_FLOW(msg) DBG_FLOW("[DEBUG-FLOW] %s\n", msg)
+#else
+#define LOG_DEBUG_FLOW(msg)
+#endif
+
+#ifdef DEBUG_SERVO
+#define LOG_DEBUG_SERVO(msg) DBG_SERVO("[DEBUG-SERVO] %s\n", msg)
+#else
+#define LOG_DEBUG_SERVO(msg)
 #endif
 
 // Exception handling macros for gentle code principles
@@ -257,9 +285,19 @@
 // DHT22 Temperature/Humidity
 #define DHT_PIN       2
 
-// HX711 Weight Sensor
+// HX711 Weight Sensor (Hive Weight)
 #define HX711_DT      3
 #define HX711_SCK     22
+
+// HX711 Weight Sensor 2 (Superstructure Weight)
+#define HX711_2_DT    10
+#define HX711_2_SCK   11
+
+// Flow Sensor for Honey Output
+#define FLOW_SENSOR_PIN 25  // GPIO25 with interrupt capability
+
+// Servo for Flowing Hive Frame Emptying
+#define SERVO_EMPTY_PIN 12  // PWM-capable GPIO for servo control
 
 // Audio Sensors (ADC)
 #define MIC_PIN       26  // ADC0
@@ -334,6 +372,27 @@
 // Weight validation limits
 #define HX711_MIN_VALID_VALUE       -1000000L
 #define HX711_MAX_VALID_VALUE       1000000L
+
+// Second HX711 (Superstructure) constants
+#define HX711_2_BUFFER_SIZE         144
+#define HX711_2_TIMEOUT_MS          50
+#define HX711_2_MIN_VALID_VALUE     -1000000L
+#define HX711_2_MAX_VALID_VALUE     1000000L
+
+// Flow sensor constants
+#define FLOW_SENSOR_PULSES_PER_LITER 450  // Typical for YF-S201 flow sensor
+#define FLOW_SAMPLE_INTERVAL_MS     1000  // Sample flow every 1 second
+#define FLOW_MIN_RATE               0.01f // Minimum detectable flow rate (L/min)
+#define FLOW_MAX_RATE               5.0f  // Maximum expected flow rate (L/min)
+
+// Servo control constants
+#define SERVO_MIN_ANGLE             0     // Minimum servo angle (degrees)
+#define SERVO_MAX_ANGLE             180   // Maximum servo angle (degrees)
+#define SERVO_EMPTY_ANGLE           160   // Angle for frame emptying position
+#define SERVO_REST_ANGLE            10    // Rest position angle
+#define SERVO_PULSE_WIDTH_MIN       500   // Min pulse width in microseconds
+#define SERVO_PULSE_WIDTH_MAX       2500  // Max pulse width in microseconds
+#define SERVO_UPDATE_INTERVAL_MS    20    // 50Hz servo update rate
 
 // ============================================================================
 // AIR QUALITY CONSTANTS (SGP41)

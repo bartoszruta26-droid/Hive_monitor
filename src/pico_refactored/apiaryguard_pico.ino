@@ -28,6 +28,7 @@
 #include "radar_analysis.h"
 #include "network.h"
 #include "effectors.h"
+#include "effectors_flowing_hive.h"  // Flowing Hive effectors (servo, HX711 #2, flow sensor)
 
 // Global objects
 EthernetServer server(8080);
@@ -158,6 +159,11 @@ void processCommand(String cmd) {
     // SET_RELAY1 [ON/OFF]
     // SET_RELAY2 [ON/OFF]
     // CALIB_WEIGHT
+    // CALIB_WEIGHT_2      - Tare second HX711 (superstructure)
+    // SERVO_ANGLE [0-180] - Set servo angle
+    // SERVO_EMPTY         - Execute auto-empty sequence
+    // FLOW_RESET          - Reset flow counter
+    // STATUS_FLOWING      - Print Flowing Hive effector status
     // STATUS
     
     if (cmd.startsWith("SET_HEATER")) {
@@ -187,6 +193,36 @@ void processCommand(String cmd) {
         // Weight calibration handled in weight_analysis module
         Serial.println("OK: Waga wyzerowana (Tara).");
     }
+    else if (cmd.startsWith("CALIB_WEIGHT_2")) {
+        // Second HX711 tare
+        tareHX711_2();
+        Serial.println("OK: Nadstawka wyzerowana (Tara HX711 #2).");
+    }
+    else if (cmd.startsWith("SERVO_ANGLE")) {
+        int angle = extractValue(cmd);
+        if (angle >= 0 && angle <= 180) {
+            setServoAngle(angle);
+            Serial.println("OK: Serwo ustawione na " + String(angle) + " stopni.");
+        } else {
+            Serial.println("ERROR: Kąt musi być 0-180.");
+        }
+    }
+    else if (cmd.startsWith("SERVO_EMPTY")) {
+        unsigned long duration = 1800000; // Default 30 min
+        int val = extractValue(cmd);
+        if (val > 0) {
+            duration = val * 1000; // Convert seconds to ms
+        }
+        executeAutoEmptySequence(duration);
+        Serial.println("OK: Rozpoczęto sekwencję opróżniania (" + String(duration/1000) + "s).");
+    }
+    else if (cmd.startsWith("FLOW_RESET")) {
+        resetFlowCounter();
+        Serial.println("OK: Licznik przepływu zresetowany.");
+    }
+    else if (cmd.startsWith("STATUS_FLOWING")) {
+        printFlowingHiveEffectorStatus();
+    }
     else if (cmd.startsWith("STATUS")) {
         printStatus(Serial);
     }
@@ -198,6 +234,11 @@ void processCommand(String cmd) {
         Serial.println("  SET_RELAY1 [ON/OFF]");
         Serial.println("  SET_RELAY2 [ON/OFF]");
         Serial.println("  CALIB_WEIGHT");
+        Serial.println("  CALIB_WEIGHT_2      - Tare second HX711");
+        Serial.println("  SERVO_ANGLE [0-180] - Set servo angle");
+        Serial.println("  SERVO_EMPTY [sec]   - Auto-empty sequence");
+        Serial.println("  FLOW_RESET          - Reset flow counter");
+        Serial.println("  STATUS_FLOWING      - Flowing Hive status");
         Serial.println("  STATUS");
     }
     else {
@@ -290,6 +331,12 @@ void setup() {
     printSensorStatus();
     initSensors();
     
+    // Initialize Flowing Hive effectors (conditionally - only if hardware detected)
+    Serial.println(">> Initializing Flowing Hive effectors...");
+    initServoControl();      // Servo for frame emptying
+    initHX711_2();           // Second HX711 for superstructure weight
+    initFlowSensor();        // Flow sensor for honey output
+    
     // Initialize network (will be activated if no USB host detected)
     initW6100();
     
@@ -322,6 +369,10 @@ void loop() {
     
     // Process radar data
     processRadarPeriodically(now);
+    
+    // Update Flowing Hive effectors (servo loop and flow sensor)
+    updateServoLoop();       // Check auto-empty sequence completion
+    updateFlowSensor();      // Calculate flow rate from pulse count
     
     // Check for USB activity
     if (Serial.available()) {

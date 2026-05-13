@@ -1,1 +1,30 @@
-Nothing should be ignored based on the provided file changes, as they only include shell script files (.sh) which are source files.
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.out
+
+# Dependencies
+.pio/
+.platformio/
+lib/
+src/pico_refactored/.pio/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Build directories
+build/
+dist/
+```
