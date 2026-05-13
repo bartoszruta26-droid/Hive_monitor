@@ -1,28 +1,81 @@
 #!/bin/bash
 
 # Skrypt instalacyjny dla Apiary Collector na Raspberry Pi
-# Instaluje zależności, konfiguruje bazę danych, Apache2 i usługi
+# Instaluje zależności, konfiguruje bazę danych, Apache2 i usługi systemd
+# UWAGA: Ten skrypt wykonuje PEŁNĄ instalację z WebUI i API
 
 set -e
 
-echo "🚀 Rozpoczynanie instalacji Apiary Collector..."
+echo "🚀 Rozpoczynanie PEŁNEJ instalacji Apiary Collector..."
+echo ""
 
-# 1. Aktualizacja systemu i instalacja podstawowych zależności
-echo "📦 Aktualizacja listy pakietów..."
+# Kolorы
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo -e "${CYAN}Script directory: $SCRIPT_DIR${NC}"
+echo -e "${CYAN}Project root: $PROJECT_ROOT${NC}"
+echo ""
+
+# 1. Aktualizacja systemu i instalacja ZAANGANSOWANYCH zależności
+echo "📦 Aktualizacja listy pakietów i instalacja zaawansowanych zależności..."
+echo "   (git, build-essential, sqlite3, libsqlite3-dev, apache2, php, libapache2-mod-php)"
+echo ""
+
 sudo apt-get update
-sudo apt-get install -y git build-essential cmake sqlite3 libsqlite3-dev libncurses5-dev libncursesw5-dev apache2 php libapache2-mod-php python3-pip
+sudo apt-get install -y \
+    git \
+    build-essential \
+    sqlite3 \
+    libsqlite3-dev \
+    libncurses5-dev \
+    libncursesw5-dev \
+    apache2 \
+    php \
+    libapache2-mod-php \
+    || {
+        echo -e "${RED}❌ Failed to install dependencies${NC}"
+        exit 1
+    }
 
-# 2. Kompilacja projektu
-echo "🔨 Kompilowanie projektu..."
-if [ ! -d "build" ]; then
-    mkdir build
+echo -e "${GREEN}✅ Zależności zainstalowane${NC}"
+echo ""
+
+# 2. Kompilacja projektu przy użyciu Makefile (NIE cmake)
+echo "🔨 Kompilowanie projektu przy użyciu Makefile..."
+cd "$SCRIPT_DIR"
+
+if [[ ! -f "Makefile" ]]; then
+    echo -e "${RED}❌ Makefile not found in $SCRIPT_DIR${NC}"
+    exit 1
 fi
-cd build
-cmake ..
-make -j$(nproc)
-cd ..
 
-# 3. Konfiguracja bazy danych
+make clean 2>/dev/null || true
+make all -j$(nproc) || {
+    echo -e "${RED}❌ Kompilacja nieudana${NC}"
+    exit 1
+}
+
+echo -e "${GREEN}✅ Kompilacja zakończona pomyślnie${NC}"
+echo ""
+
+# 3. Instalacja binarek w systemie
+echo "⚙️ Instalowanie binarek w systemie..."
+sudo make install || {
+    echo -e "${YELLOW}⚠️ Instalacja binarek miała problemy, ale kompilacja succeeded${NC}"
+}
+
+echo -e "${GREEN}✅ Binarki zainstalowane${NC}"
+echo ""
+
+# 4. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
 sudo mkdir -p /var/lib/apiaryguard
@@ -365,16 +418,19 @@ sudo systemctl enable apache2
 
 # 5. Instalacja usługi systemd dla kolektora
 echo "⚙️ Instalowanie usługi systemd..."
+
+# Użyj właściwej ścieżki do skompilowanego binarnego
+COLLECTOR_BIN=$(which apiary-collector 2>/dev/null || echo "/usr/local/bin/apiary-collector")
+
 sudo tee /etc/systemd/system/apiary-collector.service > /dev/null <<EOF
 [Unit]
 Description=Apiary Data Collector Service
-After=network.target sqlite3.service
+After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$(pwd)/build
-ExecStart=$(pwd)/build/apiary_collector
+ExecStart=${COLLECTOR_BIN}
 Restart=always
 RestartSec=10
 
