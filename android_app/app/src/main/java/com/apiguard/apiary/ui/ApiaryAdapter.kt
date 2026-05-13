@@ -30,13 +30,13 @@ class ApiaryAdapter(
 
         fun bind(apiaryData: ApiaryData) {
             cardName.text = apiaryData.name
-            cardTemperature.text = "Temp: ${apiaryData.temperature}°C"
-            cardHumidity.text = "Wilgotność: ${apiaryData.humidity}%"
-            cardWeight.text = "Waga: ${apiaryData.weight}kg"
-            cardBattery.text = "Bateria: ${apiaryData.battery}%"
+            cardTemperature.text = "${apiaryData.temperature}°C"
+            cardHumidity.text = "${apiaryData.humidity}%"
+            cardWeight.text = "${apiaryData.weight} kg"
+            cardBattery.text = "${apiaryData.battery}%"
             
             val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-            cardTimestamp.text = "Aktualizacja: ${dateFormat.format(Date(apiaryData.timestamp))}"
+            cardTimestamp.text = "Ostatnia aktualizacja: ${dateFormat.format(Date(apiaryData.timestamp))}"
             
             // Status kolorystyczny
             val (statusText, statusColor) = determineStatus(apiaryData)
