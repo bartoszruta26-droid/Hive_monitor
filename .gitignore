@@ -2,24 +2,20 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
-*.exe
 *.out
+*.exe
+*.dll
+*.so
+*.a
 
 # Dependencies
-node_modules/
 venv/
 .venv/
 __pycache__/
 *.egg-info/
-build/
 dist/
+build/
 target/
-.gradle/
 
 # Logs and temp files
 *.log
@@ -38,7 +34,7 @@ target/
 *.swp
 *.swo
 
-# OS
+# System files
 .DS_Store
 Thumbs.db
 
@@ -47,29 +43,12 @@ coverage/
 htmlcov/
 .coverage
 
-# Python
+# Python specific
 *.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# C/C++
-*.o
-*.obj
-*.a
-*.lib
-*.so
-*.dll
-*.dylib
-*.exe
-*.out
-*.ilk
-*.pdb
-*.iobj
-*.ipdb
+__pycache__/
 
 # Build systems
-cmake-build-*/
-Makefile
+.gradle/
+.mypy_cache/
+.pytest_cache/
 ```

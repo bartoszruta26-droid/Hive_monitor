@@ -65,6 +65,9 @@
 #include "apiary_logger_debug.h"
 #endif
 
+// Dolaczamy modul bazy danych dla zapisu i agregacji
+#include "apiary_database.h"
+
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
 
@@ -1184,6 +1187,14 @@ public:
                 hives_data[hive_id] = data;
             }
             
+            // Zapis do bazy danych SQLite
+            try {
+                ApiaryDatabase::getInstance().storeRawData(data);
+                Logger::getInstance().debug("Zapisano dane do bazy dla " + hive_id, "DB");
+            } catch (const std::exception& e) {
+                Logger::getInstance().warning("Nie udało się zapisać do bazy: " + std::string(e.what()), "DB");
+            }
+            
             Logger::getInstance().debug("JSON: Zaktualizowano " + hive_id + " z " + source_ip);
             
         } catch (const std::exception& e) {
@@ -1284,6 +1295,14 @@ public:
                     new_hive.weight_trend = weight_trend;
                     new_hive.air_iaq = air_iaq;
                     hives_data[hive_id] = new_hive;
+                    
+                    // Zapis do bazy danych SQLite
+                    try {
+                        ApiaryDatabase::getInstance().storeRawData(new_hive);
+                        Logger::getInstance().debug("Zapisano dane CSV do bazy dla " + hive_id, "DB");
+                    } catch (const std::exception& e) {
+                        Logger::getInstance().warning("Nie udało się zapisać CSV do bazy: " + std::string(e.what()), "DB");
+                    }
                 }
             }
         } catch (const std::exception& e) {
@@ -1638,20 +1657,24 @@ int main(int argc, char* argv[]) {
     
     try {
     
+
+    // Inicjalizacja bazy danych przed uruchomieniem kolektora
+    Logger::getInstance().info("Inicjalizacja bazy danych SQLite...", "DB");
+    DatabaseConfig dbConfig;
+    dbConfig.db_path = "/var/lib/apiary/apiary.db";
+    dbConfig.max_raw_records = 3600;          // 1 godzina danych co sekunde
+    dbConfig.max_minute_records = 10080;      // 7 dni danych minutowych
+    dbConfig.aggregation_interval_sec = 60;   // Agreguj co minute
+    
+    try {
+        ApiaryDatabase::getInstance().initialize(dbConfig);
+        Logger::getInstance().info("Baza danych zainicjalizowana pomyslnie", "DB");
+    } catch (const DatabaseInitException& e) {
+        Logger::getInstance().warning("Nie udalo sie zainicjalizowac bazy danych: " + std::string(e.what()) + ". Kontynuujemy bez zapisu do bazy.", "DB");
+    }
+    
     ApiaryCollector collector;
 
-    // Konfiguracja przykladowych IP uli (w produkcji czytane z config file)
-    std::vector<std::string> hives = {"192.168.1.101", "192.168.1.102", "192.168.1.103"};
-    Logger::getInstance().debug("Konfiguracja " + std::to_string(hives.size()) + " uli", "MAIN");
-    collector.configureHives(hives);
-
-    // Uruchomienie w trybie symulacji (demonstracja) lub sieciowym
-    bool sim_mode = (argc > 1 && std::string(argv[1]) == "--sim");
-    
-    Logger::getInstance().info("Tryb pracy: " + std::string(sim_mode ? "SYMWLACJA" : "SIECIOWY"), "MAIN");
-    collector.start(sim_mode);
-    
-    Logger::getInstance().info("Watki workerow uruchomione", "MAIN");
 
     // Serwer HTTP API JSON na porcie 8080
     Logger::getInstance().debug("Tworzenie socketu HTTP...", "HTTP");
