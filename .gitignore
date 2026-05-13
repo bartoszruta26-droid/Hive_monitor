@@ -1,17 +1,14 @@
 ```
-# Android build outputs
-build/
-.gradle/
-*/build/
-
-# APKs
+# Android
 *.apk
 *.aar
+*.dex
+*.so
 
-# Android Studio files
-.idea/
-*.iml
-*.iws
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
 
 # Local configuration file (sdk path, etc)
 local.properties
@@ -19,26 +16,18 @@ local.properties
 # Log Files
 *.log
 
-# Built application files
-*.apk
-*.ap_
-*.aab
+# Android Studio Navigation editor temp files
+.navigation/
 
-# Files for the ART/Dalvik VM
-*.dex
+# Android Studio captures folder
+captures/
 
-# Java class files
-*.class
+# IntelliJ IDEA artifacts
+*.iml
+*.ipr
+*.iws
+.idea/
 
-# Generated files
-gen/
-out/
-
-# Gradle
-.gradle/
-.gradle/
-!gradle/wrapper/
-
-# Debug symbols
-.map[.*]
+# Temporary folder for Kapt
+kotlin/
 ```

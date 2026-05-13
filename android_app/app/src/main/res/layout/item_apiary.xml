@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView
+<androidx.cardview.widget.CardView 
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/card_view"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
-    app:cardCornerRadius="8dp"
-    app:cardElevation="4dp">
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@android:color/white">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,70 +16,60 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Nazwa ula -->
         <TextView
-            android:id="@+id/nameTextView"
+            android:id="@+id/card_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Nazwa Ula"
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/primary_dark"
             android:layout_marginBottom="8dp" />
 
-        <!-- Temperatura -->
         <TextView
-            android:id="@+id/temperatureTextView"
+            android:id="@+id/card_temperature"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Temp: 35.0°C"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
 
-        <!-- Wilgotność -->
         <TextView
-            android:id="@+id/humidityTextView"
+            android:id="@+id/card_humidity"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Wilgotność: 55%"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
 
-        <!-- Waga -->
         <TextView
-            android:id="@+id/weightTextView"
+            android:id="@+id/card_weight"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Waga: 45.00 kg"
             android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/card_battery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/card_timestamp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@android:color/darker_gray"
             android:layout_marginBottom="8dp" />
 
-        <!-- Status i ostatnia aktualizacja -->
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/card_status"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/statusTextView"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="OK"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@android:color/holo_green_dark" />
-
-            <TextView
-                android:id="@+id/lastUpdateTextView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Ostatnia aktualizacja: 2024-01-01 12:00"
-                android:textSize="12sp"
-                android:textColor="@android:color/darker_gray" />
-
-        </LinearLayout>
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp"
+            android:background="@drawable/status_background" />
 
     </LinearLayout>
 

@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ApiaryGuard</string>
-    <string name="loading">Ładowanie danych...</string>
-    <string name="no_data">Brak danych o ulach</string>
-    <string name="refresh">Odśwież</string>
+    <string name="action_settings">Ustawienia</string>
+    <string name="connect_ip">Połącz z IP</string>
+    <string name="disconnect">Rozłącz</string>
+    <string name="loading">Ładowanie...</string>
+    <string name="no_data">Brak danych</string>
+    <string name="error_connection">Błąd połączenia</string>
     <string name="temperature">Temperatura</string>
     <string name="humidity">Wilgotność</string>
     <string name="weight">Waga</string>
-    <string name="status">Status</string>
-    <string name="last_update">Ostatnia aktualizacja</string>
+    <string name="battery">Bateria</string>
+    <string name="status_ok">OK</string>
+    <string name="status_warning">UWAGA</string>
+    <string name="status_alert">ALERT</string>
 </resources>

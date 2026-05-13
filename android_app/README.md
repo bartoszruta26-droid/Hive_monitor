@@ -1,112 +1,107 @@
-# ApiaryGuard - Aplikacja Android do Monitorowania Uli
+# ApiaryGuard - Aplikacja Android do obsługi uli
 
-## Opis
-ApiaryGuard to prosta aplikacja na system Android umożliwiająca monitorowanie stanu uli pszczelich. Aplikacja wyświetla dane takie jak temperatura, wilgotność, waga oraz status każdego ula.
+Aplikacja mobilna na system Android służąca do monitorowania uli pszczelich poprzez połączenie z Raspberry Pi.
 
 ## Funkcje
-- 📊 **Podgląd danych z uli**: Temperatura, wilgotność, waga
-- 🔔 **Statusy uli**: OK, UWAGA, ALERT (kolorystyczne oznaczenia)
-- 🔄 **Odświeżanie danych**: Pull-to-refresh i przycisk FAB
-- 📱 **Nowoczesny UI**: Material Design z CardView
-- ⏰ **Ostatnia aktualizacja**: Czas ostatniego odczytu
+
+- **Konfiguracja połączenia**: Wprowadź statyczny adres IP Raspberry Pi i port API
+- **Weryfikacja połączenia**: Automatyczne sprawdzenie poprawności połączenia z API przed zapisaniem
+- **Zapisywanie konfiguracji**: Adres IP i port są zapamiętywane w preferencjach aplikacji
+- **Wyświetlanie danych uli**: Temperatura, wilgotność, waga, poziom baterii
+- **Statusy kolorystyczne**: 
+  - 🟢 OK - wszystkie parametry w normie
+  - 🟡 UWAGA - ostrzeżenie (np. niska bateria, ekstremalna wilgotność)
+  - 🔴 ALERT - alert (temperatura poza zakresem 10-40°C)
+- **Pull-to-refresh**: Odświeżanie danych przez przeciągnięcie
+- **Architektura MVVM**: ViewModel, Repository, LiveData
 
 ## Struktura projektu
 
 ```
-android_app/
-├── app/
-│   ├── src/main/
-│   │   ├── java/com/apiaryguard/app/
-│   │   │   ├── MainActivity.java       # Główna aktywność
-│   │   │   ├── Apiary.java             # Model danych ula
-│   │   │   ├── ApiaryAdapter.java      # Adapter RecyclerView
-│   │   │   └── MainViewModel.java      # ViewModel MVVM
-│   │   ├── res/
-│   │   │   ├── layout/
-│   │   │   │   ├── activity_main.xml   # Layout głównej aktywności
-│   │   │   │   └── item_apiary.xml     # Layout pojedynczego ula
-│   │   │   ├── values/
-│   │   │   │   ├── strings.xml         # Stringi
-│   │   │   │   ├── colors.xml          # Kolory
-│   │   │   │   └── themes.xml          # Motyw aplikacji
-│   │   │   └── drawable/               # Zasoby graficzne
-│   │   └── AndroidManifest.xml         # Manifest aplikacji
-│   ├── build.gradle                    # Konfiguracja modułu app
-│   └── proguard-rules.pro              # Reguły ProGuard
-├── gradle/wrapper/
-│   └── gradle-wrapper.properties       # Konfiguracja Gradle Wrapper
-├── build.gradle                        # Konfiguracja projektu
-├── settings.gradle                     # Ustawienia projektu
-├── gradle.properties                   # Właściwości Gradle
-└── gradlew                             # Skrypt uruchomieniowy
+app/src/main/java/com/apiguard/apiary/
+├── model/
+│   └── ApiaryData.kt          # Model danych uli
+├── network/
+│   ├── ApiaryApiService.kt    # Interfejs Retrofit API
+│   └── RetrofitClient.kt      # Klient HTTP
+├── repository/
+│   └── ApiaryRepository.kt    # Warstwa danych i logiki biznesowej
+└── ui/
+    ├── MainActivity.kt        # Główna aktywność
+    ├── MainViewModel.kt       # ViewModel
+    └── ApiaryAdapter.kt       # Adapter RecyclerView
 ```
 
-## Wymagania
-- Android Studio Arctic Fox lub nowszy
-- MinSDK: 24 (Android 7.0)
-- TargetSDK: 34 (Android 14)
-- Java 8+
+## Wymagania API (Raspberry Pi)
 
-## Instalacja
+Aplikacja oczekuje API REST na Raspberry Pi z następującymi endpointami:
 
-### 1. Otwórz projekt w Android Studio
+### Health Check
 ```
-File → Open → Wybierz folder android_app
+GET http://{IP}:{PORT}/api/health
+Response: {"status": "ok"}
 ```
 
-### 2. zsynchronizuj Gradle
-Poczekaj aż Android Studio zakończy synchronizację zależności.
-
-### 3. Uruchom aplikację
-- Podłącz urządzenie z Androidem lub uruchom emulator
-- Kliknij **Run** (zielony trójkąt)
-
-## Architektura
-
-Aplikacja korzysta z architektury **MVVM** (Model-View-ViewModel):
-
-- **Model** (`Apiary.java`): Reprezentuje dane ula
-- **View** (`MainActivity.java`, layouty XML): Wyświetla dane użytkownikowi
-- **ViewModel** (`MainViewModel.java`): Zarządza danymi i logiką biznesową
-
-## Integracja z API
-
-Aby podłączyć aplikację do rzeczywistego API:
-
-1. Dodaj interfejs Retrofit w pliku `ApiService.java`:
-```java
-public interface ApiService {
-    @GET("apiaries")
-    Call<List<Apiary>> getApiaries();
-}
+### Dane uli
+```
+GET http://{IP}:{PORT}/api/data
+Response: [
+  {
+    "id": "hive_1",
+    "name": "Ul 1",
+    "temperature": 35.5,
+    "humidity": 60.0,
+    "weight": 45.2,
+    "battery": 85,
+    "timestamp": 1704067200000
+  }
+]
 ```
 
-2. Zaktualizuj `MainViewModel.java` aby używał Retrofit zamiast danych testowych.
+## Konfiguracja
 
-3. Dodaj adres URL API w `gradle.properties` lub pliku konfiguracyjnym.
+### Minimalne wymagania systemowe
+- Android 7.0 (API 24) lub wyższy
+- Połączenie internetowe (lokalna sieć WiFi)
 
-## Dane demonstracyjne
+### Port domyślny
+- **5000** (możliwość zmiany w dialogu konfiguracji)
 
-Aplikacja generuje losowe dane dla 3 uli:
-- Ul nr 1 - Pasieka Główna
-- Ul nr 2 - Pasieka Główna  
-- Ul nr 3 - Pasieka Leśna
+## Budowanie
 
-## Rozszerzenia
+1. Otwórz projekt w Android Studio
+2. Poczekaj na synchronizację Gradle
+3. Podłącz urządzenie lub uruchom emulator
+4. Kliknij Run (Shift+F10)
 
-Możliwe rozszerzenia aplikacji:
-- [ ] Połączenie z backendem przez REST API
-- [ ] Powiadomienia push o alertach
-- [ ] Wykresy historyczne (MPAndroidChart)
-- [ ] Tryb offline z bazą Room
-- [ ] Dodawanie/edycja uli
-- [ ] Ustawienia powiadomień
-- [ ] Eksport danych do CSV
+## Technologia
+
+- **Język**: Kotlin
+- **Minimalne SDK**: 24 (Android 7.0)
+- **Docelowe SDK**: 34 (Android 14)
+- **Biblioteki**:
+  - Retrofit 2 - komunikacja HTTP
+  - Room - baza danych lokalnych (opcjonalnie)
+  - Material Design Components - UI
+  - Lifecycle & ViewModel - architektura
+  - Preference - zapis ustawień
+
+## Używanie aplikacji
+
+1. **Pierwsze uruchomienie**:
+   - Aplikacja poprosi o podanie adresu IP Raspberry Pi
+   - Wpisz adres (np. `192.168.1.100`) i port (domyślnie `5000`)
+   - Kliknij "Połącz" - aplikacja zweryfikuje połączenie
+   - Jeśli sukces - dane zostaną pobrane i wyświetlone
+
+2. **Odświeżanie danych**:
+   - Przeciągnij listę w dół (pull-to-refresh)
+   - Lub kliknij przycisk FAB w prawym dolnym rogu
+
+3. **Zmiana adresu IP**:
+   - Kliknij przycisk preferencji (FAB)
+   - Wprowadź nowy adres i zatwierdź
 
 ## Licencja
 
-Projekt dostępny na licencji MIT.
-
-## Autor
-
-ApiaryGuard Team
+MIT License
