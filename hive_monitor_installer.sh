@@ -146,7 +146,7 @@ option_install_dependencies() {
     print_header "${LANG[MENU_2]}"
     
     echo "Installing required system dependencies..."
-    echo "Dependencies: git, curl, wget, build-essential, etc."
+    echo "Dependencies: git, curl, wget, build-essential, sqlite3, etc."
     echo ""
     
     # Check if running as root or with sudo
@@ -163,7 +163,7 @@ option_install_dependencies() {
         fi
     }
     
-    # Detect package manager and install dependencies (NO PYTHON - removed python3-pip, python3-serial)
+    # Detect package manager and install dependencies
     if command -v apt-get &> /dev/null; then
         echo "Detected Debian/Ubuntu package manager (apt-get)"
         run_cmd apt-get update || {
@@ -172,7 +172,7 @@ option_install_dependencies() {
             INSTALL_FAILED=1
             return 1
         }
-        run_cmd apt-get install -y git curl wget build-essential make g++ || {
+        run_cmd apt-get install -y git curl wget build-essential make g++ sqlite3 libsqlite3-dev || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via apt-get"
             INSTALL_FAILED=1
@@ -180,7 +180,7 @@ option_install_dependencies() {
         }
     elif command -v yum &> /dev/null; then
         echo "Detected RHEL/CentOS package manager (yum)"
-        run_cmd yum install -y git curl wget gcc gcc-c++ make || {
+        run_cmd yum install -y git curl wget gcc gcc-c++ make sqlite sqlite-devel || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via yum"
             INSTALL_FAILED=1
@@ -188,7 +188,7 @@ option_install_dependencies() {
         }
     elif command -v dnf &> /dev/null; then
         echo "Detected Fedora package manager (dnf)"
-        run_cmd dnf install -y git curl wget gcc gcc-c++ make || {
+        run_cmd dnf install -y git curl wget gcc gcc-c++ make sqlite sqlite-devel || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via dnf"
             INSTALL_FAILED=1
@@ -196,7 +196,7 @@ option_install_dependencies() {
         }
     elif command -v pacman &> /dev/null; then
         echo "Detected Arch Linux package manager (pacman)"
-        run_cmd pacman -Sy --noconfirm git curl wget base-devel || {
+        run_cmd pacman -Sy --noconfirm git curl wget base-devel sqlite || {
             echo -e "${RED}Failed to install dependencies${NC}"
             log_message "ERROR" "Failed to install dependencies via pacman"
             INSTALL_FAILED=1
@@ -204,7 +204,7 @@ option_install_dependencies() {
         }
     else
         echo -e "${RED}Error: Unsupported package manager. Please install dependencies manually.${NC}"
-        echo "Required packages: git, curl, wget, build-essential/make/g++"
+        echo "Required packages: git, curl, wget, build-essential/make/g++, sqlite3"
         log_message "ERROR" "Unsupported package manager"
         INSTALL_FAILED=1
         return 1
@@ -212,7 +212,7 @@ option_install_dependencies() {
     
     echo ""
     echo -e "${GREEN}Dependencies installed successfully!${NC}"
-    log_message "INFO" "Dependencies installation completed (no Python)"
+    log_message "INFO" "Dependencies installation completed (including SQLite)"
     wait_for_key
 }
 
@@ -442,6 +442,11 @@ option_install_software() {
                                 echo "  apiary-logger     - Logger test utility"
                                 echo "  apiary-tui        - TUI interface"
                                 log_message "INFO" "C++ binaries installed to system paths"
+                                
+                                # Setup database after installation
+                                echo ""
+                                echo "Setting up SQLite database..."
+                                setup_database
                             else
                                 echo -e "${RED}Failed to install binaries${NC}"
                                 log_message "ERROR" "Failed to install C++ binaries"
@@ -760,10 +765,179 @@ configure_database() {
     # Create directory for SQLite database if needed
     if [[ "$DB_TYPE" == "sqlite" ]]; then
         mkdir -p "$(dirname "$DB_PATH")"
+        # Initialize database file with proper permissions
+        setup_database
     fi
     
     log_message "INFO" "Database configured: $DB_TYPE"
     wait_for_key
+}
+
+# ============================================================================
+# SETUP DATABASE FUNCTION - Creates and initializes SQLite database
+# ============================================================================
+setup_database() {
+    local config_file="${CONFIG_DIR}/database.conf"
+    local DB_PATH
+    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "/var/lib/apiaryguard/apiary.db")
+    
+    echo "Database path: $DB_PATH"
+    echo ""
+    
+    # Create directory for database
+    local db_dir
+    db_dir=$(dirname "$DB_PATH")
+    mkdir -p "$db_dir"
+    
+    if [[ $? -ne 0 ]]; then
+        echo -e "${RED}Failed to create database directory: $db_dir${NC}"
+        log_message "ERROR" "Failed to create database directory: $db_dir"
+        return 1
+    fi
+    
+    echo "Created database directory: $db_dir"
+    
+    # Set proper permissions
+    chmod 755 "$db_dir"
+    chmod 644 "$db_dir" 2>/dev/null || true
+    
+    # Check if sqlite3 is available
+    if ! command -v sqlite3 &> /dev/null; then
+        echo -e "${YELLOW}Warning: sqlite3 command not found. Database will be created by the application.${NC}"
+        log_message "WARN" "sqlite3 not found, skipping manual database creation"
+        return 0
+    fi
+    
+    # Create database tables if database doesn't exist or is empty
+    if [[ ! -f "$DB_PATH" ]] || [[ ! -s "$DB_PATH" ]]; then
+        echo "Creating new SQLite database..."
+        
+        sqlite3 "$DB_PATH" <<EOF
+-- Enable WAL mode for better concurrency
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+PRAGMA cache_size=-64000;
+PRAGMA temp_store=MEMORY;
+
+-- Table for raw sensor data (second-level)
+CREATE TABLE IF NOT EXISTS raw_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,
+    hive_id TEXT NOT NULL,
+    temperature REAL,
+    humidity REAL,
+    weight REAL,
+    battery_level INTEGER,
+    co2_eq INTEGER,
+    voc_idx INTEGER,
+    motion_detected INTEGER,
+    audio_rms REAL,
+    audio_dominant_freq REAL,
+    audio_swarm_prob REAL,
+    audio_bee_activity REAL,
+    radar_distance REAL,
+    radar_energy REAL,
+    radar_activity REAL,
+    hx711_current REAL,
+    hx711_slope_24h REAL,
+    th_heat_index REAL,
+    th_dew_point REAL,
+    th_vpd REAL,
+    aq_iaq_index REAL
+);
+
+-- Table for aggregated data (minute, hour, day, week, month, quarter, year)
+CREATE TABLE IF NOT EXISTS aggregated_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp_start INTEGER NOT NULL,
+    timestamp_end INTEGER NOT NULL,
+    hive_id TEXT NOT NULL,
+    aggregation_type TEXT NOT NULL,
+    temperature_avg REAL,
+    temperature_min REAL,
+    temperature_max REAL,
+    humidity_avg REAL,
+    humidity_min REAL,
+    humidity_max REAL,
+    weight_avg REAL,
+    weight_min REAL,
+    weight_max REAL,
+    battery_avg INTEGER,
+    co2_avg INTEGER,
+    voc_avg INTEGER,
+    audio_rms_avg REAL,
+    audio_dominant_freq_avg REAL,
+    audio_swarm_prob_avg REAL,
+    audio_bee_activity_avg REAL,
+    radar_distance_avg REAL,
+    radar_energy_avg REAL,
+    radar_activity_avg REAL,
+    hx711_current_avg REAL,
+    hx711_slope_24h_avg REAL,
+    record_count INTEGER
+);
+
+-- Table for aggregation metadata
+CREATE TABLE IF NOT EXISTS aggregation_meta (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aggregation_type TEXT NOT NULL,
+    last_aggregation_time INTEGER,
+    record_count INTEGER DEFAULT 0
+);
+
+-- Create indexes for faster queries
+CREATE INDEX IF NOT EXISTS idx_raw_timestamp ON raw_data(timestamp);
+CREATE INDEX IF NOT EXISTS idx_raw_hive ON raw_data(hive_id);
+CREATE INDEX IF NOT EXISTS idx_raw_hive_timestamp ON raw_data(hive_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_agg_type ON aggregated_data(aggregation_type);
+CREATE INDEX IF NOT EXISTS idx_agg_timestamp ON aggregated_data(timestamp_start, timestamp_end);
+CREATE INDEX IF NOT EXISTS idx_agg_hive ON aggregated_data(hive_id);
+CREATE INDEX IF NOT EXISTS idx_agg_hive_type ON aggregated_data(hive_id, aggregation_type);
+
+-- Insert initial metadata records
+INSERT OR IGNORE INTO aggregation_meta (aggregation_type, last_aggregation_time, record_count)
+VALUES 
+    ('RAW', 0, 0),
+    ('MINUTE', 0, 0),
+    ('HOUR', 0, 0),
+    ('DAY', 0, 0),
+    ('WEEK', 0, 0),
+    ('MONTH', 0, 0),
+    ('QUARTER', 0, 0),
+    ('YEAR', 0, 0);
+EOF
+        
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}Database tables created successfully!${NC}"
+            log_message "INFO" "SQLite database created and initialized at $DB_PATH"
+        else
+            echo -e "${RED}Failed to create database tables${NC}"
+            log_message "ERROR" "Failed to create database tables"
+            return 1
+        fi
+    else
+        echo -e "${YELLOW}Database already exists at $DB_PATH${NC}"
+        echo "Skipping table creation."
+    fi
+    
+    # Set proper file permissions
+    chmod 664 "$DB_PATH" 2>/dev/null || true
+    chown root:root "$DB_PATH" 2>/dev/null || true
+    
+    echo ""
+    echo "Database setup completed!"
+    echo "Location: $DB_PATH"
+    echo ""
+    
+    # Show database stats if sqlite3 is available
+    if command -v sqlite3 &> /dev/null && [[ -f "$DB_PATH" ]]; then
+        echo "Database statistics:"
+        sqlite3 "$DB_PATH" "SELECT 'Tables: ' || COUNT(*) FROM sqlite_master WHERE type='table';" 2>/dev/null || true
+        sqlite3 "$DB_PATH" "SELECT 'Indexes: ' || COUNT(*) FROM sqlite_master WHERE type='index';" 2>/dev/null || true
+    fi
+    
+    log_message "INFO" "Database setup completed"
+    return 0
 }
 
 configure_intervals() {
