@@ -16,6 +16,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
     private lateinit var adapter: ApiaryAdapter
+    
+    // Klucze do zapisywania stanu
+    companion object {
+        private const val KEY_SCROLL_POSITION = "scroll_position"
+        private const val KEY_DIALOG_SHOWING = "dialog_showing"
+    }
+    
+    // Zmienna do śledzenia czy dialog jest wyświetlany
+    private var isIpDialogShowing = false
+    private var scrollPosition = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,8 +36,36 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupClickListeners()
         
-        // Sprawdź czy mamy zapisany adres IP
-        viewModel.checkSavedConnection()
+        // Przywróć stan z savedInstanceState jeśli istnieje
+        savedInstanceState?.let {
+            scrollPosition = it.getInt(KEY_SCROLL_POSITION, 0)
+            isIpDialogShowing = it.getBoolean(KEY_DIALOG_SHOWING, false)
+            
+            // Przywróć pozycję przewijania
+            if (scrollPosition > 0) {
+                binding.recyclerView.scrollToPosition(scrollPosition)
+            }
+            
+            // Jeśli dialog był wyświetlany i nie ma połączenia, wyświetl go ponownie
+            if (isIpDialogShowing && !viewModel.isConnected()) {
+                showIpInputDialog()
+            }
+        } else {
+            // Sprawdź czy mamy zapisany adres IP tylko przy pierwszym uruchomieniu
+            viewModel.checkSavedConnection()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        
+        // Zapisz pozycję przewijania listy
+        val layoutManager = binding.recyclerView.layoutManager as? LinearLayoutManager
+        scrollPosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
+        outState.putInt(KEY_SCROLL_POSITION, scrollPosition)
+        
+        // Zapisz stan dialogu
+        outState.putBoolean(KEY_DIALOG_SHOWING, isIpDialogShowing)
     }
 
     private fun setupViewModel() {
@@ -105,8 +143,16 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Podaj poprawny adres IP", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Anuluj", null)
+            .setNegativeButton("Anuluj") { _, _ ->
+                isIpDialogShowing = false
+            }
+            .setOnDismissListener {
+                isIpDialogShowing = false
+            }
             .show()
+        
+        // Oznacz że dialog jest wyświetlany
+        isIpDialogShowing = true
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {

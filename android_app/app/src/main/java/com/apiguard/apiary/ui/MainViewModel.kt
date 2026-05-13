@@ -89,6 +89,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _connectionState.value = false
         _apiaryData.value = emptyList()
     }
+    
+    fun isConnected(): Boolean {
+        return _connectionState.value == true
+    }
 }
 
 class MainViewModelFactory(

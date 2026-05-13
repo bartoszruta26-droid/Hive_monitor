@@ -1,1 +1,39 @@
-Nothing needs to be added to .gitignore since only a source file (src/webui/app.js) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+```
+# Android build artifacts
+*.apk
+*.aar
+*.dex
+*.so
+
+# Android build directories
+build/
+.gradle/
+local.properties
+
+# IDE files
+.idea/
+*.iml
+*.iws
+.vscode/
+
+# Compiled files
+*.class
+*.jar
+*.war
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Temp files
+*.tmp
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

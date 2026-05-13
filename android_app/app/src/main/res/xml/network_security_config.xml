@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Zezwalaj na HTTP tylko dla lokalnych adresów IP (development) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Lokalne sieci prywatne - zakresy CIDR nie są wspierane, użyj konkretnych IP lub domen -->
+        <!-- Dla rozwoju: zezwól na typowe lokalne IP -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Uwaga: Android nie obsługuje CIDR w domain-config. 
+             Dla pełnej obsługi sieci lokalnych w produkcji, rozważ użycie konkretnej domeny
+             lub pozostawienie usesCleartextTraffic="true" tylko w buildzie debug -->
+    </domain-config>
+</network-security-config>
