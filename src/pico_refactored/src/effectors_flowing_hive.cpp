@@ -146,7 +146,8 @@ void initServoControl() {
     // Initialize PWM for servo control
     // Standard RC servos use 50Hz (20ms period)
     // Pulse width: 500us (0°) to 2500us (180°)
-    analogWriteFrequency(SERVO_EMPTY_PIN, 50);
+    // NOTE: analogWriteFrequency is not available on RP2040 Arduino core
+    // PWM frequency is set automatically (default ~1kHz)
     analogWrite(SERVO_EMPTY_PIN, 0);  // Start at 0% duty cycle
     
     // Update state
@@ -621,18 +622,31 @@ bool isFlowingHiveSafeModeActive() {
 
 /**
  * @brief Activate safe mode
+ * 
+ * ACTIONS TAKEN:
+ * 1. Move servo to rest position FIRST (before setting flag)
+ * 2. Cancel any active auto-empty sequence
+ * 3. Set flowingHiveSafeMode flag = true
+ * 4. Log error with provided reason message
+ * 
+ * This ordering ensures the servo moves to safe position even if
+ * called during an error condition, as setServoAngle() will be
+ * blocked once the flag is set.
  */
 void activateFlowingHiveSafeMode(const char* reason) {
+    // CRITICAL: Move servo to rest position BEFORE setting safe mode flag
+    // setServoAngle() checks the flag and will ignore commands if already set
+    if (servoInitialized) {
+        DBG_SERVO("[SERVO] Moving to rest position before safe mode activation\n");
+        setServoRestPosition();
+        autoEmptyActive = false;
+    }
+    
+    // Now set safe mode flag
     flowingHiveSafeMode = true;
     
     LOG_ERROR("FLOWING_HIVE", reason);
     DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason);
-    
-    // Move servo to safe rest position
-    if (servoInitialized) {
-        setServoRestPosition();
-        autoEmptyActive = false;
-    }
 }
 
 /**
