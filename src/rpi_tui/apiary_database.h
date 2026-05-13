@@ -20,6 +20,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <sqlite3.h>
 
 // Struktura HiveData - minimalna definicja potrzebna dla bazy danych
@@ -252,6 +253,7 @@ private:
     std::string aggregationTypeToString(AggregationType type); // Konwertuje typ na string
     AggregationType stringToAggregationType(const std::string& str); // Konwertuje string na typ
     void workerFunction();                        // Funkcja wątku roboczego
+    void flushBuffer();                           // Zapisuje zawartość bufora do bazy
     
     DatabaseConfig config_;
     sqlite3* db_;
