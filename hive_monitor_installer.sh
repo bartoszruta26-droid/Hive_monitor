@@ -3360,16 +3360,21 @@ option_system_status() {
 option_install_apirray() {
     print_header "${LANG[MENU_10]}"
     
-    echo "🚀 Instalacja Apiary Collector (pełna)..."
+    echo "🚀 Instalacja Apiary Collector (PEŁNA z WebUI i API)..."
     echo ""
-    echo "Ta opcja uruchomi skrypt instalacyjny install_apiary.sh z katalogu src/rpi_tui"
+    echo "Ta opcja uruchomi skrypt install_apiary.sh z katalogu src/rpi_tui"
     echo ""
-    echo "Skrypt wykona następujące kroki:"
-    echo "  • Aktualizacja systemu i instalacja zależności"
-    echo "  • Kompilacja projektu C++"
-    echo "  • Konfiguracja bazy danych SQLite"
-    echo "  • Konfiguracja serwera Apache2 z WebUI i API"
-    echo "  • Instalacja usługi systemd apiary-collector"
+    echo -e "${CYAN}Co zostanie zainstalowane:${NC}"
+    echo "  • Zależności: git, build-essential, sqlite3, libsqlite3-dev"
+    echo "  • Serwer WWW: Apache2, PHP, libapache2-mod-php"
+    echo "  • Kompilacja projektu C++ (apiary_collector)"
+    echo "  • Instalacja binarek w /usr/local/bin"
+    echo "  • Baza danych SQLite z pełnym schematem agregacji"
+    echo "  • WebUI API pod /var/www/html/apiary/index.php"
+    echo "  • Usługa systemd: apiary-collector"
+    echo ""
+    echo -e "${YELLOW}UWAGA: To jest PEŁNA instalacja z interfejsem WWW${NC}"
+    echo -e "${YELLOW}Jeśli chcesz tylko kolektor danych bez WebUI, użyj opcji 3${NC}"
     echo ""
     
     # Check if running as root or with sudo
@@ -3393,11 +3398,11 @@ option_install_apirray() {
     
     echo "Found install script at: $APIARY_SCRIPT"
     echo ""
-    read -p "Continue with installation? (y/N): " confirm
+    read -p "Continue with FULL installation (WebUI + API)? (y/N): " confirm
     
     if [[ ! $confirm =~ ^[Yy]$ ]]; then
         echo "Installation cancelled."
-        log_message "INFO" "Apiary Collector installation cancelled by user"
+        log_message "INFO" "Apiary Collector FULL installation cancelled by user"
         wait_for_key
         return 0
     fi
@@ -3406,7 +3411,7 @@ option_install_apirray() {
     chmod +x "$APIARY_SCRIPT"
     
     echo ""
-    echo "Starting installation..."
+    echo "Starting FULL installation..."
     echo "=================================================="
     
     # Execute the install script
@@ -3420,15 +3425,21 @@ option_install_apirray() {
     if bash "$APIARY_SCRIPT"; then
         echo ""
         echo "=================================================="
-        echo -e "${GREEN}✅ Apiary Collector installation completed successfully!${NC}"
+        echo -e "${GREEN}✅ Apiary Collector FULL installation completed!${NC}"
         echo "=================================================="
-        log_message "INFO" "Apiary Collector installation completed successfully"
+        echo ""
+        echo -e "${CYAN}Next steps:${NC}"
+        echo "  1. Start the collector: sudo systemctl start apiary-collector"
+        echo "  2. Check status: sudo systemctl status apiary-collector"
+        echo "  3. Access WebUI API: http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
+        echo ""
+        log_message "INFO" "Apiary Collector FULL installation completed successfully"
     else
         echo ""
         echo "=================================================="
-        echo -e "${RED}❌ Installation failed. Check the error messages above.${NC}"
+        echo -e "${RED}❌ Installation failed. Check error messages above.${NC}"
         echo "=================================================="
-        log_message "ERROR" "Apiary Collector installation failed"
+        log_message "ERROR" "Apiary Collector FULL installation failed"
     fi
     
     cd - > /dev/null || true
