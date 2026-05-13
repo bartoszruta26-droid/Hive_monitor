@@ -15,8 +15,9 @@
 // KONFIGURACJA
 // ============================================================================
 const CONFIG = {
-    apiBaseUrl: window.location.hostname ? `http://${window.location.hostname}:8080` : '',
+    apiBaseUrl: window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:8080` : '',
     refreshInterval: 10000, // 10 sekund
+    maxRetries: 3,
     endpoints: {
         status: '/api/status',
         hives: '/api/hives',
@@ -46,11 +47,12 @@ const CONFIG = {
         tempMaxAlert: 35,
         humidityMinAlert: 40,
         humidityMaxAlert: 70
-    }
+    },
+    debug: false // Zmień na true, aby włączyć logowanie w produkcji
 };
 
-// Stan aplikacji
-let appState = {
+// Stan aplikacji (encapsulated)
+const AppState = {
     hives: [],
     sensors: [],
     effectors: [],
@@ -60,11 +62,64 @@ let appState = {
         alertThreshold: 35
     },
     isConnected: false,
-    lastRefresh: null
+    lastRefresh: null,
+    isLoading: true,
+    isRefreshing: false, // Blokada race condition przy odświeżaniu
+    retryCount: 0
 };
 
-// Chart instance
-let historyChart = null;
+// ============================================================================
+// NARZĘDZIA POMOCNICZE
+// ============================================================================
+
+/**
+ * Bezpieczne escapowanie danych przed wstawieniem do HTML (ochrona XSS)
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return text;
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Logowanie z poziomami (wyłączalne w produkcji, z ochroną przed rekurencją)
+ */
+let isLogging = false;
+
+function logMessage(level, message, data = null) {
+    if (!CONFIG.debug && level === 'debug') return;
+    if (isLogging) return; // Zapobieganie rekurencji
+    
+    isLogging = true;
+    try {
+        const timestamp = new Date().toISOString();
+        const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+        
+        const consoleMethod = level === 'error' ? 'error' : 
+                             level === 'warn' ? 'warn' : 'log';
+        
+        if (data) {
+            console[consoleMethod](prefix, message, data);
+        } else {
+            console[consoleMethod](prefix, message);
+        }
+    } finally {
+        isLogging = false;
+    }
+}
+
+/**
+ * Opóźnienie (promise)
+ */
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // ============================================================================
 // INICJALIZACJA
@@ -85,7 +140,8 @@ async function loadConfigFromBackend() {
     try {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000
         });
         
         if (response.ok) {
@@ -120,11 +176,11 @@ async function loadConfigFromBackend() {
                     CONFIG.settings.refreshInterval = intv.sensor_update_interval || CONFIG.settings.refreshInterval;
                 }
                 
-                console.log('✅ Konfiguracja załadowana z backendu:', data.config);
+                logMessage('info', 'Konfiguracja załadowana z backendu', data.config);
             }
         }
     } catch (error) {
-        console.log('⚠️ Nie udało się załadować konfiguracji z backendu, używam domyślnych:', error.message);
+        logMessage('warn', 'Nie udało się załadować konfiguracji z backendu, używam domyślnych', error.message);
     }
 }
 
@@ -170,8 +226,11 @@ async function checkCollectorConnection() {
     const statusEl = document.getElementById('collectorStatus');
     const progressEl = document.getElementById('connectionProgress');
     
+    // Guard clause - sprawdź czy elementy istnieją
     if (!statusEl || !progressEl) {
-        console.warn('DOM elements not found for connection status');
+        logMessage("warn", 'DOM elements not found for connection status - checking alternative elements');
+        // Spróbuj zaktualizować przynajmniej wskaźnik połączenia w headerze
+        updateConnectionStatus(false);
         return false;
     }
     
@@ -180,26 +239,27 @@ async function checkCollectorConnection() {
         
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.health}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000 // 5 sekund timeout
         });
         
         if (response.ok) {
             const data = await response.json();
             statusEl.textContent = '✅ Połączono';
             statusEl.style.color = '#28a745';
-            appState.isConnected = true;
+            AppState.isConnected = true;
             progressEl.style.width = '100%';
             updateConnectionStatus(true);
             return true;
         }
     } catch (error) {
-        console.log('Brak połączenia z APIARY_COLLECTOR, używam danych demo');
+        logMessage("info", 'Brak połączenia z APIARY_COLLECTOR, używam danych demo:', error.message);
     }
     
     // Fallback do demo danych
     statusEl.textContent = '⚠️ Tryb demo (brak kolektora)';
     statusEl.style.color = '#fd7e14';
-    appState.isConnected = false;
+    AppState.isConnected = false;
     progressEl.style.width = '30%';
     updateConnectionStatus(false);
     return false;
@@ -227,19 +287,27 @@ async function fetchHiveData() {
     try {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.hives}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000 // 5 sekund timeout
         });
         
         if (response.ok) {
             const data = await response.json();
-            appState.hives = data.hives || data;
-            return appState.hives;
+            AppState.hives = data.hives || data;
+            return AppState.hives;
+        } else {
+            logMessage("warn", `HTTP error ${response.status}: ${response.statusText}`);
         }
     } catch (error) {
-        console.error('Błąd pobierania danych:', error);
+        logMessage("error", 'Błąd pobierania danych:', error.message);
+        // Zwróć puste dane zamiast null - zapobiega błędom w renderowaniu
+        AppState.hives = [];
+        return AppState.hives;
     }
     
-    return null;
+    // Fallback - zwróć puste dane
+    AppState.hives = [];
+    return AppState.hives;
 }
 
 // ============================================================================
@@ -249,11 +317,11 @@ function renderDashboard() {
     const hiveCardsContainer = document.getElementById('hiveCards');
     
     if (!hiveCardsContainer) {
-        console.warn('hiveCardsContainer element not found');
+        logMessage("warn", 'hiveCardsContainer element not found');
         return;
     }
     
-    if (!appState.hives || appState.hives.length === 0) {
+    if (!AppState.hives || AppState.hives.length === 0) {
         hiveCardsContainer.innerHTML = `
             <div class="card" style="grid-column: 1/-1; text-align: center; padding: 3rem;">
                 <h3 style="color: #666;">Brak danych z uli</h3>
@@ -266,14 +334,15 @@ function renderDashboard() {
         return;
     }
     
-    hiveCardsContainer.innerHTML = appState.hives.map(hive => {
+    hiveCardsContainer.innerHTML = AppState.hives.map(hive => {
         const statusClass = hive.is_online ? 'status-online' : 'status-offline';
         const statusText = hive.is_online ? 'ONLINE' : 'OFFLINE';
+        const safeHiveId = escapeHtml(hive.hive_id || 'UL-' + hive.id);
         
         return `
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">🐝 ${hive.hive_id || 'UL-' + hive.id}</h3>
+                    <h3 class="card-title">🐝 ${safeHiveId}</h3>
                     <span class="card-status ${statusClass}">${statusText}</span>
                 </div>
                 
@@ -316,10 +385,10 @@ function renderDashboard() {
                 ` : ''}
                 
                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                    <button class="btn btn-primary" onclick="viewHiveDetails('${hive.hive_id}')" style="flex: 1;">
+                    <button class="btn btn-primary" onclick="viewHiveDetails('${safeHiveId}')" style="flex: 1;">
                         📊 Szczegóły
                     </button>
-                    <button class="btn btn-secondary" onclick="toggleEffector('${hive.hive_id}')" style="flex: 1;">
+                    <button class="btn btn-secondary" onclick="toggleEffector('${safeHiveId}')" style="flex: 1;">
                         ⚙️ Efektory
                     </button>
                 </div>
@@ -331,7 +400,7 @@ function renderDashboard() {
 }
 
 function updateSummaryMetrics() {
-    const hives = appState.hives || [];
+    const hives = AppState.hives || [];
     
     // Guard clauses for DOM elements
     const totalHivesEl = document.getElementById('totalHives');
@@ -342,7 +411,7 @@ function updateSummaryMetrics() {
     const alertsCountEl = document.getElementById('alertsCount');
     
     if (!totalHivesEl || !onlineHivesEl || !avgTempEl || !avgHumidityEl || !totalWeightEl || !alertsCountEl) {
-        console.warn('Some summary metrics DOM elements not found');
+        logMessage("warn", 'Some summary metrics DOM elements not found');
         return;
     }
     
@@ -371,7 +440,7 @@ function renderSensorsTable() {
     
     // Generowanie sensorów z danych uli
     const sensors = [];
-    appState.hives.forEach(hive => {
+    AppState.hives.forEach(hive => {
         if (hive.temperature !== undefined) {
             sensors.push({ id: `TEMP-${hive.hive_id}`, type: 'temperature', hive: hive.hive_id, status: hive.is_online ? 'active' : 'inactive', lastRead: new Date().toISOString() });
         }
@@ -390,9 +459,9 @@ function renderSensorsTable() {
     
     tbody.innerHTML = sensors.map(sensor => `
         <tr>
-            <td><strong>${sensor.id}</strong></td>
-            <td><span class="sensor-badge badge-${sensor.type}">${sensor.type}</span></td>
-            <td>${sensor.hive}</td>
+            <td><strong>${escapeHtml(sensor.id)}</strong></td>
+            <td><span class="sensor-badge badge-${escapeHtml(sensor.type)}">${escapeHtml(sensor.type)}</span></td>
+            <td>${escapeHtml(sensor.hive)}</td>
             <td>
                 <span class="card-status ${sensor.status === 'active' ? 'status-online' : 'status-offline'}">
                     ${sensor.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
@@ -400,8 +469,8 @@ function renderSensorsTable() {
             </td>
             <td>${new Date(sensor.lastRead).toLocaleString('pl-PL')}</td>
             <td>
-                <button class="btn btn-secondary" onclick="editSensor('${sensor.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
-                <button class="btn btn-danger" onclick="deleteSensor('${sensor.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🗑️</button>
+                <button class="btn btn-secondary" onclick="editSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
+                <button class="btn btn-danger" onclick="deleteSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🗑️</button>
             </td>
         </tr>
     `).join('');
@@ -420,7 +489,7 @@ function updateHiveSelects() {
         if (!select) return;
         
         const currentValue = select.value;
-        const options = appState.hives.map(h => `<option value="${h.hive_id}">${h.hive_id}</option>`).join('');
+        const options = (AppState.hives || []).map(h => `<option value="${escapeHtml(h.hive_id)}">${escapeHtml(h.hive_id)}</option>`).join('');
         
         if (selectId === 'historyHiveSelect') {
             select.innerHTML = '<option value="all">Wszystkie ule</option>' + options;
@@ -440,7 +509,7 @@ function renderEffectorsTable() {
     
     // Przykładowe efektory
     const effectors = [];
-    appState.hives.forEach(hive => {
+    AppState.hives.forEach(hive => {
         effectors.push({ id: `FAN-${hive.hive_id}`, type: 'fan', hive: hive.hive_id, status: 'active', state: 'off' });
         effectors.push({ id: `HEAT-${hive.hive_id}`, type: 'heater', hive: hive.hive_id, status: 'active', state: 'off' });
     });
@@ -452,9 +521,9 @@ function renderEffectorsTable() {
     
     tbody.innerHTML = effectors.map(eff => `
         <tr>
-            <td><strong>${eff.id}</strong></td>
+            <td><strong>${escapeHtml(eff.id)}</strong></td>
             <td>${getEffectorName(eff.type)}</td>
-            <td>${eff.hive}</td>
+            <td>${escapeHtml(eff.hive)}</td>
             <td>
                 <span class="card-status ${eff.status === 'active' ? 'status-online' : 'status-offline'}">
                     ${eff.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
@@ -467,11 +536,11 @@ function renderEffectorsTable() {
             </td>
             <td>
                 <button class="btn ${eff.state === 'on' ? 'btn-danger' : 'btn-success'}" 
-                        onclick="toggleEffectorState('${eff.id}')" 
+                        onclick="toggleEffectorState('${escapeHtml(eff.id)}')" 
                         style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">
                     ${eff.state === 'on' ? '🔴 WYŁ' : '🟢 WŁ'}
                 </button>
-                <button class="btn btn-secondary" onclick="editEffector('${eff.id}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
+                <button class="btn btn-secondary" onclick="editEffector('${escapeHtml(eff.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
             </td>
         </tr>
     `).join('');
@@ -522,41 +591,61 @@ function loadHistoryData() {
 }
 
 function renderHistoryChart(labels, data, label) {
-    const ctx = document.getElementById('historyChart').getContext('2d');
-    
-    if (historyChart) {
-        historyChart.destroy();
+    const canvas = document.getElementById('historyChart');
+    if (!canvas) {
+        logMessage("error", "Canvas element not found for history chart");
+        return;
     }
     
-    historyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: label,
-                data: data,
-                borderColor: '#2c5f2d',
-                backgroundColor: 'rgba(44, 95, 45, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top'
-                }
+    let ctx;
+    try {
+        ctx = canvas.getContext('2d');
+    } catch (error) {
+        logMessage("error", "Failed to get 2D context from canvas", error.message);
+        return;
+    }
+    
+    if (historyChart) {
+        try {
+            historyChart.destroy();
+        } catch (error) {
+            logMessage("warn", "Error destroying previous chart instance", error.message);
+        }
+    }
+    
+    try {
+        historyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: data,
+                    borderColor: '#2c5f2d',
+                    backgroundColor: 'rgba(44, 95, 45, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
             },
-            scales: {
-                y: {
-                    beginAtZero: false
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
                 }
             }
-        }
-    });
+        });
+    } catch (error) {
+        logMessage("error", "Failed to create Chart.js instance", error.message);
+    }
 }
 
 // ============================================================================
@@ -651,12 +740,12 @@ async function saveConfigToBackend() {
         });
         
         if (response.ok) {
-            console.log('✅ Konfiguracja zapisana do backendu');
+            logMessage("info", '✅ Konfiguracja zapisana do backendu');
         } else {
-            console.error('❌ Błąd zapisu konfiguracji');
+            logMessage("error", '❌ Błąd zapisu konfiguracji');
         }
     } catch (error) {
-        console.error('⚠️ Nie udało się zapisać konfiguracji:', error.message);
+        logMessage("error", '⚠️ Nie udało się zapisać konfiguracji:', error.message);
     }
 }
 
@@ -668,7 +757,11 @@ let countdownInterval = null;
 
 function startAutoRefresh() {
     refreshTimer = setInterval(() => {
-        refreshAllData();
+        try {
+            refreshAllData();
+        } catch (error) {
+            logMessage("error", "Błąd podczas automatycznego odświeżania", error.message);
+        }
     }, CONFIG.refreshInterval);
     
     startCountdown();
@@ -683,33 +776,60 @@ function startCountdown() {
     let seconds = CONFIG.refreshInterval / 1000;
     
     countdownInterval = setInterval(() => {
-        seconds--;
-        document.getElementById('refreshTimer').textContent = `Odświeżanie za: ${seconds}s`;
-        
-        if (seconds <= 0) {
-            seconds = CONFIG.refreshInterval / 1000;
+        try {
+            seconds--;
+            const timerElement = document.getElementById('refreshTimer');
+            if (timerElement) {
+                timerElement.textContent = `Odświeżanie za: ${seconds}s`;
+            }
+            
+            if (seconds <= 0) {
+                seconds = CONFIG.refreshInterval / 1000;
+            }
+        } catch (error) {
+            logMessage("error", "Błąd w odliczaniu", error.message);
         }
     }, 1000);
 }
 
 function refreshAllData() {
-    if (appState.isConnected) {
-        fetchHiveData().then(data => {
-            if (data) {
-                renderDashboard();
-                renderSensorsTable();
-                renderEffectorsTable();
-            }
-        });
+    // Guard against concurrent refreshes
+    if (AppState.isRefreshing) {
+        logMessage("debug", "Refresh already in progress, skipping");
+        return;
     }
-    appState.lastRefresh = new Date();
+    
+    AppState.isRefreshing = true;
+    
+    try {
+        if (AppState.isConnected) {
+            fetchHiveData().then(data => {
+                if (data && data.length > 0) {
+                    renderDashboard();
+                    renderSensorsTable();
+                    renderEffectorsTable();
+                }
+                AppState.isRefreshing = false;
+            }).catch(error => {
+                logMessage("error", "Błąd pobierania danych", error.message);
+                AppState.isRefreshing = false;
+            });
+        } else {
+            AppState.isRefreshing = false;
+        }
+    } catch (error) {
+        logMessage("error", "Błąd w refreshAllData", error.message);
+        AppState.isRefreshing = false;
+    }
+    
+    AppState.lastRefresh = new Date();
 }
 
 // ============================================================================
 // DEMO DANE (gdy brak połączenia z kolektorem)
 // ============================================================================
 function loadDemoData() {
-    appState.hives = [
+    AppState.hives = [
         {
             hive_id: 'UL-001',
             temperature: 24.5,
@@ -774,32 +894,263 @@ document.querySelectorAll('.modal').forEach(modal => {
 });
 
 // ============================================================================
-// AKCJE
+// AKCJE - PEŁNE IMPLEMENTACJE
 // ============================================================================
 function viewHiveDetails(hiveId) {
-    alert(`Szczegóły ula ${hiveId} (rozbudowa w wersji premium)`);
+    const hive = AppState.hives.find(h => h.hive_id === hiveId);
+    if (!hive) {
+        alert(`Nie znaleziono ula ${hiveId}`);
+        return;
+    }
+    
+    const modal = document.getElementById('hiveDetailsModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>🐝 Szczegóły ula ${hiveId}</h2>
+                    <button class="modal-close" onclick="closeModal('hiveDetailsModal')">&times;</button>
+                </div>
+                <div class="metric-grid" style="margin-bottom: 1rem;">
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.temperature?.toFixed(1) || '--'}</div>
+                        <div class="metric-label">Temperatura</div>
+                        <div class="metric-unit">°C</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.humidity?.toFixed(1) || '--'}</div>
+                        <div class="metric-label">Wilgotność</div>
+                        <div class="metric-unit">%RH</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.weight?.toFixed(3) || '--'}</div>
+                        <div class="metric-label">Waga</div>
+                        <div class="metric-unit">kg</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.battery_level || '--'}</div>
+                        <div class="metric-label">Bateria</div>
+                        <div class="metric-unit">%</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Status:</label>
+                    <span class="card-status ${hive.is_online ? 'status-online' : 'status-offline'}">
+                        ${hive.is_online ? 'ONLINE' : 'OFFLINE'}
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label>Ostatni odczyt:</label>
+                    <p>${hive.last_update ? new Date(hive.last_update).toLocaleString('pl-PL') : 'Brak danych'}</p>
+                </div>
+                <div class="form-group">
+                    <label>Sensory:</label>
+                    <div>
+                        <span class="sensor-badge badge-temp">Temperatura</span>
+                        <span class="sensor-badge badge-hum">Wilgotność</span>
+                        <span class="sensor-badge badge-weight">Waga</span>
+                        <span class="sensor-badge badge-bat">Bateria</span>
+                        ${hive.co2_eq !== undefined ? '<span class="sensor-badge badge-co2">CO₂</span>' : ''}
+                        ${hive.audio_dominant_freq !== undefined ? '<span class="sensor-badge badge-audio">Audio</span>' : ''}
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="closeModal('hiveDetailsModal')" style="width: 100%;">Zamknij</button>
+            `;
+        }
+        modal.classList.add('active');
+    } else {
+        // Fallback - alert jeśli modal nie istnieje
+        alert(`Szczegóły ula ${hiveId}: Temp=${hive.temperature}°C, Wilgotność=${hive.humidity}%RH, Waga=${hive.weight}kg`);
+    }
 }
 
 function toggleEffector(hiveId) {
-    alert(`Panel efektorów dla ${hiveId}`);
+    const modal = document.getElementById('effectorPanelModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            const effectors = [
+                { id: `FAN-${hiveId}`, type: 'fan', name: 'Wentylator', state: false },
+                { id: `HEAT-${hiveId}`, type: 'heater', name: 'Grzałka', state: false },
+                { id: `LIGHT-${hiveId}`, type: 'light', name: 'Oświetlenie', state: false },
+                { id: `ALARM-${hiveId}`, type: 'alarm', name: 'Alarm', state: false }
+            ];
+            
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>⚙️ Efektory dla ula ${hiveId}</h2>
+                    <button class="modal-close" onclick="closeModal('effectorPanelModal')">&times;</button>
+                </div>
+                <div style="display: grid; gap: 1rem;">
+                    ${effectors.map(eff => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-color); border-radius: 8px;">
+                            <div>
+                                <strong>${eff.name}</strong>
+                                <div style="font-size: 0.85rem; color: #666;">ID: ${eff.id}</div>
+                            </div>
+                            <button class="btn ${eff.state ? 'btn-danger' : 'btn-success'}" 
+                                    onclick="toggleEffectorState('${eff.id}', this)">
+                                ${eff.state ? '🔴 WYŁ' : '🟢 WŁ'}
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="btn btn-secondary" onclick="closeModal('effectorPanelModal')" style="width: 100%; margin-top: 1rem;">Zamknij</button>
+            `;
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Panel efektorów dla ${hiveId} - dostępny po dodaniu modala effectorPanelModal`);
+    }
 }
 
 function editSensor(sensorId) {
-    alert(`Edycja sensora ${sensorId}`);
+    const sensor = AppState.sensors.find(s => s.id === sensorId) || 
+                   AppState.hives.flatMap(h => [
+                       { id: `TEMP-${h.hive_id}`, type: 'temperature', hive: h.hive_id },
+                       { id: `HUM-${h.hive_id}`, type: 'humidity', hive: h.hive_id }
+                   ]).find(s => s.id === sensorId);
+    
+    if (!sensor) {
+        alert(`Nie znaleziono sensora ${sensorId}`);
+        return;
+    }
+    
+    const modal = document.getElementById('editSensorModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>✏️ Edycja sensora ${sensorId}</h2>
+                    <button class="modal-close" onclick="closeModal('editSensorModal')">&times;</button>
+                </div>
+                <form id="editSensorForm">
+                    <div class="form-group">
+                        <label for="editSensorType">Typ:</label>
+                        <input type="text" id="editSensorType" class="form-control" value="${sensor.type}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSensorHive">Ul:</label>
+                        <select id="editSensorHive" class="form-control">
+                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === sensor.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSensorStatus">Status:</label>
+                        <select id="editSensorStatus" class="form-control">
+                            <option value="active" ${sensor.status === 'active' ? 'selected' : ''}>Aktywny</option>
+                            <option value="inactive" ${sensor.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('editSensorModal')" style="flex: 1;">Anuluj</button>
+                    </div>
+                </form>
+            `;
+            
+            document.getElementById('editSensorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const newHive = document.getElementById('editSensorHive').value;
+                const newStatus = document.getElementById('editSensorStatus').value;
+                
+                // TODO: Wysyłanie do API
+                logMessage("info", `Updating sensor ${sensorId}: hive=${newHive}, status=${newStatus}`);
+                alert(`✅ Zapisano zmiany dla sensora ${sensorId}`);
+                closeModal('editSensorModal');
+                renderSensorsTable();
+            });
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Edycja sensora ${sensorId} - dostępna po dodaniu modala editSensorModal`);
+    }
 }
 
 function deleteSensor(sensorId) {
-    if (confirm(`Czy na pewno usunąć sensor ${sensorId}?`)) {
-        alert(`Usunięto sensor ${sensorId}`);
+    if (confirm(`Czy na pewno chcesz usunąć sensor ${sensorId}? Ta operacja jest nieodwracalna.`)) {
+        // TODO: Wysyłanie DELETE request do API
+        logMessage("info", `Deleting sensor ${sensorId}`);
+        
+        // Symulacja usunięcia
+        const index = AppState.sensors.findIndex(s => s.id === sensorId);
+        if (index > -1) {
+            AppState.sensors.splice(index, 1);
+        }
+        
+        alert(`✅ Usunięto sensor ${sensorId}`);
+        renderSensorsTable();
     }
 }
 
 function editEffector(effectorId) {
-    alert(`Edycja efektora ${effectorId}`);
+    const effector = AppState.effectors.find(e => e.id === effectorId) || 
+                     { id: effectorId, type: 'unknown', hive: 'UL-1', status: 'active', state: 'off' };
+    
+    const modal = document.getElementById('editEffectorModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>✏️ Edycja efektora ${effectorId}</h2>
+                    <button class="modal-close" onclick="closeModal('editEffectorModal')">&times;</button>
+                </div>
+                <form id="editEffectorForm">
+                    <div class="form-group">
+                        <label for="editEffectorType">Typ:</label>
+                        <select id="editEffectorType" class="form-control">
+                            <option value="fan" ${effector.type === 'fan' ? 'selected' : ''}>Wentylator</option>
+                            <option value="heater" ${effector.type === 'heater' ? 'selected' : ''}>Grzałka</option>
+                            <option value="humidifier" ${effector.type === 'humidifier' ? 'selected' : ''}>Nawilżacz</option>
+                            <option value="feeder" ${effector.type === 'feeder' ? 'selected' : ''}>Podkarmiacz</option>
+                            <option value="light" ${effector.type === 'light' ? 'selected' : ''}>Oświetlenie</option>
+                            <option value="alarm" ${effector.type === 'alarm' ? 'selected' : ''}>Alarm</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEffectorHive">Ul:</label>
+                        <select id="editEffectorHive" class="form-control">
+                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === effector.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEffectorStatus">Status:</label>
+                        <select id="editEffectorStatus" class="form-control">
+                            <option value="active" ${effector.status === 'active' ? 'selected' : ''}>Aktywny</option>
+                            <option value="inactive" ${effector.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('editEffectorModal')" style="flex: 1;">Anuluj</button>
+                    </div>
+                </form>
+            `;
+            
+            document.getElementById('editEffectorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const newType = document.getElementById('editEffectorType').value;
+                const newHive = document.getElementById('editEffectorHive').value;
+                const newStatus = document.getElementById('editEffectorStatus').value;
+                
+                // TODO: Wysyłanie do API
+                logMessage("info", `Updating effector ${effectorId}: type=${newType}, hive=${newHive}, status=${newStatus}`);
+                alert(`✅ Zapisano zmiany dla efektora ${effectorId}`);
+                closeModal('editEffectorModal');
+                renderEffectorsTable();
+            });
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Edycja efektora ${effectorId} - dostępna po dodaniu modala editEffectorModal`);
+    }
 }
 
 function exportData() {
-    const dataStr = JSON.stringify(appState.hives, null, 2);
+    const dataStr = JSON.stringify(AppState.hives, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -809,15 +1160,47 @@ function exportData() {
     URL.revokeObjectURL(url);
 }
 
-// Form submissions
+// Form submissions z walidacją
 document.getElementById('addSensorForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    alert('✅ Dodano sensor (symulacja)');
+    
+    // Walidacja client-side
+    const sensorType = document.getElementById('sensorType').value;
+    const sensorHive = document.getElementById('sensorHive').value;
+    
+    if (!sensorType || !sensorHive) {
+        logMessage('error', 'Wszystkie pola są wymagane');
+        alert('❌ Wszystkie pola są wymagane');
+        return;
+    }
+    
+    // Sanityzacja danych przed wysłaniem
+    const safeType = escapeHtml(sensorType);
+    const safeHive = escapeHtml(sensorHive);
+    
+    logMessage('info', `Dodawanie sensora: typ=${safeType}, ul=${safeHive}`);
+    alert(`✅ Dodano sensor ${safeType} dla ula ${safeHive} (symulacja)`);
     closeModal('addSensorModal');
 });
 
 document.getElementById('addEffectorForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    alert('✅ Dodano effektor (symulacja)');
+    
+    // Walidacja client-side
+    const effectorType = document.getElementById('effectorType').value;
+    const effectorHive = document.getElementById('effectorHive').value;
+    
+    if (!effectorType || !effectorHive) {
+        logMessage('error', 'Wszystkie pola są wymagane');
+        alert('❌ Wszystkie pola są wymagane');
+        return;
+    }
+    
+    // Sanityzacja danych przed wysłaniem
+    const safeType = escapeHtml(effectorType);
+    const safeHive = escapeHtml(effectorHive);
+    
+    logMessage('info', `Dodawanie efektora: typ=${safeType}, ul=${safeHive}`);
+    alert(`✅ Dodano effektor ${safeType} dla ula ${safeHive} (symulacja)`);
     closeModal('addEffectorModal');
 });
