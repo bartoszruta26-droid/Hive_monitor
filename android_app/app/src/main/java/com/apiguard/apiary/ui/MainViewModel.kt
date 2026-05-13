@@ -67,7 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun loadData() {
         viewModelScope.launch {
             _isLoading.value = true
-            val result = repository.fetchApiaryData()
+            val result = repository.fetchApiaries()
             
             result.onSuccess { data ->
                 _apiaryData.value = data
