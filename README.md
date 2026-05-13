@@ -85,41 +85,130 @@
 
 ## 📦 Zawartość Repozytorium
 
+### Aktualna Struktura Plików (Stan: 2025)
+
 ```
 /workspace/
-├── 📘 README.md                    # Ta dokumentacja
-├── 📄 LICENSE                      # Apache License 2.0
-├── 🔧 hive_monitor_installer.sh    # Instalator z TUI
-├── 📁 docs/                        # Szczegółowa dokumentacja
-│   ├── 00_README_INTRO.md
-│   ├── 01_wstep_i_opis_projektu.md
-│   ├── 02_architektura_systemu.md
-│   ├── 03_specyfikacja_sprzetowa.md
-│   ├── 04_struktura_katalogow_i_plikow.md
-│   ├── 05_opis_modulow_programowych.md
-│   ├── 06_funkcjonalnosci_sensorow_i_efektorow.md
-│   ├── 07_zaawansowane_funkcje_oprogramowania.md
-│   ├── 08_instalacja_i_konfiguracja.md
-│   ├── 09_api_i_integracje.md
-│   ├── 10_bezpieczenstwo_i_niezawodnosc.md
-│   ├── 11_konserwacja_i_rozwiazywanie_problemow.md
-│   ├── 12_rozszerzenia_przyszlosciowe.md
-│   ├── 13_licencja_i_wspolpraca.md
-│   ├── 14_nowe_parametry_sensorow.md
-│   └── 15_dynamiczna_detekcja_sensorow.md
-├── 📁 src/                         # Kod źródłowy
-│   ├── pico_refactored/            # Firmware Raspberry Pi Pico
-│   │   ├── include/                # Nagłówki C++
-│   │   └── src/                    # Implementacje C++
-│   ├── rpi_tui/                    # Backend Raspberry Pi 2
-│   │   ├── apiary_collector.cpp    # Kolektor danych (UDP Server)
-│   │   ├── apiary_logger.cpp       # System logowania
-│   │   └── apiary_tui.sh           # Terminal UI
-│   └── webui/                      # Frontend Web
-│       ├── index.html              # Interfejs użytkownika
-│       ├── app.js                  # Logika frontendu
-│       └── api.php                 # Backend PHP
-└── 📁 doc/                         # Dodatkowa dokumentacja
+├── 📘 README.md                        # Główna dokumentacja projektu
+├── 📄 LICENSE                          # Apache License 2.0
+├── 🔧 hive_monitor_installer.sh        # Automatyczny instalator z TUI
+├── 📁 docs/                            # Szczegółowa dokumentacja techniczna
+│   ├── 00_README_INTRO.md              # Wprowadzenie do dokumentacji
+│   ├── 01_wstep_i_opis_projektu.md     # Opis projektu i cele
+│   ├── 02_architektura_systemu.md      # Architektura hardware/software
+│   ├── 03_specyfikacja_sprzetowa.md    # Specyfikacja komponentów
+│   ├── 04_struktura_katalogow_i_plikow.md  # Struktura repozytorium
+│   ├── 05_opis_modulow_programowych.md # Dokumentacja modułów C++
+│   ├── 06_funkcjonalnosci_sensorow_i_efektorow.md  # Funkcje sensorów
+│   ├── 07_zaawansowane_funkcje_oprogramowania.md   # Zaawansowane funkcje
+│   ├── 08_instalacja_i_konfiguracja.md # Instrukcje instalacji
+│   ├── 09_api_i_integracje.md          # API REST i integracje
+│   ├── 10_bezpieczenstwo_i_niezawodnosc.md  # Bezpieczeństwo
+│   ├── 11_konserwacja_i_rozwiazywanie_problemow.md  # Konserwacja
+│   ├── 12_rozszerzenia_przyszlosciowe.md  # Roadmap i AI
+│   ├── 13_licencja_i_wspolpraca.md     # Licencja i kontrybucje
+│   ├── 14_nowe_parametry_sensorow.md   # Nowe metryki sensorów
+│   ├── 15_dynamiczna_detekcja_sensorow.md  # Hot-plug sensorów
+│   └── http_api_raspberry_pico.md      # API HTTP dla Pico
+├── 📁 src/                             # Kod źródłowy projektu
+│   ├── pico_refactored/                # Firmware Raspberry Pi Pico (C++)
+│   │   ├── apiaryguard_pico.ino        # Główny plik Arduino IDE
+│   │   ├── include/                    # Nagłówki C++
+│   │   │   ├── config.h                # Konfiguracja pinów i parametrów
+│   │   │   ├── sensors.h               # Interfejsy sensorów
+│   │   │   ├── hx711.h                 # Driver wagi HX711
+│   │   │   ├── audio_analysis.h        # Analiza dźwięku FFT
+│   │   │   ├── radar_analysis.h        # Analiza radaru MMWave
+│   │   │   ├── air_quality.h           # Sensor jakości powietrza
+│   │   │   ├── weight_analysis.h       # Metryki wagowe
+│   │   │   ├── network.h               # Komunikacja sieciowa
+│   │   │   └── effectors.h             # Sterowanie efektorami
+│   │   └── src/                        # Implementacje C++
+│   │       ├── sensors.cpp             # Obsługa wszystkich sensorów
+│   │       ├── hx711.cpp               # Implementacja wagi
+│   │       ├── audio_analysis.cpp      # FFT i detekcja dźwięków
+│   │       ├── radar_analysis.cpp      # Przetwarzanie sygnału radaru
+│   │       ├── air_quality.cpp         # SGP41/BME688 driver
+│   │       ├── weight_analysis.cpp     # Obliczanie metryk wagi
+│   │       ├── network.cpp             # HTTP client/server, UDP
+│   │       ├── effectors.cpp           # PWM, przekaźniki, dozowniki
+│   │       └── weight_analysis.cpp     # Trendy i prognozy wagi
+│   │
+│   ├── pico_w6100/                     # Firmware Pico + Ethernet W6100
+│   │   ├── apiaryguard_pico.ino        # Wersja z kontrolerem Ethernet
+│   │   └── README.md                   # Instrukcje specyficzne dla W6100
+│   │
+│   ├── pico_dual_mode/                 # Tryb dual-core RP2040
+│   │   └── pico_dual_mode.ino          # Wykorzystanie obu rdzeni M0+
+│   │
+│   ├── arduino_nano_dual_mode/         # [ARCHIWALNE] Arduino Nano
+│   │   └── apiaryguard_nano_dual.ino   # Legacy code - tylko referencyjnie
+│   │
+│   ├── rpi_tui/                        # Backend Raspberry Pi 2 (C++/Bash)
+│   │   ├── apiary_collector.cpp        # Kolektor danych (UDP Server port 5005)
+│   │   ├── apiary_collector_types.h    # Struktury danych kolektora
+│   │   ├── apiary_collector_parser.h   # Parser wiadomości UDP
+│   │   ├── apiary_collector_computation.h  # Obliczenia statystyczne
+│   │   ├── apiary_collector_network.h  # Warstwa sieciowa
+│   │   ├── apiary_logger.cpp           # System logowania zdarzeń
+│   │   ├── apiary_logger.h             # Interfejs loggera
+│   │   ├── apiary_logger_debug.cpp     # Debug logging helpers
+│   │   ├── apiary_logger_debug.h       # Nagłówek debug
+│   │   ├── apiary_database.cpp         # Operacje na SQLite
+│   │   ├── apiary_database.h           # Interfejs bazy danych
+│   │   ├── test_debug_main.cpp         # Testy jednostkowe debug
+│   │   ├── apiary_tui.sh               # Terminal User Interface (Bash)
+│   │   ├── install_apiary.sh           # Skrypt instalacyjny TUI
+│   │   ├── Makefile                    # Build system dla C++
+│   │   └── README.md                   # Dokumentacja modułu RPi2
+│   │
+│   ├── webui/                          # Frontend Web (HTML/JS/PHP)
+│   │   ├── index.html                  # Główny interfejs użytkownika
+│   │   ├── app.js                      # Logika frontendu JavaScript
+│   │   ├── api.php                     # Backend PHP dla API REST
+│   │   └── README.md                   # Instrukcje deploymentu WebUI
+│   │
+│   └── android_app/                    # Aplikacja mobilna Android (Kotlin/Java)
+│       ├── app/
+│       │   ├── src/main/
+│       │   │   ├── java/com/apiguard/apiary/
+│       │   │   │   ├── ui/             # Activity, Fragments, Views
+│       │   │   │   ├── network/        # Retrofit, API clients
+│       │   │   │   ├── repository/     # Data repositories
+│       │   │   │   ├── data/
+│       │   │   │   │   ├── remote/     # API services
+│       │   │   │   │   ├── local/      # Room database, DAO
+│       │   │   │   │   └── model/      # Data models, DTOs
+│       │   │   │   └── model/          # Domain models
+│       │   │   ├── res/
+│       │   │   │   ├── layout/         # XML layouts
+│       │   │   │   ├── values/         # Strings, colors, styles
+│       │   │   │   ├── drawable/       # Assets, icons
+│       │   │   │   └── mipmap-*/       # App icons
+│       │   │   └── AndroidManifest.xml
+│       │   ├── build.gradle            # Konfiguracja buildu Android
+│       │   └── proguard-rules.pro      # Reguły ProGuard
+│       ├── gradle/
+│       │   └── wrapper/
+│       ├── build.gradle                # Project-level build config
+│       ├── settings.gradle             # Ustawienia projektu
+│       └── README.md                   # Dokumentacja aplikacji mobilnej
+│
+├── 📁 doc/                             # Dodatkowa dokumentacja specjalistyczna
+│   └── habibi/                         # Materiały badawcze / publikacje
+│       ├── spis_tresci.md              # Spis treści opracowania
+│       ├── 01_wstep.md                 # Wstęp teoretyczny
+│       ├── 02_rozdzial_1_podstawy_prawne.md  # Aspekty prawne
+│       ├── 03_rozdzial_2_charakterystyka_osiagniecia.md
+│       ├── 03_01_architektura_systemu.md
+│       ├── 03_02_innowacyjnosc.md
+│       ├── 03_03_wklad_w_dyscypline.md
+│       └── 04_rozdzial_3_definicja_osiagniecia.md
+│
+└── 📁 tools/                           # Narzędzia pomocnicze (planowane)
+    ├── flash_pico.sh                   # Flashowanie firmware Pico
+    ├── backup_config.sh                # Backup konfiguracji
+    └── diagnostic_tools.sh             # Diagnostyka systemu
 ```
 
 ---
