@@ -274,21 +274,21 @@ public:
             data.th_vpd = SVP - AVP;
             
             // Comfort Index
-            data.th_comfort_index = 100.0f - std::abs(T - 25.0f) * 4.0f - std::abs(RH - 60.0f) * 0.5f;
-            data.th_comfort_index = std::max(0.0f, std::min(100.0f, data.th_comfort_index));
+            data.th_comfort_idx = 100.0f - std::abs(T - 25.0f) * 4.0f - std::abs(RH - 60.0f) * 0.5f;
+            data.th_comfort_idx = std::max(0.0f, std::min(100.0f, data.th_comfort_idx));
             
             // Stability
             data.th_temp_stability = 80.0f;
-            data.th_hum_stability = 75.0f;
-            data.th_env_variance = 0.25f + 4.0f; // temp_var + hum_var
+            data.th_hum_stability_1h = 75.0f;
+            data.th_temp_std = 0.25f + 4.0f; // temp_var + hum_var
             
             // Trends (brak historii = 0)
-            data.th_temp_trend_1h = 0.0f;
-            data.th_hum_trend_1h = 0.0f;
-            data.th_temp_hum_corr = -0.3f; // Typowa ujemna korelacja
+            data.th_temp_trend = 0.0f;
+            data.th_hum_trend = 0.0f;
+            data.th_vpd = -0.3f; // Typowa ujemna korelacja
             
             // Ryzyka
-            data.th_overheat_risk = (T > 35.0f) ? std::min(1.0f, (T - 35.0f) / 5.0f) : 0.0f;
+            data.th_brood_stress = (T > 35.0f) ? std::min(1.0f, (T - 35.0f) / 5.0f) : 0.0f;
             data.th_condensation_risk = (data.th_dew_point > T - 2.0f) ? 0.7f : 0.2f;
             
             if (RH > 70.0f && T > 20.0f) {
@@ -311,44 +311,44 @@ public:
         // --- AIR QUALITY DERIVED (24 parametry) ---
         // =========================================================================
         if (data.co2_raw != 0 || data.voc_raw != 0) {
-            data.aq_co2 = data.co2_raw;
-            data.aq_voc = data.voc_raw;
             data.aq_co2_mean = data.co2_raw;
             data.aq_voc_mean = data.voc_raw;
-            data.aq_co2_std = data.co2_raw * 0.1f;
-            data.aq_voc_std = data.voc_raw * 0.15f;
-            data.aq_co2_min = data.co2_raw * 0.9f;
-            data.aq_co2_max = data.co2_raw * 1.1f;
-            data.aq_voc_min = data.voc_raw * 0.85f;
-            data.aq_voc_max = data.voc_raw * 1.15f;
-            data.aq_nox = 50; // Wartosc domyslna bez sensora NOx
+            data.aq_co2_mean = data.co2_raw;
+            data.aq_voc_mean = data.voc_raw;
+            data.aq_co2_variability = data.co2_raw * 0.1f;
+            data.aq_voc_variability = data.voc_raw * 0.15f;
+            data.aq_co2_base = data.co2_raw * 0.9f;
+            data.aq_co2_peak = data.co2_raw * 1.1f;
+            data.aq_voc_base = data.voc_raw * 0.85f;
+            data.aq_voc_peak = data.voc_raw * 1.15f;
+            data.aq_voc_mean = 50; // Wartosc domyslna bez sensora NOx
             
             // IAQ Index
             float co2_factor = std::min(1.0f, static_cast<float>(data.co2_raw) / 1000.0f);
             float voc_factor = std::min(1.0f, static_cast<float>(data.voc_raw) / 200.0f);
-            data.aq_iaq_index = (co2_factor * 250.0f) + (voc_factor * 250.0f);
-            data.aq_air_quality_level = std::min(5.0f, 1.0f + data.aq_iaq_index / 100.0f);
+            data.aq_gas_idx = (co2_factor * 250.0f) + (voc_factor * 250.0f);
+            data.aq_ventilation_idx = std::min(5.0f, 1.0f + data.aq_gas_idx / 100.0f);
             
             // Ventilation Need
-            data.aq_ventilation_need = std::min(100.0f, co2_factor * 100.0f + voc_factor * 50.0f);
+            data.aq_ventilation_idx = std::min(100.0f, co2_factor * 100.0f + voc_factor * 50.0f);
             
             // Stress & Comfort
-            data.aq_stress_from_air = co2_factor * 0.5f + voc_factor * 0.3f;
-            data.aq_hive_comfort = 100.0f - data.aq_iaq_index / 5.0f;
-            data.aq_hive_comfort = std::max(0.0f, std::min(100.0f, data.aq_hive_comfort));
+            data.aq_stress_level = co2_factor * 0.5f + voc_factor * 0.3f;
+            data.aq_comfort_score = 100.0f - data.aq_gas_idx / 5.0f;
+            data.aq_comfort_score = std::max(0.0f, std::min(100.0f, data.aq_comfort_score));
             
             // Variability & Stability
-            data.aq_variability = 0.2f;
-            data.aq_stability_score = 80.0f;
-            data.aq_change_rate = 0.0f;
-            data.aq_th_correlation = 0.1f;
-            data.aq_comfort_zone_pct = 100.0f - data.aq_ventilation_need * 0.5f;
+            data.aq_variability_idx = 0.2f;
+            data.aq_stability = 80.0f;
+            data.aq_co2_trend = 0.0f;
+            data.aq_env_correlation = 0.1f;
+            data.aq_comfort_score = 100.0f - data.aq_ventilation_idx * 0.5f;
             
             // Alerty
-            data.aq_co2_warning = (data.co2_raw > 1500) ? 1.0f : 0.0f;
-            data.aq_voc_alert = (data.voc_raw > 150) ? 1.0f : 0.0f;
-            data.aq_combined_risk = co2_factor * 0.4f + voc_factor * 0.4f;
-            data.aq_contamination_risk = voc_factor * 0.7f;
+            data.aq_co2_alert = (data.co2_raw > 1500) ? 1.0f : 0.0f;
+            data.aq_voc_warning = (data.voc_raw > 150) ? 1.0f : 0.0f;
+            data.aq_contamination = co2_factor * 0.4f + voc_factor * 0.4f;
+            data.aq_contamination = voc_factor * 0.7f;
             data.aq_mold_risk = data.th_mold_risk * 0.5f;
         }
         
@@ -359,34 +359,34 @@ public:
             float vib_norm = static_cast<float>(data.vibration_raw) / 1024.0f;
             
             // Amplituda
-            data.piezo_rms = vib_norm * 100.0f;
-            data.piezo_peak = vib_norm * 150.0f;
-            data.piezo_mean = vib_norm * 80.0f;
-            data.piezo_std = vib_norm * 30.0f;
-            data.piezo_energy = vib_norm * vib_norm;
+            data.pv_vib_rms = vib_norm * 100.0f;
+            data.pv_vib_peak = vib_norm * 150.0f;
+            data.pv_vib_mean = vib_norm * 80.0f;
+            data.pv_vib_std = vib_norm * 30.0f;
+            data.pv_vibration_energy = vib_norm * vib_norm;
             
             // Czestotliwosc i ZCR
-            data.piezo_dominant_freq = 100.0f + vib_norm * 200.0f;
-            data.piezo_zcr = vib_norm * 50.0f;
+            data.pv_vib_freq_dom = 100.0f + vib_norm * 200.0f;
+            data.pv_zcr = vib_norm * 50.0f;
             
             // Aktywnosc
-            data.piezo_activity_idx = std::min(100.0f, vib_norm * 120.0f);
-            data.piezo_bee_traffic = data.piezo_activity_idx * 0.9f;
+            data.pv_activity_pattern = std::min(100.0f, vib_norm * 120.0f);
+            data.pv_bee_traffic = data.pv_activity_pattern * 0.9f;
             
             // Detekcja zdarzen
-            data.piezo_predator_score = (vib_norm > 0.8f) ? 0.7f : 0.1f;
-            data.piezo_intrusion_prob = data.piezo_predator_score * 0.8f;
-            data.piezo_queen_piping = (vib_norm > 0.6f && vib_norm < 0.8f) ? 0.5f : 0.0f;
-            data.piezo_swarm_prep = data.piezo_queen_piping * 0.7f;
-            data.piezo_aggression = vib_norm * 0.5f;
-            data.piezo_alien_species = 0.0f;
-            data.piezo_wind_vibration = (vib_norm < 0.3f) ? 0.5f : 0.1f;
-            data.piezo_impact_detected = (vib_norm > 0.9f) ? 1.0f : 0.0f;
-            data.piezo_continuous_vib = vib_norm * 0.8f;
-            data.piezo_event_count = vib_norm * 10.0f;
-            data.piezo_severity = vib_norm;
-            data.piezo_source_class = (vib_norm > 0.7f) ? 2.0f : 1.0f;
-            data.piezo_confidence = 0.7f + vib_norm * 0.2f;
+            data.pv_predator_det = (vib_norm > 0.8f) ? 0.7f : 0.1f;
+            data.pv_intrusion_prob = data.pv_predator_det * 0.8f;
+            data.pv_queen_piping = (vib_norm > 0.6f && vib_norm < 0.8f) ? 0.5f : 0.0f;
+            data.pv_swarm_prep = data.pv_queen_piping * 0.7f;
+            data.pv_aggression_idx = vib_norm * 0.5f;
+            data.pv_alien_detected = 0.0f;
+            data.pv_wind_noise = (vib_norm < 0.3f) ? 0.5f : 0.1f;
+            data.pv_impact_flag = (vib_norm > 0.9f) ? 1.0f : 0.0f;
+            data.pv_continuous_vib = vib_norm * 0.8f;
+            data.pv_event_count = vib_norm * 10.0f;
+            data.pv_severity = vib_norm;
+            data.pv_source_type = (vib_norm > 0.7f) ? 2.0f : 1.0f;
+            data.pv_confidence = 0.7f + vib_norm * 0.2f;
         }
         
         // =========================================================================
@@ -487,47 +487,47 @@ public:
         data.hx711_signal_quality = 85.0f;
         data.hx711_noise_level = 0.02f;
         data.hx711_drift_rate = 0.001f;
-        data.hx711_stability = 90.0f;
+        data.hx711_signal_quality = 90.0f;
         
         // Anomalie
-        data.hx711_anomaly_score = 0.1f;
-        data.hx711_sudden_change = 0.0f;
-        data.hx711_oscillation_freq = 0.0f;
+        data.hx711_anomaly_flag = 0.1f;
+        data.hx711_drift_rate = 0.0f;
+        data.hx711_dominant_period = 0.0f;
         
         // Zdrowie kolonii
-        data.hx711_colony_growth = 0.5f;
-        data.hx711_brood_activity = 0.6f;
-        data.hx711_population = weight_kg * 100.0f;
-        data.hx711_health_weight = 80.0f;
-        data.hx711_productivity = data.hx711_foraging_eff * 0.8f;
+        data.hx711_growth_rate = 0.5f;
+        data.hx711_brood_mass = 0.6f;
+        data.hx711_bee_population = weight_kg * 100.0f;
+        data.hx711_health_score = 80.0f;
+        data.hx711_productivity_idx = data.hx711_foraging_eff * 0.8f;
         
         // Prognoza
-        data.hx711_predicted_24h = weight_kg + data.hx711_slope_24h * 24.0f;
+        data.hx711_forecast_24h = weight_kg + data.hx711_slope_24h * 24.0f;
         data.hx711_forecast_conf = 0.7f;
-        data.hx711_expected_yield = std::max(0.0f, data.hx711_nectar_accum * 0.6f);
+        data.hx711_forecast_24h = std::max(0.0f, data.hx711_nectar_accum * 0.6f);
         
         // =========================================================================
         // --- BAROMETRIC DERIVED (18 parametrow) ---
         // =========================================================================
         // Wartosci domyslne bez sensora BMP280
         data.baro_pressure = 1013.25f;
-        data.baro_temp = data.temperature;
-        data.baro_altitude = 100.0f;
-        data.baro_mean = 1013.25f;
-        data.baro_std = 1.0f;
-        data.baro_trend_1h = 0.0f;
-        data.baro_trend_3h = 0.0f;
-        data.baro_trend_6h = 0.0f;
-        data.baro_change_rate = 0.0f;
-        data.baro_weather_trend = 0.0f;
-        data.baro_storm_prob = 0.2f;
-        data.baro_rain_prob = 0.3f;
-        data.baro_improving = 0.5f;
-        data.baro_foraging_cond = 70.0f;
-        data.baro_bee_activity_pred = 60.0f;
-        data.baro_severity_idx = 0.2f;
-        data.baro_alert_level = 0.0f;
-        data.baro_reliability = 80.0f;
+        data.baro_temperature = data.temperature;
+        data.baro_altitude_est = 100.0f;
+        data.baro_pressure_mean = 1013.25f;
+        data.baro_pressure_std = 1.0f;
+        data.baro_pressure_trend = 0.0f;
+        data.baro_trend_short = 0.0f;
+        data.baro_trend_medium = 0.0f;
+        data.baro_pressure_change = 0.0f;
+        data.baro_weather_idx = 0.0f;
+        data.baro_storm_risk = 0.2f;
+        data.baro_rain_risk = 0.3f;
+        data.baro_improving_flag = 0.5f;
+        data.baro_foraging_idx = 70.0f;
+        data.baro_activity_pred = 60.0f;
+        data.baro_severity = 0.2f;
+        data.baro_alert_flag = 0.0f;
+        data.baro_reliability_idx = 80.0f;
         
         // =========================================================================
         // --- LIGHT DERIVED (17 parametrow) ---
@@ -535,13 +535,13 @@ public:
         // Wartosci domyslne bez sensora BH1750
         uint32_t lux_est = 5000; // Swiatlo dzienne
         data.light_lux = lux_est;
-        data.light_ir = 100.0f;
-        data.light_uv = 5.0f;
-        data.light_full_spec = 1.0f;
-        data.light_mean = static_cast<float>(lux_est);
-        data.light_std = 500.0f;
-        data.light_min = lux_est - 500;
-        data.light_max = lux_est + 500;
+        data.light_ir_ratio = 100.0f;
+        data.light_uv_idx = 5.0f;
+        data.light_spectrum_data = 1.0f;
+        data.light_lux_mean = static_cast<float>(lux_est);
+        data.light_lux_std = 500.0f;
+        data.light_lux_min = lux_est - 500;
+        data.light_lux_max = lux_est + 500;
         data.light_daylight_hours = 12.0f;
         data.light_darkness_hours = 12.0f;
         data.light_twilight = 1.0f;
@@ -790,17 +790,17 @@ public:
             data.hx711_slope_24h = !getValue("hx_slope_24h").empty() ? std::stof(getValue("hx_slope_24h")) : 0.0f;
             data.hx711_nectar_inflow = !getValue("nectar_inflow").empty() ? std::stof(getValue("nectar_inflow")) : 0.0f;
             data.hx711_consumption_rate = !getValue("consumption_rate").empty() ? std::stof(getValue("consumption_rate")) : 0.0f;
-            data.hx711_colony_growth = !getValue("colony_growth").empty() ? std::stof(getValue("colony_growth")) : 0.0f;
-            data.hx711_productivity = !getValue("productivity").empty() ? std::stof(getValue("productivity")) : 0.0f;
-            data.hx711_predicted_24h = !getValue("predicted_24h").empty() ? std::stof(getValue("predicted_24h")) : 0.0f;
-            data.hx711_anomaly_score = !getValue("hx_anomaly").empty() ? std::stof(getValue("hx_anomaly")) : 0.0f;
+            data.hx711_growth_rate = !getValue("colony_growth").empty() ? std::stof(getValue("colony_growth")) : 0.0f;
+            data.hx711_productivity_idx = !getValue("productivity").empty() ? std::stof(getValue("productivity")) : 0.0f;
+            data.hx711_forecast_24h = !getValue("predicted_24h").empty() ? std::stof(getValue("predicted_24h")) : 0.0f;
+            data.hx711_anomaly_flag = !getValue("hx_anomaly").empty() ? std::stof(getValue("hx_anomaly")) : 0.0f;
             data.hx711_winter_readiness = !getValue("winter_readiness").empty() ? std::stof(getValue("winter_readiness")) : 0.0f;
             data.hx711_starvation_risk = !getValue("starvation_risk").empty() ? std::stof(getValue("starvation_risk")) : 0.0f;
             
             // Temp/Humidity parametry (wybrane z 28)
             data.th_heat_index = !getValue("heat_index").empty() ? std::stof(getValue("heat_index")) : 0.0f;
             data.th_dew_point = !getValue("dew_point").empty() ? std::stof(getValue("dew_point")) : 0.0f;
-            data.th_comfort_index = !getValue("comfort_index").empty() ? std::stof(getValue("comfort_index")) : 0.0f;
+            data.th_comfort_idx = !getValue("comfort_index").empty() ? std::stof(getValue("comfort_index")) : 0.0f;
             data.th_brood_stress = !getValue("brood_stress").empty() ? std::stof(getValue("brood_stress")) : 0.0f;
             data.th_temp_stability = !getValue("temp_stability").empty() ? std::stof(getValue("temp_stability")) : 0.0f;
             data.th_mold_risk = !getValue("mold_risk").empty() ? std::stof(getValue("mold_risk")) : 0.0f;
@@ -808,25 +808,25 @@ public:
             // Air Quality parametry (wybrane z 24)
             data.aq_co2_mean = !getValue("aq_co2_mean").empty() ? std::stoi(getValue("aq_co2_mean")) : 0;
             data.aq_voc_mean = !getValue("aq_voc_mean").empty() ? std::stoi(getValue("aq_voc_mean")) : 0;
-            data.aq_iaq_index = !getValue("iaq_index").empty() ? std::stof(getValue("iaq_index")) : 0.0f;
-            data.aq_ventilation_need = !getValue("ventilation_need").empty() ? std::stof(getValue("ventilation_need")) : 0.0f;
-            data.aq_contamination_risk = !getValue("contamination_risk").empty() ? std::stof(getValue("contamination_risk")) : 0.0f;
-            data.aq_hive_comfort = !getValue("aq_comfort").empty() ? std::stof(getValue("aq_comfort")) : 0.0f;
+            data.aq_gas_idx = !getValue("iaq_index").empty() ? std::stof(getValue("iaq_index")) : 0.0f;
+            data.aq_ventilation_idx = !getValue("ventilation_need").empty() ? std::stof(getValue("ventilation_need")) : 0.0f;
+            data.aq_contamination = !getValue("contamination_risk").empty() ? std::stof(getValue("contamination_risk")) : 0.0f;
+            data.aq_comfort_score = !getValue("aq_comfort").empty() ? std::stof(getValue("aq_comfort")) : 0.0f;
             
             // Piezo parametry (wybrane z 22)
-            data.piezo_rms = !getValue("piezo_rms").empty() ? std::stof(getValue("piezo_rms")) : 0.0f;
-            data.piezo_dominant_freq = !getValue("piezo_freq").empty() ? std::stof(getValue("piezo_freq")) : 0.0f;
-            data.piezo_activity_idx = !getValue("piezo_activity").empty() ? std::stof(getValue("piezo_activity")) : 0.0f;
-            data.piezo_bee_traffic = !getValue("bee_traffic").empty() ? std::stof(getValue("bee_traffic")) : 0.0f;
-            data.piezo_predator_score = !getValue("predator_score").empty() ? std::stof(getValue("predator_score")) : 0.0f;
-            data.piezo_intrusion_prob = !getValue("intrusion_prob").empty() ? std::stof(getValue("intrusion_prob")) : 0.0f;
+            data.pv_vib_rms = !getValue("piezo_rms").empty() ? std::stof(getValue("piezo_rms")) : 0.0f;
+            data.pv_vib_freq_dom = !getValue("piezo_freq").empty() ? std::stof(getValue("piezo_freq")) : 0.0f;
+            data.pv_activity_pattern = !getValue("piezo_activity").empty() ? std::stof(getValue("piezo_activity")) : 0.0f;
+            data.pv_bee_traffic = !getValue("bee_traffic").empty() ? std::stof(getValue("bee_traffic")) : 0.0f;
+            data.pv_predator_det = !getValue("predator_score").empty() ? std::stof(getValue("predator_score")) : 0.0f;
+            data.pv_intrusion_prob = !getValue("intrusion_prob").empty() ? std::stof(getValue("intrusion_prob")) : 0.0f;
             
             // Barometric parametry (wybrane z 18)
             data.baro_pressure = !getValue("pressure").empty() ? std::stof(getValue("pressure")) : 0.0f;
-            data.baro_trend_1h = !getValue("baro_trend_1h").empty() ? std::stof(getValue("baro_trend_1h")) : 0.0f;
-            data.baro_weather_trend = !getValue("weather_trend").empty() ? std::stof(getValue("weather_trend")) : 0.0f;
-            data.baro_storm_prob = !getValue("storm_prob").empty() ? std::stof(getValue("storm_prob")) : 0.0f;
-            data.baro_foraging_cond = !getValue("foraging_cond").empty() ? std::stof(getValue("foraging_cond")) : 0.0f;
+            data.baro_pressure_trend = !getValue("baro_trend_1h").empty() ? std::stof(getValue("baro_trend_1h")) : 0.0f;
+            data.baro_weather_idx = !getValue("weather_trend").empty() ? std::stof(getValue("weather_trend")) : 0.0f;
+            data.baro_storm_risk = !getValue("storm_prob").empty() ? std::stof(getValue("storm_prob")) : 0.0f;
+            data.baro_foraging_idx = !getValue("foraging_cond").empty() ? std::stof(getValue("foraging_cond")) : 0.0f;
             
             // Light parametry (wybrane z 17)
             data.light_lux = !getValue("lux").empty() ? std::stoul(getValue("lux")) : 0;
@@ -1089,18 +1089,18 @@ public:
             json << "\"slope_24h\":" << d.hx711_slope_24h << ",";
             json << "\"nectar_inflow\":" << d.hx711_nectar_inflow << ",";
             json << "\"consumption_rate\":" << d.hx711_consumption_rate << ",";
-            json << "\"colony_growth\":" << d.hx711_colony_growth << ",";
-            json << "\"productivity\":" << d.hx711_productivity << ",";
-            json << "\"predicted_24h\":" << d.hx711_predicted_24h << ",";
+            json << "\"colony_growth\":" << d.hx711_growth_rate << ",";
+            json << "\"productivity\":" << d.hx711_productivity_idx << ",";
+            json << "\"predicted_24h\":" << d.hx711_forecast_24h << ",";
             json << "\"forecast_conf\":" << d.hx711_forecast_conf << ",";
             json << "\"winter_readiness\":" << d.hx711_winter_readiness << ",";
             json << "\"starvation_risk\":" << d.hx711_starvation_risk << ",";
-            json << "\"anomaly_score\":" << d.hx711_anomaly_score << "},";
+            json << "\"anomaly_score\":" << d.hx711_anomaly_flag << "},";
             
             // Temp/Humidity parametry (wybrane z 28)
             json << "\"th\":{\"heat_index\":" << d.th_heat_index << ",";
             json << "\"dew_point\":" << d.th_dew_point << ",";
-            json << "\"comfort_index\":" << d.th_comfort_index << ",";
+            json << "\"comfort_index\":" << d.th_comfort_idx << ",";
             json << "\"brood_stress\":" << d.th_brood_stress << ",";
             json << "\"temp_stability\":" << d.th_temp_stability << ",";
             json << "\"mold_risk\":" << d.th_mold_risk << ",";
@@ -1109,22 +1109,22 @@ public:
             // Air Quality parametry (wybrane z 24)
             json << "\"aq\":{\"co2_mean\":" << d.aq_co2_mean << ",";
             json << "\"voc_mean\":" << d.aq_voc_mean << ",";
-            json << "\"iaq_index\":" << d.aq_iaq_index << ",";
-            json << "\"ventilation_need\":" << d.aq_ventilation_need << ",";
-            json << "\"contamination_risk\":" << d.aq_contamination_risk << ",";
+            json << "\"iaq_index\":" << d.aq_gas_idx << ",";
+            json << "\"ventilation_need\":" << d.aq_ventilation_idx << ",";
+            json << "\"contamination_risk\":" << d.aq_contamination << ",";
             json << "\"mold_risk\":" << d.aq_mold_risk << "},";
             
             // Piezo Vibration parametry (wybrane z 22)
-            json << "\"piezo\":{\"rms\":" << d.piezo_rms << ",";
-            json << "\"freq\":" << d.piezo_dominant_freq << ",";
-            json << "\"activity\":" << d.piezo_activity_idx << ",";
-            json << "\"bee_traffic\":" << d.piezo_bee_traffic << ",";
-            json << "\"predator_score\":" << d.piezo_predator_score << ",";
-            json << "\"intrusion_prob\":" << d.piezo_intrusion_prob << "},";
+            json << "\"piezo\":{\"rms\":" << d.pv_vib_rms << ",";
+            json << "\"freq\":" << d.pv_vib_freq_dom << ",";
+            json << "\"activity\":" << d.pv_activity_pattern << ",";
+            json << "\"bee_traffic\":" << d.pv_bee_traffic << ",";
+            json << "\"predator_score\":" << d.pv_predator_det << ",";
+            json << "\"intrusion_prob\":" << d.pv_intrusion_prob << "},";
             
             // Barometric parametry (wybrane z 18)
             json << "\"baro\":{\"pressure\":" << d.baro_pressure << ",";
-            json << "\"trend_1h\":" << d.baro_trend_1h << ",";
+            json << "\"trend_1h\":" << d.baro_pressure_trend << ",";
             json << "\"weather_trend\":" << d.baro_weather_trend << ",";
             json << "\"storm_prob\":" << d.baro_storm_prob << ",";
             json << "\"foraging_cond\":" << d.baro_foraging_cond << "},";
@@ -1134,7 +1134,7 @@ public:
             json << "\"daylight_hours\":" << d.light_daylight_hours << ",";
             json << "\"circadian_sync\":" << d.light_circadian_sync << ",";
             json << "\"foraging_idx\":" << d.light_foraging_idx << ",";
-            json << "\"uv\":" << d.light_uv << "}";
+            json << "\"uv\":" << d.light_uv_idx << "}";
             
             json << "}";
         }
@@ -1232,28 +1232,28 @@ public:
             csv << d.hx711_consumption_rate << "," << d.hx711_daily_consumption << "," << d.hx711_food_reserve_days << ",";
             csv << d.hx711_winter_readiness << "," << d.hx711_starvation_risk << ",";
             csv << d.hx711_daily_amplitude << "," << d.hx711_circadian_str << "," << d.hx711_seasonal_trend << ",";
-            csv << d.hx711_signal_quality << "," << d.hx711_noise_level << "," << d.hx711_drift_rate << "," << d.hx711_stability << ",";
-            csv << d.hx711_anomaly_score << "," << d.hx711_sudden_change << "," << d.hx711_oscillation_freq << ",";
-            csv << d.hx711_colony_growth << "," << d.hx711_brood_activity << "," << d.hx711_population << "," << d.hx711_health_weight << "," << d.hx711_productivity << ",";
-            csv << d.hx711_predicted_24h << "," << d.hx711_forecast_conf << "," << d.hx711_expected_yield << ",";
+            csv << d.hx711_signal_quality << "," << d.hx711_noise_level << "," << d.hx711_drift_rate << "," << d.hx711_signal_quality << ",";
+            csv << d.hx711_anomaly_flag << "," << d.hx711_drift_rate << "," << d.hx711_dominant_period << ",";
+            csv << d.hx711_growth_rate << "," << d.hx711_brood_mass << "," << d.hx711_bee_population << "," << d.hx711_health_score << "," << d.hx711_productivity_idx << ",";
+            csv << d.hx711_forecast_24h << "," << d.hx711_forecast_conf << "," << d.hx711_forecast_24h << ",";
             csv << d.th_temp_mean << "," << d.th_temp_std << "," << d.th_temp_min << "," << d.th_temp_max << "," << d.th_temp_range << ",";
             csv << d.th_hum_mean << "," << d.th_hum_std << "," << d.th_hum_min << "," << d.th_hum_max << "," << d.th_hum_range << ",";
-            csv << d.th_heat_index << "," << d.th_dew_point << "," << d.th_vpd << "," << d.th_comfort_index << "," << d.th_temp_stability << "," << d.th_hum_stability << "," << d.th_env_variance << ",";
-            csv << d.th_temp_trend_1h << "," << d.th_hum_trend_1h << "," << d.th_temp_hum_corr << "," << d.th_overheat_risk << "," << d.th_condensation_risk << "," << d.th_mold_risk << "," << d.th_brood_stress << ",";
-            csv << d.aq_co2 << "," << d.aq_voc << "," << d.aq_nox << "," << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_co2_std << "," << d.aq_voc_std << ",";
-            csv << d.aq_co2_min << "," << d.aq_co2_max << "," << d.aq_voc_min << "," << d.aq_voc_max << ",";
-            csv << d.aq_iaq_index << "," << d.aq_air_quality_level << "," << d.aq_ventilation_need << "," << d.aq_stress_from_air << "," << d.aq_hive_comfort << ",";
-            csv << d.aq_variability << "," << d.aq_stability_score << "," << d.aq_change_rate << "," << d.aq_th_correlation << "," << d.aq_comfort_zone_pct << ",";
-            csv << d.aq_co2_warning << "," << d.aq_voc_alert << "," << d.aq_combined_risk << "," << d.aq_contamination_risk << "," << d.aq_mold_risk << ",";
-            csv << d.piezo_rms << "," << d.piezo_peak << "," << d.piezo_mean << "," << d.piezo_std << "," << d.piezo_dominant_freq << "," << d.piezo_energy << "," << d.piezo_zcr << ",";
-            csv << d.piezo_activity_idx << "," << d.piezo_bee_traffic << "," << d.piezo_predator_score << "," << d.piezo_intrusion_prob << "," << d.piezo_queen_piping << ",";
-            csv << d.piezo_swarm_prep << "," << d.piezo_aggression << "," << d.piezo_alien_species << "," << d.piezo_wind_vibration << "," << d.piezo_impact_detected << ",";
-            csv << d.piezo_continuous_vib << "," << d.piezo_event_count << "," << d.piezo_severity << "," << d.piezo_source_class << "," << d.piezo_confidence << ",";
-            csv << d.baro_pressure << "," << d.baro_temp << "," << d.baro_altitude << "," << d.baro_mean << "," << d.baro_std << ",";
-            csv << d.baro_trend_1h << "," << d.baro_trend_3h << "," << d.baro_trend_6h << "," << d.baro_change_rate << ",";
-            csv << d.baro_weather_trend << "," << d.baro_storm_prob << "," << d.baro_rain_prob << "," << d.baro_improving << ",";
-            csv << d.baro_foraging_cond << "," << d.baro_bee_activity_pred << "," << d.baro_severity_idx << "," << d.baro_alert_level << "," << d.baro_reliability << ",";
-            csv << d.light_lux << "," << d.light_ir << "," << d.light_uv << "," << d.light_full_spec << "," << d.light_mean << "," << d.light_std << "," << d.light_min << "," << d.light_max << ",";
+            csv << d.th_heat_index << "," << d.th_dew_point << "," << d.th_vpd << "," << d.th_comfort_idx << "," << d.th_temp_stability << "," << d.th_hum_range << "," << d.th_temp_std << ",";
+            csv << d.th_temp_trend << "," << d.th_hum_trend << "," << d.th_vpd << "," << d.th_brood_stress << "," << d.th_condensation_risk << "," << d.th_mold_risk << "," << d.th_brood_stress << ",";
+            csv << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_voc_mean << "," << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_co2_variability << "," << d.aq_voc_variability << ",";
+            csv << d.aq_co2_base << "," << d.aq_co2_peak << "," << d.aq_voc_base << "," << d.aq_voc_peak << ",";
+            csv << d.aq_gas_idx << "," << d.aq_ventilation_idx << "," << d.aq_ventilation_idx << "," << d.aq_stress_air << "," << d.aq_comfort_score << ",";
+            csv << d.aq_variability_idx << "," << d.aq_stability << "," << d.aq_co2_trend << "," << d.aq_env_correlation << "," << d.aq_comfort_score << ",";
+            csv << d.aq_voc_warning << "," << d.aq_co2_alert << "," << d.aq_mold_risk << "," << d.aq_contamination << "," << d.aq_mold_risk << ",";
+            csv << d.pv_vib_rms << "," << d.pv_vib_peak << "," << d.pv_vib_mean << "," << d.pv_vib_std << "," << d.pv_vib_freq_dom << "," << d.pv_vibration_energy << "," << d.pv_zcr << ",";
+            csv << d.pv_activity_pattern << "," << d.pv_bee_traffic << "," << d.pv_predator_det << "," << d.pv_intrusion_prob << "," << d.pv_queen_piping << ",";
+            csv << d.pv_swarm_prep << "," << d.pv_aggression_idx << "," << d.pv_alien_detected << "," << d.pv_wind_noise << "," << d.pv_impact_flag << ",";
+            csv << d.pv_continuous_vib << "," << d.pv_event_count << "," << d.pv_severity << "," << d.pv_source_type << "," << d.pv_confidence << ",";
+            csv << d.baro_pressure << "," << d.baro_temperature << "," << d.baro_altitude_est << "," << d.baro_pressure_mean << "," << d.baro_pressure_std << ",";
+            csv << d.baro_pressure_trend << "," << d.baro_trend_short << "," << d.baro_trend_medium << "," << d.baro_pressure_change << ",";
+            csv << d.baro_weather_trend << "," << d.baro_storm_prob << "," << d.baro_rain_risk << "," << d.baro_improving_flag << ",";
+            csv << d.baro_foraging_cond << "," << d.baro_bee_activity_pred << "," << d.baro_severity << "," << d.baro_alert_flag << "," << d.baro_reliability_idx << ",";
+            csv << d.light_lux << "," << d.light_ir_ratio << "," << d.light_uv_idx << "," << d.light_spectrum_ir << "," << d.light_lux_mean << "," << d.light_lux_std << "," << d.light_lux_min << "," << d.light_lux_max << ",";
             csv << d.light_daylight_hours << "," << d.light_darkness_hours << "," << d.light_twilight << "," << d.light_circadian_sync << ",";
             csv << d.light_foraging_idx << "," << d.light_photoperiod << "," << d.light_seasonal_change << "," << d.light_cloud_cover_est << "," << d.light_sunrise_offset << ",";
             csv << d.weight_rate << "," << d.weight_trend << "," << d.air_iaq << "\n";
@@ -1463,10 +1463,8 @@ int main(int argc, char* argv[]) {
     
     } catch (const std::exception& e) {
         Logger::getInstance().critical(std::string("Critical error in main: ") + e.what(), "MAIN");
-        if (server_fd >= 0) close(server_fd);
         return 1;
     }
     
-    if (server_fd >= 0) close(server_fd);
     return 0;
 }
