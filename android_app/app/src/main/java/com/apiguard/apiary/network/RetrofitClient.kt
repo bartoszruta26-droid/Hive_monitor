@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
     private const val TIMEOUT_SECONDS = 10L
     
-    fun createApiService(): ApiaryApiService {
+    fun createApiService(baseUrl: String): ApiaryApiService {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
@@ -22,6 +22,7 @@ object RetrofitClient {
             .build()
         
         val retrofit = Retrofit.Builder()
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

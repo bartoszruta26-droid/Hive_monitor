@@ -1,1 +1,38 @@
-Nothing should be ignored since only a source code file (.cpp) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+```
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+
+# Dependencies
+node_modules/
+.gradle/
+build/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Android specific
+*.keystore
+local.properties
+captures/
+.externalNativeBuild
+.cxx/
+```
