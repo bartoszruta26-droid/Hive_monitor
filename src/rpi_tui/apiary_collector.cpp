@@ -1,17 +1,17 @@
 /**
  * apiary_collector.cpp
- * Moduł zbierania danych z wielu uli przez Ethernet (Raspberry Pi 2 + Pico/Nano)
+ * Modul zbierania danych z wielu uli przez Ethernet (Raspberry Pi 2 + Pico/Nano)
  * Kompilacja: g++ -std=c++17 -pthread -o apiary_collector apiary_collector.cpp
  * 
- * OBSŁUGIWANE ŹRÓDŁA DANYCH:
- * 1. Raspberry Pi Pico - wysyła JUŻ OBLICZONE 300+ parametrów
- * 2. Arduino Nano - wysyła TYLKO SUROWE DANE, Raspberry Pi musi je przeliczyć
+ * OBSLUGIWANE ZRODLA DANYCH:
+ * 1. Raspberry Pi Pico - wysyla JUZ OBLICZONE 300+ parametrow
+ * 2. Arduino Nano - wysyla TYLKO SUROWE DANE, Raspberry Pi musi je przeliczyc
  * 
- * DETEKCJA ŹRÓDŁA:
+ * DETEKCJA ZRODLA:
  * - JSON z polem "data_source": "pico" lub "nano"
- * - Brak pola = automatyczna detekcja po obecności parametrów wyliczonych
+ * - Brak pola = automatyczna detekcja po obecnosci parametrow wyliczonych
  * 
- * OBSŁUGIWANE PARAMETRY (WSZYSTKIE Z .md i pico.ino - 338+ parametrów):
+ * OBSLUGIWANE PARAMETRY (WSZYSTKIE Z .md i pico.ino - 338+ parametrow):
  * - Podstawowe (9): temp, humidity, weight, battery, co2, voc, motion, timestamp, online
  * - Audio (97+): rms_amplitude, dominant_frequency, swarm_probability, bee_activity_index, 
  *                spectral_centroid, mfcc_energy, bioacoustic_index, acoustic_diversity, etc.
@@ -59,13 +59,13 @@
 #include <regex>
 #include <cmath>
 
-// Dołączamy nagłówek loggera (nie implementację .cpp)
+// Dolaczamy naglowek loggera (nie implementacje .cpp)
 #include "apiary_logger.h"
 #ifdef DEBUG_BUILD
 #include "apiary_logger_debug.h"
 #endif
 
-// Używamy przestrzeni nazw apiary dla wygody
+// Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
 
 // ============================================================================
@@ -76,13 +76,15 @@ using namespace apiary;
 #define GENTLE_CODE_ENABLED 1
 #endif
 
-// Tryb bezpieczny - nie przerywa działania przy błędach, tylko loguje i kontynuuje
+// Tryb bezpieczny - nie przerywa dzialania przy bledach, tylko loguje i kontynuuje
 #if GENTLE_CODE_ENABLED
     #define GENTLE_TRY try {
     #define GENTLE_CATCH(action_on_error) } catch (const std::exception& e) { \
-        LOG_ERROR(std::string("Gentle error: ") + e.what(), action_on_error); \
+        Logger::getInstance().error(std::string("Gentle error: ") + e.what()); \
+        action_on_error; \
     } catch (...) { \
-        LOG_ERROR("Unknown exception in gentle block", action_on_error); \
+        Logger::getInstance().error("Unknown exception in gentle block"); \
+        action_on_error; \
     }
 #else
     #define GENTLE_TRY try {
@@ -113,21 +115,21 @@ using namespace apiary;
 #endif
 
 // ============================================================================
-// STRUKTURA DANYCH Z ULA - PEŁNA LISTA 338+ PARAMETRÓW Z .md i pico.ino
+// STRUKTURA DANYCH Z ULA - PELNA LISTA 338+ PARAMETROW Z .md i pico.ino
 // ============================================================================
 struct HiveData {
     // -------------------------------------------------------------------------
-    // METADANE ŹRÓDŁA DANYCH
+    // METADANE ZRODLA DANYCH
     // -------------------------------------------------------------------------
     std::string data_source;            // "pico" (precomputed) lub "nano" (raw only)
-    bool is_precomputed = false;        // true = dane już wyliczone, false = surowe dane
+    bool is_precomputed = false;        // true = dane juz wyliczone, false = surowe dane
     
     // -------------------------------------------------------------------------
-    // PODSTAWOWE PARAMETRY (9 pól)
+    // PODSTAWOWE PARAMETRY (9 pol)
     // -------------------------------------------------------------------------
     std::string hive_id;
-    float temperature = 0.0f;           // Temperatura [°C]
-    float humidity = 0.0f;              // Wilgotność [%RH]
+    float temperature = 0.0f;           // Temperatura [?C]
+    float humidity = 0.0f;              // Wilgotnosc [%RH]
     float weight = 0.0f;                // Waga [kg]
     int battery_level = 0;              // Poziom baterii [%]
     int co2_eq = 0;                     // CO2 equivalent [ppm]
@@ -137,10 +139,10 @@ struct HiveData {
     bool is_online = false;             // Status online/offline
     
     // -------------------------------------------------------------------------
-    // SUROWE DANE Z ARDUINO NANO (tylko dla źródła "nano")
+    // SUROWE DANE Z ARDUINO NANO (tylko dla zrodla "nano")
     // -------------------------------------------------------------------------
-    float temp_raw = 0.0f;              // Surowa temperatura [°C]
-    float hum_raw = 0.0f;               // Surowa wilgotność [%]
+    float temp_raw = 0.0f;              // Surowa temperatura [?C]
+    float hum_raw = 0.0f;               // Surowa wilgotnosc [%]
     long weight_raw = 0;                // Surowa waga [ADC counts]
     int audio_raw = 0;                  // Surowe audio [ADC]
     int vibration_raw = 0;              // Surowe wibracje [ADC]
@@ -148,45 +150,45 @@ struct HiveData {
     int voc_raw = 0;                    // Surowe VOC [index]
     
     // -------------------------------------------------------------------------
-    // PARAMETRY AUDIO (97+ parametrów - pełna lista z audio.ino)
+    // PARAMETRY AUDIO (97+ parametrow - pelna lista z audio.ino)
     // -------------------------------------------------------------------------
     // Podstawowe czasowe
     float audio_rms = 0.0f;             // RMS amplituda [V]
-    float audio_peak = 0.0f;            // Wartość szczytowa [V]
-    float audio_peak_to_peak = 0.0f;    // Wartość międzyszczytowa [V]
+    float audio_peak = 0.0f;            // Wartosc szczytowa [V]
+    float audio_peak_to_peak = 0.0f;    // Wartosc miedzyszczytowa [V]
     float audio_zcr = 0.0f;             // Zero Crossing Rate [Hz]
-    float audio_energy = 0.0f;          // Energia sygnału [V²]
-    float audio_mean_amp = 0.0f;        // Średnia amplituda [V]
+    float audio_energy = 0.0f;          // Energia sygnalu [V2]
+    float audio_mean_amp = 0.0f;        // Srednia amplituda [V]
     float audio_std_amp = 0.0f;         // Odchylenie std amplitudy [V]
-    float audio_cv_amp = 0.0f;          // Współczynnik zmienności amplitudy
-    float audio_skewness = 0.0f;        // Asymetria rozkładu
+    float audio_cv_amp = 0.0f;          // Wspolczynnik zmiennosci amplitudy
+    float audio_skewness = 0.0f;        // Asymetria rozkladu
     float audio_kurtosis = 0.0f;        // Kurtoza
-    // Częstotliwościowe podstawowe
-    float audio_dominant_freq = 0.0f;   // Dominująca częstotliwość [Hz]
+    // Czestotliwosciowe podstawowe
+    float audio_dominant_freq = 0.0f;   // Dominujaca czestotliwosc [Hz]
     float audio_spectral_centroid = 0.0f; // Centrum widma [Hz]
-    float audio_spectral_bandwidth = 0.0f; // Szerokość pasma [Hz]
-    float audio_spectral_flatness = 0.0f; // Płaskość widma [0-1]
-    float audio_spectral_rolloff = 0.0f; // Częstotliwość odcięcia [Hz]
-    // Częstotliwościowe szczegółowe
-    float audio_power_bee_band = 0.0f;  // Moc w paśmie pszczół 80-800Hz [dB]
-    float audio_power_swarm_band = 0.0f;// Moc w paśmie rojenia 150-350Hz [dB]
+    float audio_spectral_bandwidth = 0.0f; // Szerokosc pasma [Hz]
+    float audio_spectral_flatness = 0.0f; // Plaskosc widma [0-1]
+    float audio_spectral_rolloff = 0.0f; // Czestotliwosc odciecia [Hz]
+    // Czestotliwosciowe szczegolowe
+    float audio_power_bee_band = 0.0f;  // Moc w pasmie pszczol 80-800Hz [dB]
+    float audio_power_swarm_band = 0.0f;// Moc w pasmie rojenia 150-350Hz [dB]
     float audio_power_low_freq = 0.0f;  // Moc <80Hz [dB]
     float audio_power_high_freq = 0.0f; // Moc >800Hz [dB]
     float audio_harmonic_ratio = 0.0f;  // Stosunek harmonicznych
     // MFCC i zaawansowane
-    float audio_mfcc_energy[4] = {0};   // Energia MFCC [4 współczynniki]
+    float audio_mfcc_energy[4] = {0};   // Energia MFCC [4 wspolczynniki]
     float audio_spectral_entropy = 0.0f;// Entropia widmowa
     float audio_spectral_contrast = 0.0f;// Kontrast widmowy
-    float audio_tonal_strength = 0.0f;  // Siła tonalna
+    float audio_tonal_strength = 0.0f;  // Sila tonalna
     // Nowe parametry audio
-    float audio_crest_factor = 0.0f;    // Współczynnik szczytu (peak/rms)
+    float audio_crest_factor = 0.0f;    // Wspolczynnik szczytu (peak/rms)
     float audio_formant_f1 = 0.0f;      // Pierwszy formant [Hz]
     float audio_formant_f2 = 0.0f;      // Drugi formant [Hz]
-    float audio_fundamental_freq = 0.0f;// Częstotliwość podstawowa F0 [Hz]
-    float audio_pitch_strength = 0.0f;  // Siła wysokości [0-1]
-    float audio_inharmonicity = 0.0f;   // Nieharmoniczność [0-1]
+    float audio_fundamental_freq = 0.0f;// Czestotliwosc podstawowa F0 [Hz]
+    float audio_pitch_strength = 0.0f;  // Sila wysokosci [0-1]
+    float audio_inharmonicity = 0.0f;   // Nieharmonicznosc [0-1]
     float audio_shimmer = 0.0f;         // Fluktuacja amplitudy [%]
-    float audio_jitter = 0.0f;          // Fluktuacja częstotliwości [%]
+    float audio_jitter = 0.0f;          // Fluktuacja czestotliwosci [%]
     float audio_nhr = 0.0f;             // Noise to Harmonic Ratio
     float audio_hnr = 0.0f;             // Harmonic to Noise Ratio
     float audio_autocorr_peak = 0.0f;   // Szczyt autokorelacji [0-1]
@@ -194,82 +196,82 @@ struct HiveData {
     float audio_decay_time = 0.0f;      // Czas zanikania [ms]
     float audio_sustain_level = 0.0f;   // Poziom podtrzymania [0-1]
     float audio_temporal_centroid = 0.0f;// Centrum czasowe [ms]
-    float audio_loudness = 0.0f;        // Głośność psychoakustyczna [sones]
+    float audio_loudness = 0.0f;        // Glosnosc psychoakustyczna [sones]
     // Spektralne dodatkowe
-    float audio_spectral_flux = 0.0f;   // Strumień spektralny
+    float audio_spectral_flux = 0.0f;   // Strumien spektralny
     float audio_spectral_slope = 0.0f;  // Nachylenie widma
     float audio_spectral_kurtosis = 0.0f;// Kurtoza widma
     float audio_spectral_skewness = 0.0f;// Asymetria widma
-    float audio_fund_salience = 0.0f;   // Wyraźność tonu podstawowego
+    float audio_fund_salience = 0.0f;   // Wyraznosc tonu podstawowego
     // Pasma mocy
     float audio_power_band[8] = {0};    // Moc w 8 pasmach [dB]
-    float audio_leq = 0.0f;             // Równoważny poziom dźwięku [dB]
+    float audio_leq = 0.0f;             // Rownowazny poziom dzwieku [dB]
     float audio_l10 = 0.0f;             // Poziom L10 [dB]
     float audio_l90 = 0.0f;             // Poziom L90 [dB]
-    float audio_noise_floor = 0.0f;     // Tło szumowe [dB]
-    float audio_snr = 0.0f;             // Stosunek sygnału do szumu [dB]
+    float audio_noise_floor = 0.0f;     // Tlo szumowe [dB]
+    float audio_snr = 0.0f;             // Stosunek sygnalu do szumu [dB]
     // Bioakustyczne indeksy
     float audio_aci = 0.0f;             // Acoustic Complexity Index
     float audio_bi = 0.0f;              // Bioacoustic Index
     float audio_ndi = 0.0f;             // Normalized Difference Index
     float audio_adi = 0.0f;             // Acoustic Diversity Index
     float audio_aei = 0.0f;             // Acoustic Evenness Index
-    // Wskaźniki klasyfikacji
-    float audio_bee_activity = 0.0f;    // Indeks aktywności pszczół [0-100%]
-    float audio_swarm_prob = 0.0f;      // Prawdopodobieństwo rojenia [0-1]
-    float audio_stress_indicator = 0.0f;// Wskaźnik stresu [0-1]
+    // Wskazniki klasyfikacji
+    float audio_bee_activity = 0.0f;    // Indeks aktywnosci pszczol [0-100%]
+    float audio_swarm_prob = 0.0f;      // Prawdopodobienstwo rojenia [0-1]
+    float audio_stress_indicator = 0.0f;// Wskaznik stresu [0-1]
     float audio_hive_health = 0.0f;     // Indeks zdrowia z audio [0-100%]
-    float audio_foraging_eff = 0.0f;    // Efektywność zbierania [0-100%]
-    float audio_colony_coherence = 0.0f;// Spójność kolonii [0-1]
+    float audio_foraging_eff = 0.0f;    // Efektywnosc zbierania [0-100%]
+    float audio_colony_coherence = 0.0f;// Spojnosc kolonii [0-1]
     
     // -------------------------------------------------------------------------
-    // PARAMETRY RADAR MMWAVE (27 parametrów z radar.ino)
+    // PARAMETRY RADAR MMWAVE (27 parametrow z radar.ino)
     // -------------------------------------------------------------------------
-    float radar_distance = 0.0f;        // Odległość obiektu [m]
-    float radar_energy = 0.0f;          // Energia sygnału [dB]
-    float radar_speed = 0.0f;           // Prędkość obiektu [m/s]
-    float radar_distance_std = 0.0f;    // Odchylenie odległości
+    float radar_distance = 0.0f;        // Odleglosc obiektu [m]
+    float radar_energy = 0.0f;          // Energia sygnalu [dB]
+    float radar_speed = 0.0f;           // Predkosc obiektu [m/s]
+    float radar_distance_std = 0.0f;    // Odchylenie odleglosci
     float radar_energy_std = 0.0f;      // Odchylenie energii
-    float radar_speed_std = 0.0f;       // Odchylenie prędkości
-    float radar_distance_min = 0.0f;    // Min odległość [m]
-    float radar_distance_max = 0.0f;    // Max odległość [m]
+    float radar_speed_std = 0.0f;       // Odchylenie predkosci
+    float radar_distance_min = 0.0f;    // Min odleglosc [m]
+    float radar_distance_max = 0.0f;    // Max odleglosc [m]
     float radar_energy_min = 0.0f;      // Min energia [dB]
     float radar_energy_max = 0.0f;      // Max energia [dB]
-    float radar_range = 0.0f;           // Zakres odległości
+    float radar_range = 0.0f;           // Zakres odleglosci
     float radar_energy_variance = 0.0f; // Wariancja energii
-    float radar_cv = 0.0f;              // Współczynnik zmienności
+    float radar_cv = 0.0f;              // Wspolczynnik zmiennosci
     float radar_activity = 0.0f;        // Activity ratio [0-1]
     float radar_idle_percent = 0.0f;    // % czasu bezruchu
-    float radar_motion_intensity = 0.0f;// Intensywność ruchu
-    float radar_target_rate = 0.0f;     // Tempo celów [/min]
-    float radar_max_targets = 0.0f;     // Max liczba celów
-    float radar_target_density = 0.0f;  // Gęstość celów
+    float radar_motion_intensity = 0.0f;// Intensywnosc ruchu
+    float radar_target_rate = 0.0f;     // Tempo celow [/min]
+    float radar_max_targets = 0.0f;     // Max liczba celow
+    float radar_target_density = 0.0f;  // Gestosc celow
     float radar_slope = 0.0f;           // Nachylenie trendu
     float radar_correlation = 0.0f;     // Korelacja trendu
     float radar_acceleration = 0.0f;    // Przyspieszenie
-    float radar_signal_quality = 0.0f;  // Jakość sygnału [0-100%]
+    float radar_signal_quality = 0.0f;  // Jakosc sygnalu [0-100%]
     float radar_anomaly_score = 0.0f;   // Wynik anomalii [0-1]
     float radar_hive_health = 0.0f;     // Indeks zdrowia ula [0-100%]
     float radar_power_spectrum = 0.0f;  // Szczyt widma mocy
     float radar_zcr = 0.0f;             // Zero crossing rate radaru
-    float radar_entropy = 0.0f;         // Entropia sygnału
+    float radar_entropy = 0.0f;         // Entropia sygnalu
     
     // -------------------------------------------------------------------------
-    // PARAMETRY HX711 WAGA (105+ parametrów z hx711.ino)
+    // PARAMETRY HX711 WAGA (105+ parametrow z hx711.ino)
     // -------------------------------------------------------------------------
     float hx711_current = 0.0f;         // Aktualna waga [kg]
-    float hx711_mean = 0.0f;            // Średnia waga [kg]
+    float hx711_mean = 0.0f;            // Srednia waga [kg]
     float hx711_std = 0.0f;             // Odchylenie std [kg]
     float hx711_min = 0.0f;             // Min waga [kg]
     float hx711_max = 0.0f;             // Max waga [kg]
     float hx711_median = 0.0f;          // Mediana wagi [kg]
     float hx711_range = 0.0f;           // Zakres wagi [kg]
     float hx711_variance = 0.0f;        // Wariancja wagi
-    float hx711_cv = 0.0f;              // Współczynnik zmienności
-    float hx711_iqr = 0.0f;             // Rozstęp międzykwartylowy
+    float hx711_cv = 0.0f;              // Wspolczynnik zmiennosci
+    float hx711_iqr = 0.0f;             // Rozstep miedzykwartylowy
     // Trendy temporalne
     float hx711_rate = 0.0f;            // Aktualna zmiana [kg/h]
-    float hx711_mean_rate = 0.0f;       // Średnia zmiana [kg/h]
+    float hx711_mean_rate = 0.0f;       // Srednia zmiana [kg/h]
     float hx711_max_pos_rate = 0.0f;    // Max dodatnia zmiana [kg/h]
     float hx711_max_neg_rate = 0.0f;    // Max ujemna zmiana [kg/h]
     float hx711_acceleration = 0.0f;    // Przyspieszenie zmiany
@@ -281,71 +283,71 @@ struct HiveData {
     float hx711_corr_4h = 0.0f;         // Korelacja 4h
     float hx711_corr_24h = 0.0f;        // Korelacja 24h
     float hx711_direction = 0.0f;       // Kierunek trendu [-1,1]
-    // Pożytki i nektar
-    float hx711_nectar_inflow = 0.0f;   // Przepływ nektaru [kg/h]
+    // Pozytki i nektar
+    float hx711_nectar_inflow = 0.0f;   // Przeplyw nektaru [kg/h]
     float hx711_nectar_accum = 0.0f;    // Akumulacja nektaru [kg]
-    float hx711_foraging_eff = 0.0f;    // Efektywność zbierania [%]
-    float hx711_bloom_intensity = 0.0f; // Intensywność kwitnienia [0-1]
+    float hx711_foraging_eff = 0.0f;    // Efektywnosc zbierania [%]
+    float hx711_bloom_intensity = 0.0f; // Intensywnosc kwitnienia [0-1]
     // Produkcja miodu
     float hx711_honey_prod_idx = 0.0f;  // Indeks produkcji miodu
-    float hx711_nectar_quality = 0.0f;  // Szacowana jakość nektaru
+    float hx711_nectar_quality = 0.0f;  // Szacowana jakosc nektaru
     // Konsumpcja
-    float hx711_consumption_rate = 0.0f;// Zużycie [kg/h]
-    float hx711_daily_consumption = 0.0f;// Dzienne zużycie [kg]
+    float hx711_consumption_rate = 0.0f;// Zuzycie [kg/h]
+    float hx711_daily_consumption = 0.0f;// Dzienne zuzycie [kg]
     float hx711_food_reserve_days = 0.0f;// Zapas dni jedzenia
     // Zimowla
-    float hx711_winter_readiness = 0.0f;// Gotowość do zimowli [%]
-    float hx711_starvation_risk = 0.0f; // Ryzyko głodu [0-1]
-    // Cykliczność
+    float hx711_winter_readiness = 0.0f;// Gotowosc do zimowli [%]
+    float hx711_starvation_risk = 0.0f; // Ryzyko glodu [0-1]
+    // Cyklicznosc
     float hx711_daily_amplitude = 0.0f; // Dzienna amplituda [kg]
-    float hx711_circadian_str = 0.0f;   // Siła cyrkadiana [0-1]
+    float hx711_circadian_str = 0.0f;   // Sila cyrkadiana [0-1]
     float hx711_seasonal_trend = 0.0f;  // Trend sezonowy
-    // Jakość sygnału
-    float hx711_signal_quality = 0.0f;  // Jakość sygnału [0-100%]
+    // Jakosc sygnalu
+    float hx711_signal_quality = 0.0f;  // Jakosc sygnalu [0-100%]
     float hx711_noise_level = 0.0f;     // Poziom szumu
     float hx711_drift_rate = 0.0f;      // Tempo dryfu
-    float hx711_stability = 0.0f;       // Indeks stabilności
+    float hx711_stability = 0.0f;       // Indeks stabilnosci
     // Anomalie
     float hx711_anomaly_score = 0.0f;   // Wynik anomalii [0-1]
-    float hx711_sudden_change = 0.0f;   // Wielkość nagłej zmiany
-    float hx711_oscillation_freq = 0.0f;// Częstotliwość oscylacji
+    float hx711_sudden_change = 0.0f;   // Wielkosc naglej zmiany
+    float hx711_oscillation_freq = 0.0f;// Czestotliwosc oscylacji
     // Zdrowie kolonii
-    float hx711_colony_growth = 0.0f;   // Wzrost kolonii [%/dzień]
-    float hx711_brood_activity = 0.0f;  // Aktywność czerwiu [0-1]
+    float hx711_colony_growth = 0.0f;   // Wzrost kolonii [%/dzien]
+    float hx711_brood_activity = 0.0f;  // Aktywnosc czerwiu [0-1]
     float hx711_population = 0.0f;      // Szacunkowa populacja
     float hx711_health_weight = 0.0f;   // Indeks zdrowia wagi
-    float hx711_productivity = 0.0f;    // Wynik produktywności [%]
+    float hx711_productivity = 0.0f;    // Wynik produktywnosci [%]
     // Prognoza
     float hx711_predicted_24h = 0.0f;   // Prognoza 24h [kg]
-    float hx711_forecast_conf = 0.0f;   // Pewność prognozy [0-1]
-    float hx711_expected_yield = 0.0f;  // Oczekiwany zbiór [kg]
+    float hx711_forecast_conf = 0.0f;   // Pewnosc prognozy [0-1]
+    float hx711_expected_yield = 0.0f;  // Oczekiwany zbior [kg]
     
     // -------------------------------------------------------------------------
-    // PARAMETRY TEMP/HUMIDITY (28 parametrów z temp_humidity.ino)
+    // PARAMETRY TEMP/HUMIDITY (28 parametrow z temp_humidity.ino)
     // -------------------------------------------------------------------------
-    float th_temp_mean = 0.0f;          // Średnia temperatura [°C]
+    float th_temp_mean = 0.0f;          // Srednia temperatura [?C]
     float th_temp_std = 0.0f;           // Odchylenie temperatury
-    float th_temp_min = 0.0f;           // Min temperatura [°C]
-    float th_temp_max = 0.0f;           // Max temperatura [°C]
+    float th_temp_min = 0.0f;           // Min temperatura [?C]
+    float th_temp_max = 0.0f;           // Max temperatura [?C]
     float th_temp_range = 0.0f;         // Zakres temperatury
-    float th_hum_mean = 0.0f;           // Średnia wilgotność [%]
-    float th_hum_std = 0.0f;            // Odchylenie wilgotności
-    float th_hum_min = 0.0f;            // Min wilgotność [%]
-    float th_hum_max = 0.0f;            // Max wilgotność [%]
-    float th_hum_range = 0.0f;          // Zakres wilgotności
-    float th_heat_index = 0.0f;         // Indeks ciepła [°C]
-    float th_dew_point = 0.0f;          // Punkt rosy [°C]
+    float th_hum_mean = 0.0f;           // Srednia wilgotnosc [%]
+    float th_hum_std = 0.0f;            // Odchylenie wilgotnosci
+    float th_hum_min = 0.0f;            // Min wilgotnosc [%]
+    float th_hum_max = 0.0f;            // Max wilgotnosc [%]
+    float th_hum_range = 0.0f;          // Zakres wilgotnosci
+    float th_heat_index = 0.0f;         // Indeks ciepla [?C]
+    float th_dew_point = 0.0f;          // Punkt rosy [?C]
     float th_vpd = 0.0f;                // Vapor Pressure Deficit [kPa]
     float th_comfort_index = 0.0f;      // Indeks komfortu [0-100%]
-    float th_temp_stability = 0.0f;     // Stabilność temperatury [0-100%]
-    float th_hum_stability = 0.0f;      // Stabilność wilgotności [0-100%]
-    float th_env_variance = 0.0f;       // Wariancja środowiska
-    float th_temp_trend_1h = 0.0f;      // Trend temp 1h [°C/h]
+    float th_temp_stability = 0.0f;     // Stabilnosc temperatury [0-100%]
+    float th_hum_stability = 0.0f;      // Stabilnosc wilgotnosci [0-100%]
+    float th_env_variance = 0.0f;       // Wariancja srodowiska
+    float th_temp_trend_1h = 0.0f;      // Trend temp 1h [?C/h]
     float th_hum_trend_1h = 0.0f;       // Trend hum 1h [%/h]
     float th_temp_hum_corr = 0.0f;      // Korelacja temp-hum
     float th_overheat_risk = 0.0f;      // Ryzyko przegrzania [0-1]
     float th_condensation_risk = 0.0f;  // Ryzyko kondensacji [0-1]
-    float th_mold_risk = 0.0f;          // Ryzyko pleśni [0-1]
+    float th_mold_risk = 0.0f;          // Ryzyko plesni [0-1]
     float th_brood_stress = 0.0f;       // Stres czerwiu [0-100%]
     
     // -------------------------------------------------------------------------
@@ -354,8 +356,8 @@ struct HiveData {
     int aq_co2 = 0;                     // CO2 equivalent [ppm]
     int aq_voc = 0;                     // VOC index
     int aq_nox = 0;                     // NOx equivalent [ppb]
-    int aq_co2_mean = 0;                // Średnie CO2 [ppm]
-    int aq_voc_mean = 0;                // Średnie VOC [index]
+    int aq_co2_mean = 0;                // Srednie CO2 [ppm]
+    int aq_voc_mean = 0;                // Srednie VOC [index]
     float aq_co2_std = 0.0f;            // Odchylenie CO2
     float aq_voc_std = 0.0f;            // Odchylenie VOC
     int aq_co2_min = 0;                 // Min CO2 [ppm]
@@ -363,99 +365,99 @@ struct HiveData {
     int aq_voc_min = 0;                 // Min VOC [index]
     int aq_voc_max = 0;                 // Max VOC [index]
     float aq_iaq_index = 0.0f;          // IAQ Index [0-500]
-    float aq_air_quality_level = 0.0f;  // Poziom jakości [1-5]
+    float aq_air_quality_level = 0.0f;  // Poziom jakosci [1-5]
     float aq_ventilation_need = 0.0f;   // Zapotrzebowanie wentylacji [%]
     float aq_stress_from_air = 0.0f;    // Stres z powietrza [0-1]
     float aq_hive_comfort = 0.0f;       // Komfort ula [0-100%]
-    float aq_variability = 0.0f;        // Indeks zmienności
-    float aq_stability_score = 0.0f;    // Wynik stabilności
+    float aq_variability = 0.0f;        // Indeks zmiennosci
+    float aq_stability_score = 0.0f;    // Wynik stabilnosci
     float aq_change_rate = 0.0f;        // Tempo zmian
     float aq_th_correlation = 0.0f;     // Korelacja z temp/hum
     float aq_comfort_zone_pct = 0.0f;   // % w strefie komfortu
-    float aq_co2_warning = 0.0f;        // Poziom ostrzeżenia CO2
+    float aq_co2_warning = 0.0f;        // Poziom ostrzezenia CO2
     float aq_voc_alert = 0.0f;          // Poziom alertu VOC
-    float aq_combined_risk = 0.0f;      // Łączne ryzyko [0-1]
+    float aq_combined_risk = 0.0f;      // Laczne ryzyko [0-1]
     float aq_contamination_risk = 0.0f; // Ryzyko zanieczyszczenia
-    float aq_mold_risk = 0.0f;          // Ryzyko pleśni z AQ
+    float aq_mold_risk = 0.0f;          // Ryzyko plesni z AQ
     
     // -------------------------------------------------------------------------
     // PARAMETRY PIEZO VIBRATION (22 parametry z piezo.ino)
     // -------------------------------------------------------------------------
     float piezo_rms = 0.0f;             // RMS wibracji [mV]
-    float piezo_peak = 0.0f;            // Wartość szczytowa [mV]
-    float piezo_mean = 0.0f;            // Średnia wibracji [mV]
+    float piezo_peak = 0.0f;            // Wartosc szczytowa [mV]
+    float piezo_mean = 0.0f;            // Srednia wibracji [mV]
     float piezo_std = 0.0f;             // Odchylenie std [mV]
-    float piezo_dominant_freq = 0.0f;   // Dominująca częstotliwość [Hz]
+    float piezo_dominant_freq = 0.0f;   // Dominujaca czestotliwosc [Hz]
     float piezo_energy = 0.0f;          // Energia wibracji
     float piezo_zcr = 0.0f;             // Zero crossing rate
-    float piezo_activity_idx = 0.0f;    // Indeks aktywności [0-100%]
-    float piezo_bee_traffic = 0.0f;     // Ruch pszczół [0-100%]
-    float piezo_predator_score = 0.0f;  // Wynik drapieżnika [0-100%]
-    float piezo_intrusion_prob = 0.0f;  // Prawdopodobieństwo intruza [0-1]
-    float piezo_queen_piping = 0.0f;    // Wykrycie piszczenia królowej
+    float piezo_activity_idx = 0.0f;    // Indeks aktywnosci [0-100%]
+    float piezo_bee_traffic = 0.0f;     // Ruch pszczol [0-100%]
+    float piezo_predator_score = 0.0f;  // Wynik drapieznika [0-100%]
+    float piezo_intrusion_prob = 0.0f;  // Prawdopodobienstwo intruza [0-1]
+    float piezo_queen_piping = 0.0f;    // Wykrycie piszczenia krolowej
     float piezo_swarm_prep = 0.0f;      // Przygotowania do rojenia
     float piezo_aggression = 0.0f;      // Poziom agresji [0-1]
     float piezo_alien_species = 0.0f;   // Obcy gatunek [0-1]
     float piezo_wind_vibration = 0.0f;  // Wibracje wiatru [0-1]
     float piezo_impact_detected = 0.0f; // Wykrycie uderzenia
-    float piezo_continuous_vib = 0.0f;  // Ciągłe wibracje [0-1]
-    float piezo_event_count = 0.0f;     // Liczba zdarzeń
-    float piezo_severity = 0.0f;        // Poważność zdarzeń
-    float piezo_source_class = 0.0f;    // Klasa źródła
-    float piezo_confidence = 0.0f;      // Pewność detekcji [0-1]
+    float piezo_continuous_vib = 0.0f;  // Ciagle wibracje [0-1]
+    float piezo_event_count = 0.0f;     // Liczba zdarzen
+    float piezo_severity = 0.0f;        // Powaznosc zdarzen
+    float piezo_source_class = 0.0f;    // Klasa zrodla
+    float piezo_confidence = 0.0f;      // Pewnosc detekcji [0-1]
     
     // -------------------------------------------------------------------------
-    // PARAMETRY BAROMETRIC (18 parametrów z barometric.ino)
+    // PARAMETRY BAROMETRIC (18 parametrow z barometric.ino)
     // -------------------------------------------------------------------------
-    float baro_pressure = 0.0f;         // Ciśnienie [hPa]
-    float baro_temp = 0.0f;             // Temp z barometru [°C]
-    float baro_altitude = 0.0f;         // Wysokość [m]
-    float baro_mean = 0.0f;             // Średnie ciśnienie
-    float baro_std = 0.0f;              // Odchylenie ciśnienia
+    float baro_pressure = 0.0f;         // Cisnienie [hPa]
+    float baro_temp = 0.0f;             // Temp z barometru [?C]
+    float baro_altitude = 0.0f;         // Wysokosc [m]
+    float baro_mean = 0.0f;             // Srednie cisnienie
+    float baro_std = 0.0f;              // Odchylenie cisnienia
     float baro_trend_1h = 0.0f;         // Trend 1h [hPa/h]
     float baro_trend_3h = 0.0f;         // Trend 3h [hPa/h]
     float baro_trend_6h = 0.0f;         // Trend 6h [hPa/h]
     float baro_change_rate = 0.0f;      // Tempo zmian
     float baro_weather_trend = 0.0f;    // Trend pogodowy [-1,1]
-    float baro_storm_prob = 0.0f;       // Prawdopodobieństwo burzy [0-1]
-    float baro_rain_prob = 0.0f;        // Prawdopodobieństwo deszczu
+    float baro_storm_prob = 0.0f;       // Prawdopodobienstwo burzy [0-1]
+    float baro_rain_prob = 0.0f;        // Prawdopodobienstwo deszczu
     float baro_improving = 0.0f;        // Poprawa pogody [0-1]
-    float baro_foraging_cond = 0.0f;    // Warunki do wylotów [0-100%]
-    float baro_bee_activity_pred = 0.0f;// Przewidywana aktywność
-    float baro_severity_idx = 0.0f;     // Indeks poważności
+    float baro_foraging_cond = 0.0f;    // Warunki do wylotow [0-100%]
+    float baro_bee_activity_pred = 0.0f;// Przewidywana aktywnosc
+    float baro_severity_idx = 0.0f;     // Indeks powaznosci
     float baro_alert_level = 0.0f;      // Poziom alertu
-    float baro_reliability = 0.0f;      // Wiarygodność prognozy
+    float baro_reliability = 0.0f;      // Wiarygodnosc prognozy
     
     // -------------------------------------------------------------------------
-    // PARAMETRY LIGHT (17 parametrów z light.ino)
+    // PARAMETRY LIGHT (17 parametrow z light.ino)
     // -------------------------------------------------------------------------
-    uint32_t light_lux = 0;             // Natężenie światła [lux]
-    float light_ir = 0.0f;              // Podczerwień [W/m²]
-    float light_uv = 0.0f;              // UV [W/m²]
-    float light_full_spec = 0.0f;       // Pełne spektrum
-    float light_mean = 0.0f;            // Średnie natężenie
-    float light_std = 0.0f;             // Odchylenie natężenia
-    float light_min = 0.0f;             // Min natężenie
-    float light_max = 0.0f;             // Max natężenie
+    uint32_t light_lux = 0;             // Natezenie swiatla [lux]
+    float light_ir = 0.0f;              // Podczerwien [W/m2]
+    float light_uv = 0.0f;              // UV [W/m2]
+    float light_full_spec = 0.0f;       // Pelne spektrum
+    float light_mean = 0.0f;            // Srednie natezenie
+    float light_std = 0.0f;             // Odchylenie natezenia
+    float light_min = 0.0f;             // Min natezenie
+    float light_max = 0.0f;             // Max natezenie
     float light_daylight_hours = 0.0f;  // Czas dnia [godziny]
-    float light_darkness_hours = 0.0f;  // Czas ciemności
+    float light_darkness_hours = 0.0f;  // Czas ciemnosci
     float light_twilight = 0.0f;        // Czas zmierzchu
     float light_circadian_sync = 0.0f;  // Synchronizacja cyrkadiana [0-1]
-    float light_foraging_idx = 0.0f;    // Indeks światła do wylotów [0-100%]
+    float light_foraging_idx = 0.0f;    // Indeks swiatla do wylotow [0-100%]
     float light_photoperiod = 0.0f;     // Fotoperiod [godziny]
     float light_seasonal_change = 0.0f; // Zmiana sezonowa
     float light_cloud_cover_est = 0.0f; // Szacowane zachmurzenie
-    float light_sunrise_offset = 0.0f;  // Offset wschodu słońca
+    float light_sunrise_offset = 0.0f;  // Offset wschodu slonca
     
     // -------------------------------------------------------------------------
     // DODATKOWE POLA (backward compatibility)
     // -------------------------------------------------------------------------
-    float weight_rate = 0.0f;           // Szybkość zmiany wagi [kg/h]
+    float weight_rate = 0.0f;           // Szybkosc zmiany wagi [kg/h]
     float weight_trend = 0.0f;          // Trend wagi [-1..1]
-    int air_iaq = 0;                    // Indeks jakości powietrza [0-100]
+    int air_iaq = 0;                    // Indeks jakosci powietrza [0-100]
 };
 
-// Menadżer danych uli
+// Menadzer danych uli
 class ApiaryCollector {
 private:
     std::map<std::string, HiveData> hives_data;
@@ -465,7 +467,7 @@ private:
     
     std::vector<std::string> hive_ips; // Lista IP dla uli
 
-    // Symulacja portu nasłuchiwania (w rzeczywistości Pico wysyła dane na ten port)
+    // Symulacja portu nasluchiwania (w rzeczywistosci Pico wysyla dane na ten port)
     int server_socket;
     struct sockaddr_in server_addr;
 
@@ -479,14 +481,14 @@ public:
     }
     
     // ============================================================================
-    // MODUŁ OBLICZANIA 300+ PARAMETRÓW Z SUROWYCH DANYCH (ARDUINO NANO)
+    // MODUL OBLICZANIA 300+ PARAMETROW Z SUROWYCH DANYCH (ARDUINO NANO)
     // ============================================================================
     void computeParametersFromRaw(HiveData& data) {
-        // Obliczanie parametrów z surowych danych Arduino Nano
-        // Ten moduł wykonuje te same obliczenia co Raspberry Pi Pico
+        // Obliczanie parametrow z surowych danych Arduino Nano
+        // Ten modul wykonuje te same obliczenia co Raspberry Pi Pico
         
         // =========================================================================
-        // --- AUDIO METRICS (z audio_raw) - 97+ parametrów ---
+        // --- AUDIO METRICS (z audio_raw) - 97+ parametrow ---
         // =========================================================================
         float raw_norm = static_cast<float>(data.audio_raw) / 1024.0f; // Normalizacja ADC 10-bit
         
@@ -502,7 +504,7 @@ public:
         data.audio_skewness = raw_norm * 0.3f - 0.15f;
         data.audio_kurtosis = raw_norm * 2.0f + 1.0f;
         
-        // Częstotliwościowe podstawowe
+        // Czestotliwosciowe podstawowe
         data.audio_dominant_freq = 200.0f + (raw_norm * 400.0f);
         data.audio_spectral_centroid = data.audio_dominant_freq * 1.2f;
         data.audio_spectral_bandwidth = data.audio_dominant_freq * 0.5f;
@@ -550,7 +552,7 @@ public:
         data.audio_spectral_skewness = 0.5f + raw_norm * 0.5f;
         data.audio_fund_salience = 0.3f + raw_norm * 0.5f;
         
-        // Pasma mocy szczegółowe
+        // Pasma mocy szczegolowe
         for (int i = 0; i < 8; i++) {
             data.audio_power_band[i] = data.audio_power_bee_band * (1.0f - i * 0.1f);
         }
@@ -567,7 +569,7 @@ public:
         data.audio_adi = 40.0f + raw_norm * 30.0f;
         data.audio_aei = 0.4f + raw_norm * 0.3f;
         
-        // Wskaźniki klasyfikacji
+        // Wskazniki klasyfikacji
         data.audio_bee_activity = std::min(100.0f, raw_norm * 150.0f);
         data.audio_swarm_prob = (data.audio_dominant_freq > 150.0f && data.audio_dominant_freq < 350.0f) ? 0.6f : 0.2f;
         data.audio_stress_indicator = (raw_norm > 0.7f) ? 0.8f : 0.3f;
@@ -576,13 +578,13 @@ public:
         data.audio_colony_coherence = 0.5f + raw_norm * 0.3f;
         
         // =========================================================================
-        // --- TEMPERATURE/HUMIDITY DERIVED (28 parametrów) ---
+        // --- TEMPERATURE/HUMIDITY DERIVED (28 parametrow) ---
         // =========================================================================
         if (data.temp_raw != 0.0f || data.hum_raw != 0.0f) {
             float T = data.temp_raw;
             float RH = std::max(0.0f, std::min(100.0f, data.hum_raw));
             
-            // Statystyki podstawowe (zakładając stabilność przy braku historii)
+            // Statystyki podstawowe (zakladajac stabilnosc przy braku historii)
             data.th_temp_mean = T;
             data.th_temp_std = 0.5f;
             data.th_temp_min = T - 0.5f;
@@ -658,7 +660,7 @@ public:
             data.aq_co2_max = data.co2_raw * 1.1f;
             data.aq_voc_min = data.voc_raw * 0.85f;
             data.aq_voc_max = data.voc_raw * 1.15f;
-            data.aq_nox = 50; // Wartość domyślna bez sensora NOx
+            data.aq_nox = 50; // Wartosc domyslna bez sensora NOx
             
             // IAQ Index
             float co2_factor = std::min(1.0f, static_cast<float>(data.co2_raw) / 1000.0f);
@@ -702,15 +704,15 @@ public:
             data.piezo_std = vib_norm * 30.0f;
             data.piezo_energy = vib_norm * vib_norm;
             
-            // Częstotliwość i ZCR
+            // Czestotliwosc i ZCR
             data.piezo_dominant_freq = 100.0f + vib_norm * 200.0f;
             data.piezo_zcr = vib_norm * 50.0f;
             
-            // Aktywność
+            // Aktywnosc
             data.piezo_activity_idx = std::min(100.0f, vib_norm * 120.0f);
             data.piezo_bee_traffic = data.piezo_activity_idx * 0.9f;
             
-            // Detekcja zdarzeń
+            // Detekcja zdarzen
             data.piezo_predator_score = (vib_norm > 0.8f) ? 0.7f : 0.1f;
             data.piezo_intrusion_prob = data.piezo_predator_score * 0.8f;
             data.piezo_queen_piping = (vib_norm > 0.6f && vib_norm < 0.8f) ? 0.5f : 0.0f;
@@ -727,7 +729,7 @@ public:
         }
         
         // =========================================================================
-        // --- RADAR MMWAVE DERIVED (27 parametrów) ---
+        // --- RADAR MMWAVE DERIVED (27 parametrow) ---
         // =========================================================================
         // Surowe dane z radaru (motion_detected jako baza)
         float radar_base = static_cast<float>(data.motion_detected) * 0.5f;
@@ -762,10 +764,10 @@ public:
         data.radar_entropy = 0.5f + radar_base * 0.3f;
         
         // =========================================================================
-        // --- HX711 WAGA DERIVED (105+ parametrów) ---
+        // --- HX711 WAGA DERIVED (105+ parametrow) ---
         // =========================================================================
-        // Używamy weight_raw jako bazy (ADC counts przeliczone na kg)
-        float weight_kg = static_cast<float>(data.weight_raw) / 1000.0f; // Przykładowe przeliczenie
+        // Uzywamy weight_raw jako bazy (ADC counts przeliczone na kg)
+        float weight_kg = static_cast<float>(data.weight_raw) / 1000.0f; // Przykladowe przeliczenie
         if (weight_kg == 0.0f) weight_kg = data.weight; // Fallback do weight
         
         // Podstawowe statystyki
@@ -796,7 +798,7 @@ public:
         data.hx711_corr_24h = 0.6f;
         data.hx711_direction = 0.5f;
         
-        // Pożytki i nektar
+        // Pozytki i nektar
         data.hx711_nectar_inflow = std::max(0.0f, data.hx711_slope_1h);
         data.hx711_nectar_accum = std::max(0.0f, data.hx711_slope_1h * 8.0f);
         data.hx711_foraging_eff = std::min(100.0f, 50.0f + data.hx711_nectar_inflow * 500.0f);
@@ -815,12 +817,12 @@ public:
         data.hx711_winter_readiness = std::min(100.0f, weight_kg * 2.0f);
         data.hx711_starvation_risk = (data.hx711_food_reserve_days < 7.0f) ? 0.8f : 0.2f;
         
-        // Cykliczność
+        // Cyklicznosc
         data.hx711_daily_amplitude = 0.3f;
         data.hx711_circadian_str = 0.7f;
         data.hx711_seasonal_trend = 0.1f;
         
-        // Jakość sygnału
+        // Jakosc sygnalu
         data.hx711_signal_quality = 85.0f;
         data.hx711_noise_level = 0.02f;
         data.hx711_drift_rate = 0.001f;
@@ -844,9 +846,9 @@ public:
         data.hx711_expected_yield = std::max(0.0f, data.hx711_nectar_accum * 0.6f);
         
         // =========================================================================
-        // --- BAROMETRIC DERIVED (18 parametrów) ---
+        // --- BAROMETRIC DERIVED (18 parametrow) ---
         // =========================================================================
-        // Wartości domyślne bez sensora BMP280
+        // Wartosci domyslne bez sensora BMP280
         data.baro_pressure = 1013.25f;
         data.baro_temp = data.temperature;
         data.baro_altitude = 100.0f;
@@ -867,10 +869,10 @@ public:
         data.baro_reliability = 80.0f;
         
         // =========================================================================
-        // --- LIGHT DERIVED (17 parametrów) ---
+        // --- LIGHT DERIVED (17 parametrow) ---
         // =========================================================================
-        // Wartości domyślne bez sensora BH1750
-        uint32_t lux_est = 5000; // Światło dzienne
+        // Wartosci domyslne bez sensora BH1750
+        uint32_t lux_est = 5000; // Swiatlo dzienne
         data.light_lux = lux_est;
         data.light_ir = 100.0f;
         data.light_uv = 5.0f;
@@ -908,34 +910,34 @@ public:
         }
     }
 
-    // Inicjalizacja socketu UDP do nasłuchiwania danych z Pico
+    // Inicjalizacja socketu UDP do nasluchiwania danych z Pico
     bool initNetwork(int port = 5005) {
         server_socket = socket(AF_INET, SOCK_DGRAM, 0);
         if (server_socket < 0) {
-            Logger::getInstance().error( "Nie udało się utworzyć socketu: " + std::string(strerror(errno)));
+            Logger::getInstance().error( "Nie udalo sie utworzyc socketu: " + std::string(strerror(errno)));
             return false;
         }
 
-        // Ustawienie socketu na nieblokujący (opcjonalne, ale dobre dla pętli)
+        // Ustawienie socketu na nieblokujacy (opcjonalne, ale dobre dla petli)
         int flags = fcntl(server_socket, F_GETFL, 0);
         fcntl(server_socket, F_SETFL, flags | O_NONBLOCK);
 
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY; // Nasłuchuj na wszystkich interfejsach
+        server_addr.sin_addr.s_addr = INADDR_ANY; // Nasluchuj na wszystkich interfejsach
         server_addr.sin_port = htons(port);
 
         if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-            Logger::getInstance().error( "Błąd bindowania portu " + std::to_string(port) + ": " + strerror(errno));
+            Logger::getInstance().error( "Blad bindowania portu " + std::to_string(port) + ": " + strerror(errno));
             close(server_socket);
             return false;
         }
 
-        Logger::getInstance().info( "Serwer nasłuchujący uruchomiony na porcie UDP " + std::to_string(port));
+        Logger::getInstance().info( "Serwer nasluchujacy uruchomiony na porcie UDP " + std::to_string(port));
         return true;
     }
 
-    // Główna pętla odbierania danych (wątek)
+    // Glowna petla odbierania danych (watek)
     void receiveLoop() {
         char buffer[1024];
         struct sockaddr_in client_addr;
@@ -950,26 +952,26 @@ public:
                 buffer[recv_len] = '\0';
                 processData(std::string(buffer), inet_ntoa(client_addr.sin_addr));
             } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                // Prawdziwy błąd sieciowy
-                if (running) Logger::getInstance().warning( "Błąd odbioru danych: " + std::string(strerror(errno)));
+                // Prawdziwy blad sieciowy
+                if (running) Logger::getInstance().warning( "Blad odbioru danych: " + std::string(strerror(errno)));
             }
             
-            // Krótka pauza, aby nie obciążać CPU w pętli busy-wait
+            // Krotka pauza, aby nie obciazac CPU w petli busy-wait
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
 
     // ============================================================================
-    // PARSOWANIE I PRZETWARZANIE DANYCH - OBSŁUGA JSON I CSV
+    // PARSOWANIE I PRZETWARZANIE DANYCH - OBSLUGA JSON I CSV
     // ============================================================================
     void processData(const std::string& raw_data, const std::string& source_ip) {
-        // Obsługiwane formaty:
+        // Obslugiwane formaty:
         // 1. JSON: {"hive_id":"UL-1","temp":24.5,"hum":65.2,...}
         // 2. CSV: UL-1,24.5,65.2,45.300,98,450,35,1,1234567890,...
         
         long long now = std::time(nullptr);
         
-        // Sprawdź czy to JSON
+        // Sprawdz czy to JSON
         if (raw_data.find('{') != std::string::npos && raw_data.find('}') != std::string::npos) {
             parseJSON(raw_data, source_ip, now);
         } else {
@@ -977,13 +979,13 @@ public:
         }
     }
     
-    // Parsowanie JSON - pełna obsługa wszystkich parametrów (300+)
+    // Parsowanie JSON - pelna obsluga wszystkich parametrow (300+)
     void parseJSON(const std::string& json_str, const std::string& source_ip, long long timestamp) {
         DEBUG_FUNC_ENTER();
         GENTLE_TRY
         
         try {
-            // Prosty parser JSON bez zewnętrznych bibliotek
+            // Prosty parser JSON bez zewnetrznych bibliotek
             auto getValue = [&json_str](const std::string& key) -> std::string {
                 std::string searchKey = "\"" + key + "\":";
                 size_t pos = json_str.find(searchKey);
@@ -1020,7 +1022,7 @@ public:
             DEBUG_COUNTER_INC("json_parsed");
             
             // ====================================================================
-            // DETEKCJA ŹRÓDŁA DANYCH I TYPU (PICO vs NANO)
+            // DETEKCJA ZRODLA DANYCH I TYPU (PICO vs NANO)
             // ====================================================================
             std::string source = getValue("data_source");
             if (!source.empty()) {
@@ -1028,7 +1030,7 @@ public:
                 data.is_precomputed = (source == "pico" || source == "precomputed");
                 DEBUG_LOG("Data source specified: " + source);
             } else {
-                // Automatyczna detekcja: sprawdź czy są parametry wyliczone
+                // Automatyczna detekcja: sprawdz czy sa parametry wyliczone
                 bool has_computed_params = !getValue("audio_spectral_centroid").empty() ||
                                            !getValue("hx711_slope_1h").empty() ||
                                            !getValue("th_heat_index").empty() ||
@@ -1046,7 +1048,7 @@ public:
             
             DEBUG_START_TIMER("json_parse_raw");
             
-            // Pobierz surowe dane z Arduino Nano (jeśli obecne)
+            // Pobierz surowe dane z Arduino Nano (jesli obecne)
             try {
                 data.temp_raw = !getValue("temp_raw").empty() ? std::stof(getValue("temp_raw")) : 0.0f;
                 data.hum_raw = !getValue("hum_raw").empty() ? std::stof(getValue("hum_raw")) : 0.0f;
@@ -1084,13 +1086,13 @@ public:
             DEBUG_STOP_TIMER("json_parse_basic");
             
             // ====================================================================
-            // JEŚLI DANE SĄ SUROWE (NANO), OBLICZ PARAMETRY NA RASPBERRY PI
+            // JESLI DANE SA SUROWE (NANO), OBLICZ PARAMETRY NA RASPBERRY PI
             // ====================================================================
             if (!data.is_precomputed && data.data_source == "nano") {
                 computeParametersFromRaw(data);
             }
             
-            // Audio parametry (wybrane z 97+) - tylko jeśli precomputed lub już obliczone
+            // Audio parametry (wybrane z 97+) - tylko jesli precomputed lub juz obliczone
             data.audio_rms = !getValue("audio_rms").empty() ? std::stof(getValue("audio_rms")) : data.audio_rms;
             data.audio_dominant_freq = !getValue("audio_freq").empty() ? std::stof(getValue("audio_freq")) : data.audio_dominant_freq;
             data.audio_swarm_prob = !getValue("swarm_prob").empty() ? std::stof(getValue("swarm_prob")) : data.audio_swarm_prob;
@@ -1185,11 +1187,12 @@ public:
             Logger::getInstance().debug("JSON: Zaktualizowano " + hive_id + " z " + source_ip);
             
         } catch (const std::exception& e) {
-            Logger::getInstance().error("Błąd parsowania JSON: " + std::string(e.what()));
+            Logger::getInstance().error("Blad parsowania JSON: " + std::string(e.what()));
         }
+        GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseJSON");)
     }
     
-    // Parsowanie CSV - kompatybilność wsteczna
+    // Parsowanie CSV - kompatybilnosc wsteczna
     void parseCSV(const std::string& raw_data, const std::string& source_ip, long long timestamp) {
         DEBUG_FUNC_ENTER();
         GENTLE_TRY
@@ -1202,7 +1205,7 @@ public:
             parts.push_back(segment);
         }
 
-        // Wymagane minimum 9 pól dla podstawowych danych
+        // Wymagane minimum 9 pol dla podstawowych danych
         if (parts.size() < 9) {
             Logger::getInstance().warning("Niepoprawny format CSV z " + source_ip + ": " + raw_data);
             DEBUG_COUNTER_INC("csv_parse_errors");
@@ -1284,18 +1287,19 @@ public:
                 }
             }
         } catch (const std::exception& e) {
-            Logger::getInstance().error("Błąd parsowania CSV: " + std::string(e.what()));
+            Logger::getInstance().error("Blad parsowania CSV: " + std::string(e.what()));
         }
+        GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseCSV"))
     }
 
-    // Symulacja danych (do testów bez fizycznych Pico)
+    // Symulacja danych (do testow bez fizycznych Pico)
     void simulationLoop() {
         while (running) {
             std::this_thread::sleep_for(std::chrono::seconds(2));
             
             std::lock_guard<std::mutex> lock(data_mutex);
             for (auto& pair : hives_data) {
-                // Symuluj zmiany temperatury i wilgotności
+                // Symuluj zmiany temperatury i wilgotnosci
                 pair.second.temperature += (rand() % 10 - 5) / 10.0f;
                 pair.second.humidity += (rand() % 10 - 5) / 10.0f;
                 pair.second.timestamp = std::time(nullptr);
@@ -1315,7 +1319,7 @@ public:
 
         if (!use_simulation) {
             if (!initNetwork()) {
-                Logger::getInstance().warning( "Przełączanie w tryb symulacji z powodu błędu sieci.");
+                Logger::getInstance().warning( "Przelaczanie w tryb symulacji z powodu bledu sieci.");
                 use_simulation = true;
             }
         }
@@ -1324,7 +1328,7 @@ public:
             Logger::getInstance().info( "Uruchamianie symulatora danych uli...");
             worker_threads.emplace_back(&ApiaryCollector::simulationLoop, this);
         } else {
-            Logger::getInstance().info( "Uruchamianie nasłuchiwania sieciowego...");
+            Logger::getInstance().info( "Uruchamianie nasluchiwania sieciowego...");
             worker_threads.emplace_back(&ApiaryCollector::receiveLoop, this);
         }
     }
@@ -1339,7 +1343,7 @@ public:
         Logger::getInstance().info( "Kolektor danych zatrzymany.");
     }
 
-    // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON) - OBSŁUGA WIELU ULl
+    // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON) - OBSLUGA WIELU ULl
     size_t getHiveCount() const {
         return hives_data.size();
     }
@@ -1584,7 +1588,7 @@ public:
     void exportToCSV(const std::string& filename) {
         std::ofstream file(filename);
         if (!file.is_open()) {
-            Logger::getInstance().error("Nie udało się otworzyć pliku CSV: " + filename);
+            Logger::getInstance().error("Nie udalo sie otworzyc pliku CSV: " + filename);
             return;
         }
         
@@ -1594,11 +1598,11 @@ public:
     }
 };
 
-// Funkcja główna do samodzielnego uruchomienia jako demon
+// Funkcja glowna do samodzielnego uruchomienia jako demon
 int main(int argc, char* argv[]) {
     DEBUG_FUNC_ENTER();
     
-    // Inicjalizacja loggera z pełną konfiguracją
+    // Inicjalizacja loggera z pelna konfiguracja
     LoggerConfig loggerConfig;
     loggerConfig.log_file = "/var/log/apiaryguard/collector.log";
     loggerConfig.debug_file = "/var/log/apiaryguard/collector_debug.log";
@@ -1622,7 +1626,7 @@ int main(int argc, char* argv[]) {
     Logger::getInstance().info("Apiary Collector v1.0.0 - Start", "MAIN");
     Logger::getInstance().info("========================================", "MAIN");
     Logger::getInstance().debug("PID procesu: " + std::to_string(getpid()), "MAIN");
-    Logger::getInstance().debug("Argumenty linii poleceń: " + std::string(argc > 1 ? argv[1] : "brak"), "MAIN");
+    Logger::getInstance().debug("Argumenty linii polecen: " + std::string(argc > 1 ? argv[1] : "brak"), "MAIN");
     
 #ifdef DEBUG_BUILD
     Logger::getInstance().info("Build: DEBUG z funkcjami debugowania", "MAIN");
@@ -1632,11 +1636,11 @@ int main(int argc, char* argv[]) {
     Logger::getInstance().info("Build: RELEASE (bez rozszerzonego debugowania)", "MAIN");
 #endif
     
-    GENTLE_TRY
+    try {
     
     ApiaryCollector collector;
 
-    // Konfiguracja przykładowych IP uli (w produkcji czytane z config file)
+    // Konfiguracja przykladowych IP uli (w produkcji czytane z config file)
     std::vector<std::string> hives = {"192.168.1.101", "192.168.1.102", "192.168.1.103"};
     Logger::getInstance().debug("Konfiguracja " + std::to_string(hives.size()) + " uli", "MAIN");
     collector.configureHives(hives);
@@ -1647,19 +1651,20 @@ int main(int argc, char* argv[]) {
     Logger::getInstance().info("Tryb pracy: " + std::string(sim_mode ? "SYMWLACJA" : "SIECIOWY"), "MAIN");
     collector.start(sim_mode);
     
-    Logger::getInstance().info("Wątki workerów uruchomione", "MAIN");
+    Logger::getInstance().info("Watki workerow uruchomione", "MAIN");
 
     // Serwer HTTP API JSON na porcie 8080
     Logger::getInstance().debug("Tworzenie socketu HTTP...", "HTTP");
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int server_fd = -1;
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        Logger::getInstance().error("Nie udało się utworzyć socketu HTTP: " + std::string(strerror(errno)), "HTTP");
-        Logger::getInstance().critical("Krytyczny błąd - zakończenie działania", "MAIN");
+        Logger::getInstance().error("Nie udalo sie utworzyc socketu HTTP: " + std::string(strerror(errno)), "HTTP");
+        Logger::getInstance().critical("Krytyczny blad - zakonczenie dzialania", "MAIN");
         DEBUG_COUNTER_INC("socket_creation_failed");
         DEBUG_FUNC_EXIT();
         return 1;
     }
-    Logger::getInstance().debug("Socket HTTP utworzony pomyślnie: fd=" + std::to_string(server_fd), "HTTP");
+    Logger::getInstance().debug("Socket HTTP utworzony pomyslnie: fd=" + std::to_string(server_fd), "HTTP");
     DEBUG_COUNTER_INC("sockets_created");
 
     int opt = 1;
@@ -1674,25 +1679,25 @@ int main(int argc, char* argv[]) {
 
     Logger::getInstance().info("Bindowanie portu HTTP 8080...", "HTTP");
     if (bind(server_fd, (struct sockaddr*)&http_addr, sizeof(http_addr)) < 0) {
-        Logger::getInstance().error("Błąd bindowania portu HTTP 8080: " + std::string(strerror(errno)), "HTTP");
-        Logger::getInstance().error("Sprawdź czy port 8080 nie jest zajęty przez inny proces", "HTTP");
-        Logger::getInstance().error("Możesz sprawdzić: netstat -tlnp | grep 8080", "HTTP");
+        Logger::getInstance().error("Blad bindowania portu HTTP 8080: " + std::string(strerror(errno)), "HTTP");
+        Logger::getInstance().error("Sprawdz czy port 8080 nie jest zajety przez inny proces", "HTTP");
+        Logger::getInstance().error("Mozesz sprawdzic: netstat -tlnp | grep 8080", "HTTP");
         close(server_fd);
         DEBUG_COUNTER_INC("bind_failed");
         DEBUG_FUNC_EXIT();
         return 1;
     }
-    Logger::getInstance().info("Port 8080 zbindowany pomyślnie", "HTTP");
+    Logger::getInstance().info("Port 8080 zbindowany pomyslnie", "HTTP");
     DEBUG_COUNTER_INC("binds_successful");
 
     if (listen(server_fd, 10) < 0) {
-        Logger::getInstance().error("Błąd listen na porcie HTTP: " + std::string(strerror(errno)), "HTTP");
+        Logger::getInstance().error("Blad listen na porcie HTTP: " + std::string(strerror(errno)), "HTTP");
         close(server_fd);
         DEBUG_COUNTER_INC("listen_failed");
         DEBUG_FUNC_EXIT();
         return 1;
     }
-    Logger::getInstance().info("Nasłuchiwanie na porcie 8080 rozpoczęte", "HTTP");
+    Logger::getInstance().info("Nasluchiwanie na porcie 8080 rozpoczete", "HTTP");
     DEBUG_COUNTER_INC("listens_successful");
 
     Logger::getInstance().info("Serwer HTTP API JSON uruchomiony na porcie 8080", "HTTP");
@@ -1715,7 +1720,7 @@ int main(int argc, char* argv[]) {
         int activity = select(server_fd + 1, &readfds, NULL, NULL, &tv);
         
         if (activity > 0 && FD_ISSET(server_fd, &readfds)) {
-            // Nowe połączenie HTTP
+            // Nowe polaczenie HTTP
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
             int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
@@ -1728,7 +1733,7 @@ int main(int argc, char* argv[]) {
                 std::string response;
                 std::string content_type = "application/json";
                 
-                // Parsowanie żądania HTTP - obsługa pełnej listy endpointów
+                // Parsowanie zadania HTTP - obsluga pelnej listy endpointow
                 if (request.find("GET /api/status") != std::string::npos || 
                     request.find("GET /api/hives") != std::string::npos) {
                     response = collector.getStatusJSON();
@@ -1738,18 +1743,18 @@ int main(int argc, char* argv[]) {
                     response = collector.getStatusCSV();
                     content_type = "text/csv";
                 } else if (request.find("GET /api/sensors") != std::string::npos) {
-                    response = "{\"sensors\":[],\"note\":\"Endpoint dostępny - dane dostępne w /api/hives\"}";
+                    response = "{\"sensors\":[],\"note\":\"Endpoint dostepny - dane dostepne w /api/hives\"}";
                 } else if (request.find("GET /api/effectors") != std::string::npos) {
-                    response = "{\"effectors\":[],\"note\":\"Endpoint dostępny\"}";
+                    response = "{\"effectors\":[],\"note\":\"Endpoint dostepny\"}";
                 } else if (request.find("GET /api/history") != std::string::npos) {
-                    response = "{\"labels\":[],\"data\":[],\"note\":\"Dane historyczne dostępne przez TUI\"}";
+                    response = "{\"labels\":[],\"data\":[],\"note\":\"Dane historyczne dostepne przez TUI\"}";
                 } else if (request.find("GET /api/logs") != std::string::npos) {
-                    response = "{\"logs\":[],\"note\":\"Logi dostępne przez TUI\"}";
+                    response = "{\"logs\":[],\"note\":\"Logi dostepne przez TUI\"}";
                 } else {
                     response = "{\"error\":\"Unknown endpoint\",\"available\":[\"/api/status\",\"/api/hives\",\"/health\",\"/api/csv\",\"/api/sensors\",\"/api/effectors\",\"/api/history\",\"/api/logs\"]}";
                 }
                 
-                // Nagłówki HTTP
+                // Naglowki HTTP
                 std::stringstream http_response;
                 http_response << "HTTP/1.1 200 OK\r\n";
                 http_response << "Content-Type: " << content_type << "\r\n";
@@ -1761,7 +1766,7 @@ int main(int argc, char* argv[]) {
                 send(client_fd, http_response.str().c_str(), http_response.str().length(), 0);
                 close(client_fd);
                 
-                Logger::getInstance().debug("HTTP: Obsłużono żądanie od " + std::string(inet_ntoa(client_addr.sin_addr)));
+                Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + std::string(inet_ntoa(client_addr.sin_addr)));
             }
         }
         
@@ -1771,10 +1776,16 @@ int main(int argc, char* argv[]) {
             last_log = std::time(nullptr);
             // Eksportuj dane do pliku CSV dla TUI
             collector.exportToCSV("/tmp/apiary_data.csv");
-            // Można dodać okresowe logowanie statystyk
+            // Mozna dodac okresowe logowanie statystyk
         }
     }
-
-    close(server_fd);
+    
+    } catch (const std::exception& e) {
+        Logger::getInstance().critical(std::string("Critical error in main: ") + e.what(), "MAIN");
+        if (server_fd >= 0) close(server_fd);
+        return 1;
+    }
+    
+    if (server_fd >= 0) close(server_fd);
     return 0;
 }
