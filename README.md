@@ -29,8 +29,9 @@
 | 📡 **Hybrydowa Łączność** | LTE Aero2 (SIM free) + Ethernet PoE |
 | ⚡ **Zero Python** | Czyste C++ i Bash dla maksymalnej wydajności |
 | 🤖 **AI-Ready** | Gotowy pod integrację z Qwen Agent |
-| 📷 **Vision System** | Kamera PoE z analizą obrazu co 60s |
+| 📷 **Vision System** | Kamera PoE z analizą obrazu co 60 sekund |
 | 🌡️ **Full Diagnostics** | Waga, dźwięk, wibracje, temp., wilgotność, CO₂, VOC |
+| 🛠️ **Easy Install** | Jeden skrypt instaluje wszystko: zależności, kompilację, WebUI |
 
 ---
 
@@ -91,7 +92,9 @@
 /workspace/
 ├── 📘 README.md                        # Główna dokumentacja projektu
 ├── 📄 LICENSE                          # Apache License 2.0
-├── 🔧 hive_monitor_installer.sh        # Automatyczny instalator z TUI
+├── 🔧 hive_monitor_installer.sh        # GŁÓWNY SKRYPT INSTALACYJNY - użyj tego!
+│                                       # Automatycznie instaluje zależności, kompiluje,
+│                                       # konfiguruje WebUI i tworzy usługę systemd
 ├── 📁 docs/                            # Szczegółowa dokumentacja techniczna
 │   ├── 00_README_INTRO.md              # Wprowadzenie do dokumentacji
 │   ├── 01_wstep_i_opis_projektu.md     # Opis projektu i cele
@@ -158,8 +161,8 @@
 │   │   ├── apiary_database.h           # Interfejs bazy danych
 │   │   ├── test_debug_main.cpp         # Testy jednostkowe debug
 │   │   ├── apiary_tui.sh               # Terminal User Interface (Bash)
-│   │   ├── install_apiary.sh           # Skrypt instalacyjny TUI
-│   │   ├── Makefile                    # Build system dla C++
+│   │   ├── install_apiary.sh           # SKRYPT INSTALACYJNY - użyj zamiast ręcznej kompilacji!
+│   │   ├── Makefile                    # Build system dla C++ (tylko dla instalacji ręcznej)
 │   │   └── README.md                   # Dokumentacja modułu RPi2
 │   │
 │   ├── webui/                          # Frontend Web (HTML/JS/PHP)
@@ -167,6 +170,8 @@
 │   │   ├── app.js                      # Logika frontendu JavaScript
 │   │   ├── api.php                     # Backend PHP dla API REST
 │   │   └── README.md                   # Instrukcje deploymentu WebUI
+│   │                                   # UWAGA: Skrypt instalacyjny kopiuje te pliki
+│   │                                   # automatycznie do /var/www/html/apiary/
 │   │
 │   └── android_app/                    # Aplikacja mobilna Android (Kotlin/Java)
 │       ├── app/
@@ -261,7 +266,9 @@
 
 ## 🚀 Szybki Start
 
-### 1. Instalacja Automatyczna
+### 🔹 Metoda Zalecana: Automatyczna Instalacja
+
+**Najszybszy i najbezpieczniejszy sposób** - skrypt instalacyjny wykonuje wszystkie kroki za Ciebie:
 
 ```bash
 cd /workspace
@@ -269,7 +276,31 @@ chmod +x hive_monitor_installer.sh
 ./hive_monitor_installer.sh
 ```
 
-### 2. Kompilacja Firmware Pico
+Skrypt automatycznie:
+- ✅ Instaluje wszystkie zależności systemowe (git, build-essential, sqlite3, Apache2, PHP)
+- ✅ Kompiluje komponenty C++ (apiary_collector, biblioteki sensorów)
+- ✅ Konfiguruje bazę danych SQLite z pełnym schematem agregacji
+- ✅ Instaluje i konfiguruje WebUI API pod `/var/www/html/apiary/`
+- ✅ Tworzy usługę systemd `apiary-collector`
+- ✅ Oferuje menu TUI do konfiguracji i monitoringu
+
+**Wybierz opcję 10 w menu:** `Install Apiary Collector (Full)` - pełna instalacja z WebUI i API
+
+---
+
+### 🔹 Metoda Ręczna (Dla Zaawansowanych)
+
+Jeśli preferujesz ręczną kontrolę nad procesem:
+
+#### 1. Instalacja Zależności
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl wget build-essential make g++ sqlite3 libsqlite3-dev
+sudo apt-get install -y apache2 libapache2-mod-php php-curl
+```
+
+#### 2. Kompilacja Firmware Pico
 
 ```bash
 cd /workspace/src/pico_refactored
@@ -278,30 +309,40 @@ cd /workspace/src/pico_refactored
 # Wgraj na Raspberry Pi Pico
 ```
 
-### 3. Uruchomienie Backend na RPi2
+#### 3. Kompilacja Backend na RPi2
 
 ```bash
 cd /workspace/src/rpi_tui
 make all
+sudo make install  # Instaluje binarki w /usr/local/bin
+```
+
+#### 4. Uruchomienie Kolektora Danych
+
+```bash
+# Jako usługa systemd (zalecane)
+sudo systemctl start apiary-collector
+sudo systemctl enable apiary-collector
+
+# Lub ręcznie
 ./apiary_collector          # Tryb sieciowy (UDP port 5005)
 # lub
 ./apiary_collector --sim    # Tryb symulacji (test)
 ```
 
-### 4. Uruchomienie TUI
+#### 5. Konfiguracja WebUI
 
 ```bash
-./apiary_tui.sh
+# Skrypt instalacyjny robi to automatycznie!
+# Jeśli instalujesz ręcznie:
+sudo cp -r /workspace/src/webui/* /var/www/html/apiary/
+sudo systemctl restart apache2
 ```
 
-### 5. Dostęp do WebUI
+#### 6. Dostęp do Interfejsu
 
-```bash
-# Wymagany Apache2 + PHP
-sudo apt-get install -y apache2 libapache2-mod-php php-curl
-# Pliki WebUI są w /workspace/src/webui/
-# Skopiuj do /var/www/html/
-```
+- **WebUI API**: `http://<twoj-adres-ip>/apiary/index.php`
+- **TUI (Terminal)**: Uruchom `./hive_monitor_installer.sh` i wybierz opcję menu
 
 ---
 

@@ -255,6 +255,32 @@ WEB_DIR="/var/www/html/apiary"
 sudo mkdir -p $WEB_DIR
 sudo chown www-data:www-data $WEB_DIR
 
+# Kopiowanie plików WebUI z katalogu źródłowego
+echo "📦 Kopiowanie plików WebUI (index.html, app.js, api.php)..."
+WEBUI_SOURCE="$(cd "$SCRIPT_DIR/../webui" && pwd)"
+
+if [[ -d "$WEBUI_SOURCE" ]]; then
+    # Kopiowanie wszystkich plików z katalogu webui
+    sudo cp "$WEBUI_SOURCE/index.html" "$WEB_DIR/" || {
+        echo -e "${YELLOW}⚠️ Nie udało się skopiować index.html${NC}"
+    }
+    sudo cp "$WEBUI_SOURCE/app.js" "$WEB_DIR/" || {
+        echo -e "${YELLOW}⚠️ Nie udało się skopiować app.js${NC}"
+    }
+    sudo cp "$WEBUI_SOURCE/api.php" "$WEB_DIR/" || {
+        echo -e "${YELLOW}⚠️ Nie udało się skopiować api.php${NC}"
+    }
+    
+    # Ustawienie właściwych uprawnień
+    sudo chown www-data:www-data "$WEB_DIR"/*.html "$WEB_DIR"/*.js "$WEB_DIR"/*.php 2>/dev/null || true
+    sudo chmod 644 "$WEB_DIR"/*.html "$WEB_DIR"/*.js "$WEB_DIR"/*.php 2>/dev/null || true
+    
+    echo -e "${GREEN}✅ Pliki WebUI skopiowane do $WEB_DIR${NC}"
+else
+    echo -e "${YELLOW}⚠️ Katalog WebUI nie znaleziony w $WEBUI_SOURCE${NC}"
+    echo "   Pliki WebUI nie zostaną skopiowane"
+fi
+
 # Zaawansowany plik index.php z obsługą wszystkich poziomów agregacji
 sudo tee /var/www/html/apiary/index.php > /dev/null <<'PHP_EOF'
 <?php
@@ -442,6 +468,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable apiary-collector
 
 echo "✅ Instalacja zakończona pomyślnie!"
+echo ""
+echo "🌐 Dostęp do WebUI (interfejs graficzny):"
+echo "   http://$(hostname -I | awk '{print $1}')/apiary/index.html"
 echo ""
 echo "📊 Dostęp do danych JSON:"
 echo "   http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
