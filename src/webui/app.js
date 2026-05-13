@@ -47,11 +47,12 @@ const CONFIG = {
         tempMaxAlert: 35,
         humidityMinAlert: 40,
         humidityMaxAlert: 70
-    }
+    },
+    debug: false // Zmień na true, aby włączyć logowanie w produkcji
 };
 
-// Stan aplikacji
-let appState = {
+// Stan aplikacji (encapsulated)
+const AppState = {
     hives: [],
     sensors: [],
     effectors: [],
@@ -63,7 +64,7 @@ let appState = {
     isConnected: false,
     lastRefresh: null,
     isLoading: true,
-    isRefreshing: false,
+    isRefreshing: false, // Blokada race condition przy odświeżaniu
     retryCount: 0
 };
 
@@ -87,20 +88,29 @@ function escapeHtml(text) {
 }
 
 /**
- * Logowanie z poziomami (wyłączalne w produkcji)
+ * Logowanie z poziomami (wyłączalne w produkcji, z ochroną przed rekurencją)
  */
+let isLogging = false;
+
 function logMessage(level, message, data = null) {
     if (!CONFIG.debug && level === 'debug') return;
+    if (isLogging) return; // Zapobieganie rekurencji
     
-    const timestamp = new Date().toISOString();
-    const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-    
-    if (level === 'error') {
-        logMessage("error", prefix, message, data || '');
-    } else if (level === 'warn') {
-        logMessage("warn", prefix, message, data || '');
-    } else {
-        logMessage("info", prefix, message, data || '');
+    isLogging = true;
+    try {
+        const timestamp = new Date().toISOString();
+        const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+        
+        const consoleMethod = level === 'error' ? 'error' : 
+                             level === 'warn' ? 'warn' : 'log';
+        
+        if (data) {
+            console[consoleMethod](prefix, message, data);
+        } else {
+            console[consoleMethod](prefix, message);
+        }
+    } finally {
+        isLogging = false;
     }
 }
 
@@ -237,7 +247,7 @@ async function checkCollectorConnection() {
             const data = await response.json();
             statusEl.textContent = '✅ Połączono';
             statusEl.style.color = '#28a745';
-            appState.isConnected = true;
+            AppState.isConnected = true;
             progressEl.style.width = '100%';
             updateConnectionStatus(true);
             return true;
@@ -249,7 +259,7 @@ async function checkCollectorConnection() {
     // Fallback do demo danych
     statusEl.textContent = '⚠️ Tryb demo (brak kolektora)';
     statusEl.style.color = '#fd7e14';
-    appState.isConnected = false;
+    AppState.isConnected = false;
     progressEl.style.width = '30%';
     updateConnectionStatus(false);
     return false;
@@ -283,21 +293,21 @@ async function fetchHiveData() {
         
         if (response.ok) {
             const data = await response.json();
-            appState.hives = data.hives || data;
-            return appState.hives;
+            AppState.hives = data.hives || data;
+            return AppState.hives;
         } else {
             logMessage("warn", `HTTP error ${response.status}: ${response.statusText}`);
         }
     } catch (error) {
         logMessage("error", 'Błąd pobierania danych:', error.message);
         // Zwróć puste dane zamiast null - zapobiega błędom w renderowaniu
-        appState.hives = [];
-        return appState.hives;
+        AppState.hives = [];
+        return AppState.hives;
     }
     
     // Fallback - zwróć puste dane
-    appState.hives = [];
-    return appState.hives;
+    AppState.hives = [];
+    return AppState.hives;
 }
 
 // ============================================================================
@@ -311,7 +321,7 @@ function renderDashboard() {
         return;
     }
     
-    if (!appState.hives || appState.hives.length === 0) {
+    if (!AppState.hives || AppState.hives.length === 0) {
         hiveCardsContainer.innerHTML = `
             <div class="card" style="grid-column: 1/-1; text-align: center; padding: 3rem;">
                 <h3 style="color: #666;">Brak danych z uli</h3>
@@ -324,7 +334,7 @@ function renderDashboard() {
         return;
     }
     
-    hiveCardsContainer.innerHTML = appState.hives.map(hive => {
+    hiveCardsContainer.innerHTML = AppState.hives.map(hive => {
         const statusClass = hive.is_online ? 'status-online' : 'status-offline';
         const statusText = hive.is_online ? 'ONLINE' : 'OFFLINE';
         const safeHiveId = escapeHtml(hive.hive_id || 'UL-' + hive.id);
@@ -390,7 +400,7 @@ function renderDashboard() {
 }
 
 function updateSummaryMetrics() {
-    const hives = appState.hives || [];
+    const hives = AppState.hives || [];
     
     // Guard clauses for DOM elements
     const totalHivesEl = document.getElementById('totalHives');
@@ -430,7 +440,7 @@ function renderSensorsTable() {
     
     // Generowanie sensorów z danych uli
     const sensors = [];
-    appState.hives.forEach(hive => {
+    AppState.hives.forEach(hive => {
         if (hive.temperature !== undefined) {
             sensors.push({ id: `TEMP-${hive.hive_id}`, type: 'temperature', hive: hive.hive_id, status: hive.is_online ? 'active' : 'inactive', lastRead: new Date().toISOString() });
         }
@@ -479,7 +489,7 @@ function updateHiveSelects() {
         if (!select) return;
         
         const currentValue = select.value;
-        const options = (appState.hives || []).map(h => `<option value="${escapeHtml(h.hive_id)}">${escapeHtml(h.hive_id)}</option>`).join('');
+        const options = (AppState.hives || []).map(h => `<option value="${escapeHtml(h.hive_id)}">${escapeHtml(h.hive_id)}</option>`).join('');
         
         if (selectId === 'historyHiveSelect') {
             select.innerHTML = '<option value="all">Wszystkie ule</option>' + options;
@@ -499,7 +509,7 @@ function renderEffectorsTable() {
     
     // Przykładowe efektory
     const effectors = [];
-    appState.hives.forEach(hive => {
+    AppState.hives.forEach(hive => {
         effectors.push({ id: `FAN-${hive.hive_id}`, type: 'fan', hive: hive.hive_id, status: 'active', state: 'off' });
         effectors.push({ id: `HEAT-${hive.hive_id}`, type: 'heater', hive: hive.hive_id, status: 'active', state: 'off' });
     });
@@ -784,42 +794,42 @@ function startCountdown() {
 
 function refreshAllData() {
     // Guard against concurrent refreshes
-    if (appState.isRefreshing) {
+    if (AppState.isRefreshing) {
         logMessage("debug", "Refresh already in progress, skipping");
         return;
     }
     
-    appState.isRefreshing = true;
+    AppState.isRefreshing = true;
     
     try {
-        if (appState.isConnected) {
+        if (AppState.isConnected) {
             fetchHiveData().then(data => {
                 if (data && data.length > 0) {
                     renderDashboard();
                     renderSensorsTable();
                     renderEffectorsTable();
                 }
-                appState.isRefreshing = false;
+                AppState.isRefreshing = false;
             }).catch(error => {
                 logMessage("error", "Błąd pobierania danych", error.message);
-                appState.isRefreshing = false;
+                AppState.isRefreshing = false;
             });
         } else {
-            appState.isRefreshing = false;
+            AppState.isRefreshing = false;
         }
     } catch (error) {
         logMessage("error", "Błąd w refreshAllData", error.message);
-        appState.isRefreshing = false;
+        AppState.isRefreshing = false;
     }
     
-    appState.lastRefresh = new Date();
+    AppState.lastRefresh = new Date();
 }
 
 // ============================================================================
 // DEMO DANE (gdy brak połączenia z kolektorem)
 // ============================================================================
 function loadDemoData() {
-    appState.hives = [
+    AppState.hives = [
         {
             hive_id: 'UL-001',
             temperature: 24.5,
@@ -887,7 +897,7 @@ document.querySelectorAll('.modal').forEach(modal => {
 // AKCJE - PEŁNE IMPLEMENTACJE
 // ============================================================================
 function viewHiveDetails(hiveId) {
-    const hive = appState.hives.find(h => h.hive_id === hiveId);
+    const hive = AppState.hives.find(h => h.hive_id === hiveId);
     if (!hive) {
         alert(`Nie znaleziono ula ${hiveId}`);
         return;
@@ -996,8 +1006,8 @@ function toggleEffector(hiveId) {
 }
 
 function editSensor(sensorId) {
-    const sensor = appState.sensors.find(s => s.id === sensorId) || 
-                   appState.hives.flatMap(h => [
+    const sensor = AppState.sensors.find(s => s.id === sensorId) || 
+                   AppState.hives.flatMap(h => [
                        { id: `TEMP-${h.hive_id}`, type: 'temperature', hive: h.hive_id },
                        { id: `HUM-${h.hive_id}`, type: 'humidity', hive: h.hive_id }
                    ]).find(s => s.id === sensorId);
@@ -1024,7 +1034,7 @@ function editSensor(sensorId) {
                     <div class="form-group">
                         <label for="editSensorHive">Ul:</label>
                         <select id="editSensorHive" class="form-control">
-                            ${appState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === sensor.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === sensor.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -1065,9 +1075,9 @@ function deleteSensor(sensorId) {
         logMessage("info", `Deleting sensor ${sensorId}`);
         
         // Symulacja usunięcia
-        const index = appState.sensors.findIndex(s => s.id === sensorId);
+        const index = AppState.sensors.findIndex(s => s.id === sensorId);
         if (index > -1) {
-            appState.sensors.splice(index, 1);
+            AppState.sensors.splice(index, 1);
         }
         
         alert(`✅ Usunięto sensor ${sensorId}`);
@@ -1076,7 +1086,7 @@ function deleteSensor(sensorId) {
 }
 
 function editEffector(effectorId) {
-    const effector = appState.effectors.find(e => e.id === effectorId) || 
+    const effector = AppState.effectors.find(e => e.id === effectorId) || 
                      { id: effectorId, type: 'unknown', hive: 'UL-1', status: 'active', state: 'off' };
     
     const modal = document.getElementById('editEffectorModal');
@@ -1103,7 +1113,7 @@ function editEffector(effectorId) {
                     <div class="form-group">
                         <label for="editEffectorHive">Ul:</label>
                         <select id="editEffectorHive" class="form-control">
-                            ${appState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === effector.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === effector.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
                         </select>
                     </div>
                     <div class="form-group">
@@ -1140,7 +1150,7 @@ function editEffector(effectorId) {
 }
 
 function exportData() {
-    const dataStr = JSON.stringify(appState.hives, null, 2);
+    const dataStr = JSON.stringify(AppState.hives, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1150,15 +1160,47 @@ function exportData() {
     URL.revokeObjectURL(url);
 }
 
-// Form submissions
+// Form submissions z walidacją
 document.getElementById('addSensorForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    alert('✅ Dodano sensor (symulacja)');
+    
+    // Walidacja client-side
+    const sensorType = document.getElementById('sensorType').value;
+    const sensorHive = document.getElementById('sensorHive').value;
+    
+    if (!sensorType || !sensorHive) {
+        logMessage('error', 'Wszystkie pola są wymagane');
+        alert('❌ Wszystkie pola są wymagane');
+        return;
+    }
+    
+    // Sanityzacja danych przed wysłaniem
+    const safeType = escapeHtml(sensorType);
+    const safeHive = escapeHtml(sensorHive);
+    
+    logMessage('info', `Dodawanie sensora: typ=${safeType}, ul=${safeHive}`);
+    alert(`✅ Dodano sensor ${safeType} dla ula ${safeHive} (symulacja)`);
     closeModal('addSensorModal');
 });
 
 document.getElementById('addEffectorForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    alert('✅ Dodano effektor (symulacja)');
+    
+    // Walidacja client-side
+    const effectorType = document.getElementById('effectorType').value;
+    const effectorHive = document.getElementById('effectorHive').value;
+    
+    if (!effectorType || !effectorHive) {
+        logMessage('error', 'Wszystkie pola są wymagane');
+        alert('❌ Wszystkie pola są wymagane');
+        return;
+    }
+    
+    // Sanityzacja danych przed wysłaniem
+    const safeType = escapeHtml(effectorType);
+    const safeHive = escapeHtml(effectorHive);
+    
+    logMessage('info', `Dodawanie efektora: typ=${safeType}, ul=${safeHive}`);
+    alert(`✅ Dodano effektor ${safeType} dla ula ${safeHive} (symulacja)`);
     closeModal('addEffectorModal');
 });
