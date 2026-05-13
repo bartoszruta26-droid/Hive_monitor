@@ -38,9 +38,9 @@ $(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h
 	@echo "Gotowe: ./$(COLLECTOR_TARGET)"
 
 # Budowanie wersji testowej standalone loggera
-$(TEST_TARGET): apiary_logger.cpp
+$(TEST_TARGET): apiary_logger.cpp apiary_logger_debug.cpp test_debug_main.cpp
 	@echo "Budowanie wersji testowej loggera..."
-	$(CXX) $(CXXFLAGS) $(TEST_FLAGS) $< -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(TEST_FLAGS) -DDEBUG_BUILD apiary_logger.cpp apiary_logger_debug.cpp test_debug_main.cpp -o $@ $(LDFLAGS)
 	@echo "Gotowe: ./$(TEST_TARGET)"
 
 # Czyszczenie
