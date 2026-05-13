@@ -46,10 +46,7 @@ class MainActivity : AppCompatActivity() {
                 binding.recyclerView.scrollToPosition(scrollPosition)
             }
             
-            // Jeśli dialog był wyświetlany i nie ma połączenia, wyświetl go ponownie
-            if (isIpDialogShowing && !viewModel.isConnected()) {
-                showIpInputDialog()
-            }
+            // Reset flagi dialogu - Observer i tak wywoła showIpInputDialog() jeśli potrzeba
         } else {
             // Sprawdź czy mamy zapisany adres IP tylko przy pierwszym uruchomieniu
             viewModel.checkSavedConnection()
@@ -119,6 +116,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showIpInputDialog() {
+        // Jeśli dialog już jest wyświetlany, nie pokazuj ponownie (zapobiega wyciekowi przy rotacji)
+        if (isIpDialogShowing) return
+        
         val savedIp = viewModel.getSavedIpAddress() ?: ""
         val savedPort = viewModel.getSavedPort().toString()
         
@@ -135,13 +135,31 @@ class MainActivity : AppCompatActivity() {
             .setView(view)
             .setPositiveButton("Połącz") { _, _ ->
                 val ipAddress = ipEditText.text.toString().trim()
-                val port = portEditText.text.toString().toIntOrNull() ?: 5000
+                val portText = portEditText.text.toString()
                 
-                if (ipAddress.isNotEmpty()) {
-                    viewModel.verifyAndSaveConnection(ipAddress, port)
-                } else {
+                // Walidacja adresu IP
+                if (ipAddress.isEmpty()) {
                     Toast.makeText(this, "Podaj poprawny adres IP", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
                 }
+                
+                // Walidacja formatu IP
+                if (!isValidIpAddress(ipAddress)) {
+                    Toast.makeText(this, "Nieprawidłowy format adresu IP", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
+                }
+                
+                // Walidacja portu
+                val port = portText.toIntOrNull()
+                if (port == null || port < 1 || port > 65535) {
+                    Toast.makeText(this, "Port musi być w zakresie 1-65535", Toast.LENGTH_SHORT).show()
+                    isIpDialogShowing = false
+                    return@setPositiveButton
+                }
+                
+                viewModel.verifyAndSaveConnection(ipAddress, port)
             }
             .setNegativeButton("Anuluj") { _, _ ->
                 isIpDialogShowing = false
@@ -153,6 +171,17 @@ class MainActivity : AppCompatActivity() {
         
         // Oznacz że dialog jest wyświetlany
         isIpDialogShowing = true
+    }
+
+    /**
+     * Waliduje format adresu IPv4
+     */
+    private fun isValidIpAddress(ip: String): Boolean {
+        val ipPattern = Regex(
+            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
+            "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        )
+        return ipPattern.matches(ip)
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {

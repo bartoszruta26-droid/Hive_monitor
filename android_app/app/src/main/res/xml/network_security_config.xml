@@ -1,13 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Zezwalaj na HTTP tylko dla lokalnych adresów IP (development) -->
+    <!-- Zezwalaj na HTTP tylko dla lokalnych adresów IP i sieci prywatnych (development) -->
     <domain-config cleartextTrafficPermitted="true">
-        <!-- Lokalne sieci prywatne - zakresy CIDR nie są wspierane, użyj konkretnych IP lub domen -->
-        <!-- Dla rozwoju: zezwól na typowe lokalne IP -->
+        <!-- Lokalne hosty -->
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
-        <!-- Uwaga: Android nie obsługuje CIDR w domain-config. 
-             Dla pełnej obsługi sieci lokalnych w produkcji, rozważ użycie konkretnej domeny
-             lub pozostawienie usesCleartextTraffic="true" tylko w buildzie debug -->
+        
+        <!-- Prywatne zakresy IP (RFC 1918) - typowe adresy lokalne -->
+        <!-- 10.0.0.0/8 -->
+        <domain includeSubdomains="true">10.0.0.0</domain>
+        <!-- 172.16.0.0/12 -->
+        <domain includeSubdomains="true">172.16.0.0</domain>
+        <!-- 192.168.0.0/16 -->
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        
+        <!-- Uwaga: Android nie obsługuje pełnych zakresów CIDR w domain-config.
+             Powyższe domeny służą jako przykłady. W produkcji należy użyć konkretnej domeny
+             lub skonfigurować usesCleartextTraffic="true" tylko w buildzie debug.
+             
+             Dla pełnego bezpieczeństwa:
+             1. Użyj HTTPS w produkcji
+             2. Jeśli HTTP jest konieczne, ogranicz do konkretnych domen
+             3. Rozważ użycie NetworkSpecifier API dla precyzyjnej kontroli
+        -->
     </domain-config>
+    
+    <!-- Domyślnie blokuj cleartext traffic dla wszystkich innych połączeń -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

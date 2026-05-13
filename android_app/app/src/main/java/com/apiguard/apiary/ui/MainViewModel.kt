@@ -44,6 +44,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun verifyAndSaveConnection(ipAddress: String, port: Int) {
+        // Dodatkowa walidacja po stronie ViewModel (zabezpieczenie przed niepoprawnymi danymi)
+        if (port < 1 || port > 65535) {
+            _errorMessage.value = "Nieprawidłowy numer portu"
+            return
+        }
+        
         viewModelScope.launch {
             _isLoading.value = true
             val result = repository.verifyConnection(ipAddress, port)
