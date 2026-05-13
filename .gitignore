@@ -1,85 +1,30 @@
-<<<<<<< recenzja-webui-i-zależności-9ce02
-Nothing should be ignored since the changes only include source files (.php, .js) without any build artifacts, dependencies, or temporary files.
-=======
 ```
-# Compiled and build artifacts
-*.class
-*.o
-*.obj
-*.so
-*.a
-*.dll
-*.exe
-*.out
-
-# Dependencies
-node_modules/
-venv/
-.venv/
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-target/
-.gradle/
-
-# Android specific
+# Android build outputs
 *.apk
 *.aar
+*.so
 *.dex
-local.properties
+*.jar
+
+# Android build directories
+build/
 .gradle/
-/build/
+local.properties
 captures/
-.externalNativeBuild/
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
+# Android cache
+.cache/
 
-# Environment
-.env
-.env.local
-.env.*
-
-# Editors
-.vscode/
+# Android Studio
 .idea/
-*.swp
-*.swo
+*.iml
+*.iws
+*.log
 
-# System
-.DS_Store
-Thumbs.db
+# Android temporary files
+*.tmp
+*.temp
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Compressed files
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+# Android specific
+proguard/
 ```
->>>>>>> main

@@ -1,6 +1,6 @@
 package com.apiguard.apiary.repository
 
-import android.content.Context
+import android.app.Application
 import androidx.preference.PreferenceManager
 import com.apiguard.apiary.data.local.ApiaryDao
 import com.apiguard.apiary.data.local.ApiaryDatabase
@@ -11,23 +11,25 @@ import com.apiguard.apiary.network.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import java.net.URL
 
-class ApiaryRepository(private val context: Context) {
+class ApiaryRepository(private val application: Application) {
     companion object {
         private const val PREF_IP_ADDRESS = "pref_ip_address"
         private const val PREF_API_PORT = "pref_api_port"
-        private const val DEFAULT_PORT = 8080  // Zmieniono z 5000 na 8080 - zgodność z APIARY_COLLECTOR
+        private const val DEFAULT_PORT = 5000  // Zgodność z README.md
         
         // Walidacja zakresu portów
         private const val MIN_PORT = 1
         private const val MAX_PORT = 65535
+        
+        @Volatile
+        private var apiService: ApiaryApiService? = null
     }
 
-    private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
-    private val database: ApiaryDatabase by lazy { ApiaryDatabase.getDatabase(context) }
+    private val preferences = PreferenceManager.getDefaultSharedPreferences(application)
+    private val database: ApiaryDatabase by lazy { ApiaryDatabase.getDatabase(application) }
     private val dao: ApiaryDao by lazy { database.apiaryDao() }
-    
-    private var apiService: ApiaryApiService? = null
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
         // Walidacja zakresu portów przed zapisem
@@ -40,7 +42,10 @@ class ApiaryRepository(private val context: Context) {
             putInt(PREF_API_PORT, port)
             apply()
         }
-        initializeApiService(ipAddress, port)
+        // Resetujemy serwis przy zmianie ustawień - zostanie zainicjalizowany ponownie przy następnym użyciu
+        synchronized(this) {
+            apiService = null
+        }
     }
 
     fun getSavedIpAddress(): String? {
@@ -57,7 +62,9 @@ class ApiaryRepository(private val context: Context) {
             remove(PREF_API_PORT)
             apply()
         }
-        apiService = null
+        synchronized(this) {
+            apiService = null
+        }
     }
     
     private fun initializeApiService(ipAddress: String, port: Int) {
@@ -68,10 +75,14 @@ class ApiaryRepository(private val context: Context) {
     fun getApiService(): ApiaryApiService? {
         val ip = getSavedIpAddress() ?: return null
         val port = getSavedPort()
-        if (apiService == null) {
-            initializeApiService(ip, port)
+        
+        // Double-checked locking pattern dla thread safety
+        return apiService ?: synchronized(this) {
+            if (apiService == null) {
+                initializeApiService(ip, port)
+            }
+            apiService
         }
-        return apiService
     }
 
     suspend fun verifyConnection(ipAddress: String, port: Int = DEFAULT_PORT): ConnectionResult {
@@ -88,6 +99,14 @@ class ApiaryRepository(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 val baseUrl = "http://$ipAddress:$port/"
+                
+                // Dodatkowa walidacja URL
+                try {
+                    URL(baseUrl)
+                } catch (e: Exception) {
+                    return@withContext ConnectionResult.Error("Nieprawidłowy format URL: ${e.message}")
+                }
+                
                 val testApiService = RetrofitClient.createApiService(baseUrl)
                 val response = testApiService.checkHealth()
 
@@ -96,8 +115,16 @@ class ApiaryRepository(private val context: Context) {
                 } else {
                     ConnectionResult.Error("Błąd połączenia: kod ${response.code()}")
                 }
+            } catch (e: IllegalArgumentException) {
+                ConnectionResult.Error("Nieprawidłowy format adresu URL: ${e.message}")
+            } catch (e: java.net.UnknownHostException) {
+                ConnectionResult.Error("Nie odnaleziono hosta. Sprawdź adres IP.")
+            } catch (e: java.net.ConnectException) {
+                ConnectionResult.Error("Nie udało się połączyć. Sprawdź czy urządzenie jest w sieci.")
+            } catch (e: java.net.SocketTimeoutException) {
+                ConnectionResult.Error("Upłynął czas oczekiwania na połączenie.")
             } catch (e: Exception) {
-                ConnectionResult.Error("Nie udało się połączyć: ${e.message}")
+                ConnectionResult.Error("Nie udało się połączyć: ${e.message ?: "Nieznany błąd"}")
             }
         }
     }

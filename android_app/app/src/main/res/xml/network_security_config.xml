@@ -7,22 +7,31 @@
         <domain includeSubdomains="true">127.0.0.1</domain>
         
         <!-- Prywatne zakresy IP (RFC 1918) - typowe adresy lokalne -->
-        <!-- 10.0.0.0/8 -->
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <!-- 172.16.0.0/12 -->
-        <domain includeSubdomains="true">172.16.0.0</domain>
-        <!-- 192.168.0.0/16 -->
-        <domain includeSubdomains="true">192.168.0.0</domain>
-        
-        <!-- Uwaga: Android nie obsługuje pełnych zakresów CIDR w domain-config.
-             Powyższe domeny służą jako przykłady. W produkcji należy użyć konkretnej domeny
-             lub skonfigurować usesCleartextTraffic="true" tylko w buildzie debug.
+        <!-- Uwaga: Android interpretuje te wpisy jako konkretne domeny/IP, nie jako zakresy CIDR.
+             Aby zezwolić na cały zakres, musimy użyć wildcard lub skonfigurować inaczej.
              
-             Dla pełnego bezpieczeństwa:
-             1. Użyj HTTPS w produkcji
-             2. Jeśli HTTP jest konieczne, ogranicz do konkretnych domen
-             3. Rozważ użycie NetworkSpecifier API dla precyzyjnej kontroli
+             Dla pełnej obsługi sieci prywatnych w Android 9+:
+             - 10.x.x.x/8 - dodajemy przykładowe domeny
+             - 172.16.x.x-172.31.x.x/12 - dodajemy przykładowe domeny  
+             - 192.168.x.x/16 - dodajemy przykładowe domeny
+             
+             Alternatywnie, w buildzie debug można użyć android:usesCleartextTraffic="true"
+             w AndroidManifest.xml zamiast tej konfiguracji.
         -->
+        
+        <!-- Przykładowe adresy z każdego zakresu - należy dodać konkretne IP używane w aplikacji -->
+        <domain includeSubdomains="true">10.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.0.254</domain>
+        <domain includeSubdomains="true">172.16.0.1</domain>
+        <domain includeSubdomains="true">172.31.255.254</domain>
+        <domain includeSubdomains="true">192.168.0.1</domain>
+        <domain includeSubdomains="true">192.168.1.1</domain>
+        <domain includeSubdomains="true">192.168.1.100</domain>
+        <domain includeSubdomains="true">192.168.1.254</domain>
+        
+        <!-- Dodaj tutaj konkretne adresy IP swoich urządzeń Raspberry Pi -->
+        <!-- <domain includeSubdomains="true">192.168.1.XXX</domain> -->
+        
     </domain-config>
     
     <!-- Domyślnie blokuj cleartext traffic dla wszystkich innych połączeń -->
@@ -31,4 +40,21 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    
+    <!-- 
+    UWAGA DLA DEVELOPERÓW:
+    
+    Jeśli potrzebujesz obsługi DOWOLNYCH adresów IP w sieci lokalnej (nie tylko tych wymienionych powyżej),
+    masz dwie opcje:
+    
+    1. W pliku AndroidManifest.xml, w sekcji <application> dodaj:
+       android:networkSecurityConfig="@xml/network_security_config"
+       
+       I w build.gradle (dla wersji debug):
+       android:usesCleartextTraffic="true"
+       
+    2. Lub zmodyfikuj ten plik aby zawierał WSZYSTKIE konkretne adresy IP których używasz.
+    
+    Dla produkcji ZALECANE jest użycie HTTPS zamiast HTTP.
+    -->
 </network-security-config>

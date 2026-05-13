@@ -125,28 +125,34 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_ip_input, null)
         val ipEditText = view.findViewById<android.widget.EditText>(R.id.edit_ip_address)
         val portEditText = view.findViewById<android.widget.EditText>(R.id.edit_port)
+        val ipTextInputLayout = view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_ip)
+        val portTextInputLayout = view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_port)
         
         ipEditText.setText(savedIp)
         portEditText.setText(savedPort)
         
         AlertDialog.Builder(this)
-            .setTitle("Konfiguracja połączenia")
-            .setMessage("Podaj statyczny adres IP Raspberry Pi:")
+            .setTitle(R.string.dialog_connection_title)
+            .setMessage(R.string.dialog_connection_message)
             .setView(view)
-            .setPositiveButton("Połącz") { _, _ ->
+            .setPositiveButton(R.string.dialog_connect_button) { _, _ ->
                 val ipAddress = ipEditText.text.toString().trim()
                 val portText = portEditText.text.toString()
                 
+                // Resetowanie błędów
+                ipTextInputLayout?.error = null
+                portTextInputLayout?.error = null
+                
                 // Walidacja adresu IP
                 if (ipAddress.isEmpty()) {
-                    Toast.makeText(this, "Podaj poprawny adres IP", Toast.LENGTH_SHORT).show()
+                    ipTextInputLayout?.error = getString(R.string.error_ip_empty)
                     isIpDialogShowing = false
                     return@setPositiveButton
                 }
                 
                 // Walidacja formatu IP
                 if (!isValidIpAddress(ipAddress)) {
-                    Toast.makeText(this, "Nieprawidłowy format adresu IP", Toast.LENGTH_SHORT).show()
+                    ipTextInputLayout?.error = getString(R.string.error_ip_invalid_format)
                     isIpDialogShowing = false
                     return@setPositiveButton
                 }
@@ -154,14 +160,14 @@ class MainActivity : AppCompatActivity() {
                 // Walidacja portu
                 val port = portText.toIntOrNull()
                 if (port == null || port < 1 || port > 65535) {
-                    Toast.makeText(this, "Port musi być w zakresie 1-65535", Toast.LENGTH_SHORT).show()
+                    portTextInputLayout?.error = getString(R.string.error_port_invalid_range)
                     isIpDialogShowing = false
                     return@setPositiveButton
                 }
                 
                 viewModel.verifyAndSaveConnection(ipAddress, port)
             }
-            .setNegativeButton("Anuluj") { _, _ ->
+            .setNegativeButton(R.string.dialog_cancel_button) { _, _ ->
                 isIpDialogShowing = false
             }
             .setOnDismissListener {
