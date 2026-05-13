@@ -1,1 +1,47 @@
-Nothing should be ignored based on the provided file changes. The changes only include source/config files (README_OLD.md, README.md) and no build artifacts, dependencies, or temporary files that would require gitignore rules.
+```
+# Build artifacts
+build/
+.gradle/
+
+# Dependencies
+.libs/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Compiled files
+*.class
+*.jar
+*.war
+*.aar
+
+# Coverage reports
+coverage/
+*.gcov
+*.lcov
+
+# Gradle
+.gradle/
+gradle-app.setting
+
+# Android specific
+*.apk
+*.aab
+local.properties
+```
