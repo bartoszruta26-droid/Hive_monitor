@@ -136,13 +136,23 @@ void handleUSBCommand() {
 
 /**
  * @brief Extract numeric value from command string
+ * @param cmd Command string (e.g., "SET_HEATER 128")
+ * @return Numeric value, or -1 if no valid number found
  */
 int extractValue(String cmd) {
     int spaceIndex = cmd.indexOf(' ');
-    if (spaceIndex != -1) {
-        return cmd.substring(spaceIndex + 1).toInt();
+    if (spaceIndex != -1 && spaceIndex < cmd.length() - 1) {
+        String valueStr = cmd.substring(spaceIndex + 1);
+        int val = valueStr.toInt();
+        // Validate: toInt() returns 0 for invalid input, but 0 might be valid
+        // Check if the substring actually contains digits
+        for (size_t i = 0; i < valueStr.length(); i++) {
+            if (isDigit(valueStr[i]) || valueStr[i] == '-') {
+                return val;
+            }
+        }
     }
-    return 0;
+    return -1; // Return -1 to indicate invalid/missing value
 }
 
 /**
@@ -168,18 +178,30 @@ void processCommand(String cmd) {
     
     if (cmd.startsWith("SET_HEATER")) {
         int val = extractValue(cmd);
-        heaterDuty = constrain(val, 0, 255);
-        Serial.println("OK: Grzałka ustawiona na " + String(heaterDuty));
+        if (val >= 0 && val <= 255) {
+            heaterDuty = val;
+            Serial.println("OK: Grzałka ustawiona na " + String(heaterDuty));
+        } else {
+            Serial.println("ERROR: Nieprawidłowa wartość dla grzałki (0-255)");
+        }
     }
     else if (cmd.startsWith("SET_FAN")) {
         int val = extractValue(cmd);
-        fanDuty = constrain(val, 0, 255);
-        Serial.println("OK: Wentylator ustawiony na " + String(fanDuty));
+        if (val >= 0 && val <= 255) {
+            fanDuty = val;
+            Serial.println("OK: Wentylator ustawiony na " + String(fanDuty));
+        } else {
+            Serial.println("ERROR: Nieprawidłowa wartość dla wentylatora (0-255)");
+        }
     }
     else if (cmd.startsWith("SET_PUMP")) {
         int val = extractValue(cmd);
-        pumpDuty = constrain(val, 0, 255);
-        Serial.println("OK: Pompa ustawiona na " + String(pumpDuty));
+        if (val >= 0 && val <= 255) {
+            pumpDuty = val;
+            Serial.println("OK: Pompa ustawiona na " + String(pumpDuty));
+        } else {
+            Serial.println("ERROR: Nieprawidłowa wartość dla pompy (0-255)");
+        }
     }
     else if (cmd.startsWith("SET_RELAY1")) {
         relay1State = (cmd.indexOf("ON") > 0 || cmd.indexOf("1") > 0);
@@ -211,7 +233,7 @@ void processCommand(String cmd) {
         unsigned long duration = 1800000; // Default 30 min
         int val = extractValue(cmd);
         if (val > 0) {
-            duration = val * 1000; // Convert seconds to ms
+            duration = (unsigned long)val * 1000UL; // Convert seconds to ms
         }
         executeAutoEmptySequence(duration);
         Serial.println("OK: Rozpoczęto sekwencję opróżniania (" + String(duration/1000) + "s).");
@@ -374,14 +396,22 @@ void loop() {
     updateServoLoop();       // Check auto-empty sequence completion
     updateFlowSensor();      // Calculate flow rate from pulse count
     
-    // Check for USB activity
+    // Dual mode logic: USB priority, Ethernet fallback
     if (Serial.available()) {
         usbActive = true;
         lastActivityTime = now;
         handleUSBCommand();
     }
     
-    // Dual mode logic: USB priority, Ethernet fallback
+    // Check if we should switch back to USB mode from Ethernet
+    if (ethActive && Serial.available()) {
+        // USB activity detected while in Ethernet mode - switch back
+        ethActive = false;
+        usbActive = true;
+        lastActivityTime = now;
+        Serial.println("\nWykryto aktywność USB. Powrót do trybu SERIAL.");
+    }
+    
     if (usbActive && (now - lastActivityTime < 5000)) {
         // USB mode active - continue listening for commands
     } else {
