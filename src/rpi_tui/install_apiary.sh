@@ -24,37 +24,174 @@ cd ..
 
 # 3. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
-DB_PATH="/var/lib/apiary/apiary.db"
-sudo mkdir -p /var/lib/apiary
+DB_PATH="/var/lib/apiaryguard/apiary.db"
+sudo mkdir -p /var/lib/apiaryguard
 sudo touch $DB_PATH
 sudo chown www-data:www-data $DB_PATH
 sudo chmod 664 $DB_PATH
 
-# Inicjalizacja schematu bazy danych (jeśli pusta)
+# Inicjalizacja schematu bazy danych z pełną obsługą agregacji
 sudo -u www-data sqlite3 $DB_PATH <<EOF
-CREATE TABLE IF NOT EXISTS hive_data_raw (
+-- Tabela dla danych surowych (sekundowych)
+CREATE TABLE IF NOT EXISTS raw_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp INTEGER NOT NULL,
+    hive_id TEXT NOT NULL,
+    
+    -- Podstawowe parametry
     temperature REAL,
     humidity REAL,
     weight REAL,
-    battery_voltage REAL,
-    mac_address TEXT
+    battery_level INTEGER,
+    co2_eq INTEGER,
+    voc_idx INTEGER,
+    motion_detected INTEGER,
+    
+    -- Audio
+    audio_rms REAL,
+    audio_dominant_freq REAL,
+    audio_swarm_prob REAL,
+    audio_bee_activity REAL,
+    
+    -- Radar
+    radar_distance REAL,
+    radar_energy REAL,
+    radar_activity REAL,
+    
+    -- HX711 Waga
+    hx711_current REAL,
+    hx711_slope_24h REAL,
+    
+    -- Temp/Humidity rozszerzone
+    th_heat_index REAL,
+    th_dew_point REAL,
+    th_vpd REAL,
+    
+    -- Air Quality
+    aq_iaq_index REAL,
+    
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE TABLE IF NOT EXISTS hive_data_aggregated (
+-- Tabela dla danych zagregowanych (wszystkie poziomy: MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER, YEAR)
+CREATE TABLE IF NOT EXISTS aggregated_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    avg_temperature REAL,
-    avg_humidity REAL,
-    avg_weight REAL,
-    min_temperature REAL,
-    max_temperature REAL,
-    sample_count INTEGER
+    timestamp_start INTEGER NOT NULL,
+    timestamp_end INTEGER NOT NULL,
+    hive_id TEXT NOT NULL,
+    agg_type INTEGER NOT NULL,
+    
+    -- Temperatury
+    temperature_avg REAL,
+    temperature_min REAL,
+    temperature_max REAL,
+    
+    -- Wilgotność
+    humidity_avg REAL,
+    humidity_min REAL,
+    humidity_max REAL,
+    
+    -- Waga
+    weight_avg REAL,
+    weight_min REAL,
+    weight_max REAL,
+    
+    -- Pozostałe średnie
+    battery_avg INTEGER,
+    co2_avg INTEGER,
+    voc_avg INTEGER,
+    
+    -- Audio
+    audio_rms_avg REAL,
+    audio_dominant_freq_avg REAL,
+    audio_swarm_prob_avg REAL,
+    audio_bee_activity_avg REAL,
+    
+    -- Radar
+    radar_distance_avg REAL,
+    radar_energy_avg REAL,
+    radar_activity_avg REAL,
+    
+    -- HX711
+    hx711_current_avg REAL,
+    hx711_slope_24h_avg REAL,
+    
+    -- Liczniki
+    record_count INTEGER,
+    
+    created_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_raw_timestamp ON hive_data_raw(timestamp);
-CREATE INDEX IF NOT EXISTS idx_agg_timestamp ON hive_data_aggregated(timestamp);
+-- Tabela metadanych agregacji
+CREATE TABLE IF NOT EXISTS aggregation_meta (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hive_id TEXT NOT NULL,
+    agg_type INTEGER NOT NULL,
+    last_timestamp INTEGER,
+    last_aggregation INTEGER,
+    record_count INTEGER DEFAULT 0,
+    UNIQUE(hive_id, agg_type)
+);
+
+-- Indeksy dla wydajności
+CREATE INDEX IF NOT EXISTS idx_raw_timestamp ON raw_data(timestamp);
+CREATE INDEX IF NOT EXISTS idx_raw_hive ON raw_data(hive_id);
+CREATE INDEX IF NOT EXISTS idx_raw_hive_timestamp ON raw_data(hive_id, timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_agg_timestamp ON aggregated_data(timestamp_start);
+CREATE INDEX IF NOT EXISTS idx_agg_hive ON aggregated_data(hive_id);
+CREATE INDEX IF NOT EXISTS idx_agg_type ON aggregated_data(agg_type);
+CREATE INDEX IF NOT EXISTS idx_agg_hive_type ON aggregated_data(hive_id, agg_type);
+CREATE INDEX IF NOT EXISTS idx_agg_hive_type_ts ON aggregated_data(hive_id, agg_type, timestamp_start);
+
+-- Widok dla najnowszych danych zagregowanych (MINUTE)
+CREATE VIEW IF NOT EXISTS latest_aggregated AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 1 
+ORDER BY timestamp_start DESC 
+LIMIT 1;
+
+-- Widok dla historii godzinowej (ostatnie 168 godzin = tydzień)
+CREATE VIEW IF NOT EXISTS history_hourly AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 2 
+ORDER BY timestamp_start DESC 
+LIMIT 168;
+
+-- Widok dla historii dziennej (ostatnie 365 dni)
+CREATE VIEW IF NOT EXISTS history_daily AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 3 
+ORDER BY timestamp_start DESC 
+LIMIT 365;
+
+-- Widok dla historii tygodniowej (ostatnie 52 tygodnie)
+CREATE VIEW IF NOT EXISTS history_weekly AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 4 
+ORDER BY timestamp_start DESC 
+LIMIT 52;
+
+-- Widok dla historii miesięcznej (ostatnie 60 miesięcy = 5 lat)
+CREATE VIEW IF NOT EXISTS history_monthly AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 5 
+ORDER BY timestamp_start DESC 
+LIMIT 60;
+
+-- Widok dla historii kwartalnej (ostatnie 40 kwartałów = 10 lat)
+CREATE VIEW IF NOT EXISTS history_quarterly AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 6 
+ORDER BY timestamp_start DESC 
+LIMIT 40;
+
+-- Widok dla historii rocznej (ostatnie 100 lat)
+CREATE VIEW IF NOT EXISTS history_yearly AS
+SELECT * FROM aggregated_data 
+WHERE agg_type = 7 
+ORDER BY timestamp_start DESC 
+LIMIT 100;
 EOF
 
 # 4. Konfiguracja Apache2 dla WebUI i API
@@ -65,28 +202,156 @@ WEB_DIR="/var/www/html/apiary"
 sudo mkdir -p $WEB_DIR
 sudo chown www-data:www-data $WEB_DIR
 
-# Przykładowy plik index.php działający jako API i prosty frontend
+# Zaawansowany plik index.php z obsługą wszystkich poziomów agregacji
 sudo tee /var/www/html/apiary/index.php > /dev/null <<'PHP_EOF'
 <?php
 header('Content-Type: application/json');
-$db = new SQLite3('/var/lib/apiary/apiary.db');
+
+$db = new SQLite3('/var/lib/apiaryguard/apiary.db');
+if (!$db) {
+    echo json_encode(['error' => 'Database connection failed']);
+    exit;
+}
 
 $action = $_GET['action'] ?? 'latest';
+$hive_id = $_GET['hive_id'] ?? '%';
+$limit = intval($_GET['limit'] ?? 100);
 
-if ($action === 'latest') {
-    $result = $db->querySingle("SELECT * FROM hive_data_aggregated ORDER BY timestamp DESC LIMIT 1", true);
-    echo json_encode($result ?: ['status' => 'no_data']);
-} elseif ($action === 'history') {
-    $limit = intval($_GET['limit'] ?? 100);
-    $results = [];
-    $query = $db->query("SELECT * FROM hive_data_aggregated ORDER BY timestamp DESC LIMIT $limit");
-    while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-        $results[] = $row;
-    }
-    echo json_encode($results);
-} else {
-    echo json_encode(['error' => 'Unknown action']);
+switch ($action) {
+    case 'latest':
+        // Najnowsze dane zagregowane (minutowe)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 1 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT 1");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+        echo json_encode($result ?: ['status' => 'no_data']);
+        break;
+        
+    case 'history_minute':
+        // Historia minutowa (ostatnie 60 minut)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 1 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_hour':
+        // Historia godzinowa (ostatnie 168 godzin = tydzień)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 2 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_day':
+        // Historia dzienna (ostatnie 365 dni)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 3 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_week':
+        // Historia tygodniowa (ostatnie 52 tygodnie)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 4 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_month':
+        // Historia miesięczna (ostatnie 60 miesięcy = 5 lat)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 5 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_quarter':
+        // Historia kwartalna (ostatnie 40 kwartałów = 10 lat)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 6 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'history_year':
+        // Historia roczna (ostatnie 100 lat)
+        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 7 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'raw':
+        // Dane surowe (ostatnie 7 dni)
+        $stmt = $db->prepare("SELECT * FROM raw_data WHERE hive_id LIKE :hive AND timestamp > (strftime('%s', 'now') - 604800) ORDER BY timestamp DESC LIMIT :limit");
+        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $results = [];
+        $query = $stmt->execute();
+        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
+            $results[] = $row;
+        }
+        echo json_encode($results);
+        break;
+        
+    case 'stats':
+        // Statystyki bazy danych
+        $stats = [];
+        $stats['raw_count'] = $db->querySingle("SELECT COUNT(*) FROM raw_data");
+        $stats['minute_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 1");
+        $stats['hour_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 2");
+        $stats['day_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 3");
+        $stats['week_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 4");
+        $stats['month_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 5");
+        $stats['quarter_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 6");
+        $stats['year_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 7");
+        $stats['oldest_raw'] = $db->querySingle("SELECT datetime(timestamp, 'unixepoch') FROM raw_data ORDER BY timestamp ASC LIMIT 1");
+        $stats['newest_raw'] = $db->querySingle("SELECT datetime(timestamp, 'unixepoch') FROM raw_data ORDER BY timestamp DESC LIMIT 1");
+        echo json_encode($stats);
+        break;
+        
+    default:
+        echo json_encode(['error' => 'Unknown action. Use: latest, history_minute, history_hour, history_day, history_week, history_month, history_quarter, history_year, raw, stats']);
+        break;
 }
+
+$db->close();
 ?>
 PHP_EOF
 
@@ -121,6 +386,22 @@ sudo systemctl daemon-reload
 sudo systemctl enable apiary-collector
 
 echo "✅ Instalacja zakończona pomyślnie!"
-echo "📊 Dostęp do danych JSON: http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
-echo "📱 Aplikacja Android i WebUI mogą pobierać dane z powyższego adresu."
+echo ""
+echo "📊 Dostęp do danych JSON:"
+echo "   http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
+echo ""
+echo "📱 API dla aplikacji Android i WebUI:"
+echo "   - Najnowsze dane: ?action=latest"
+echo "   - Historia minut: ?action=history_minute&limit=60"
+echo "   - Historia godzin: ?action=history_hour&limit=168"
+echo "   - Historia dni: ?action=history_day&limit=365"
+echo "   - Historia tygodni: ?action=history_week&limit=52"
+echo "   - Historia miesięcy: ?action=history_month&limit=60 (5 lat)"
+echo "   - Historia kwartałów: ?action=history_quarter&limit=40 (10 lat)"
+echo "   - Historia lat: ?action=history_year&limit=100"
+echo "   - Dane surowe: ?action=raw&limit=1000"
+echo "   - Statystyki DB: ?action=stats"
+echo ""
 echo "🔧 Aby uruchomić kolektor: sudo systemctl start apiary-collector"
+echo "📋 Aby sprawdzić status: sudo systemctl status apiary-collector"
+echo "🛑 Aby zatrzymać: sudo systemctl stop apiary-collector"
