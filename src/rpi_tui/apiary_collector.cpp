@@ -1187,6 +1187,7 @@ public:
         } catch (const std::exception& e) {
             Logger::getInstance().error("Blad parsowania JSON: " + std::string(e.what()));
         }
+        GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseJSON");)
     }
     
     // Parsowanie CSV - kompatybilnosc wsteczna
@@ -1286,6 +1287,7 @@ public:
         } catch (const std::exception& e) {
             Logger::getInstance().error("Blad parsowania CSV: " + std::string(e.what()));
         }
+        GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseCSV"))
     }
 
     // Symulacja danych (do testow bez fizycznych Pico)
