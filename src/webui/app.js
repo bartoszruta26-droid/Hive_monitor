@@ -128,6 +128,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConfigFromBackend(); // Najpierw załaduj konfigurację
     initTabs();
     initSettings();
+    initModals(); // Inicjalizacja modali i formularzy
     loadDemoData(); // Demo dane na początek
     startAutoRefresh();
     checkCollectorConnection();
@@ -884,14 +885,80 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
 
-// Zamknij modal po kliknięciu poza zawartością
-document.querySelectorAll('.modal').forEach(modal => {
-    modal.addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.classList.remove('active');
-        }
+// Zamknij modal po kliknięciu poza zawartością - PRZENIESIONE DO DOMContentLoaded
+// Ta funkcja jest wywoływana w initModals() wewnątrz DOMContentLoaded
+
+// ============================================================================
+// INICJALIZACJA MODALI
+// ============================================================================
+function initModals() {
+    // Zamknij modal po kliknięciu poza zawartością
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('active');
+            }
+        });
     });
-});
+    
+    // Inicjalizacja formularzy
+    initSensorForm();
+    initEffectorForm();
+}
+
+function initSensorForm() {
+    const form = document.getElementById('addSensorForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Walidacja client-side
+            const sensorType = document.getElementById('sensorType').value;
+            const sensorHive = document.getElementById('sensorHive').value;
+            
+            if (!sensorType || !sensorHive) {
+                logMessage('error', 'Wszystkie pola są wymagane');
+                alert('❌ Wszystkie pola są wymagane');
+                return;
+            }
+            
+            // Sanityzacja danych przed wysłaniem
+            const safeType = escapeHtml(sensorType);
+            const safeHive = escapeHtml(sensorHive);
+            
+            logMessage('info', `Dodawanie sensora: typ=${safeType}, ul=${safeHive}`);
+            alert(`✅ Dodano sensor ${safeType} dla ula ${safeHive} (symulacja)`);
+            closeModal('addSensorModal');
+        });
+    }
+}
+
+function initEffectorForm() {
+    const form = document.getElementById('addEffectorForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Walidacja client-side
+            const effectorType = document.getElementById('effectorType').value;
+            const effectorHive = document.getElementById('effectorHive').value;
+            
+            if (!effectorType || !effectorHive) {
+                logMessage('error', 'Wszystkie pola są wymagane');
+                alert('❌ Wszystkie pola są wymagane');
+                return;
+            }
+            
+            // Sanityzacja danych przed wysłaniem
+            const safeType = escapeHtml(effectorType);
+            const safeHive = escapeHtml(effectorHive);
+            
+            logMessage('info', `Dodawanie efektora: typ=${safeType}, ul=${safeHive}`);
+            alert(`✅ Dodano effektor ${safeType} dla ula ${safeHive} (symulacja)`);
+            closeModal('addEffectorModal');
+        });
+    }
+}
 
 // ============================================================================
 // AKCJE - PEŁNE IMPLEMENTACJE
@@ -1160,47 +1227,6 @@ function exportData() {
     URL.revokeObjectURL(url);
 }
 
-// Form submissions z walidacją
-document.getElementById('addSensorForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    // Walidacja client-side
-    const sensorType = document.getElementById('sensorType').value;
-    const sensorHive = document.getElementById('sensorHive').value;
-    
-    if (!sensorType || !sensorHive) {
-        logMessage('error', 'Wszystkie pola są wymagane');
-        alert('❌ Wszystkie pola są wymagane');
-        return;
-    }
-    
-    // Sanityzacja danych przed wysłaniem
-    const safeType = escapeHtml(sensorType);
-    const safeHive = escapeHtml(sensorHive);
-    
-    logMessage('info', `Dodawanie sensora: typ=${safeType}, ul=${safeHive}`);
-    alert(`✅ Dodano sensor ${safeType} dla ula ${safeHive} (symulacja)`);
-    closeModal('addSensorModal');
-});
+// Form submissions są teraz obsługiwane w initSensorForm() i initEffectorForm()
+// wywoływanych wewnątrz DOMContentLoaded przez initModals()
 
-document.getElementById('addEffectorForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    // Walidacja client-side
-    const effectorType = document.getElementById('effectorType').value;
-    const effectorHive = document.getElementById('effectorHive').value;
-    
-    if (!effectorType || !effectorHive) {
-        logMessage('error', 'Wszystkie pola są wymagane');
-        alert('❌ Wszystkie pola są wymagane');
-        return;
-    }
-    
-    // Sanityzacja danych przed wysłaniem
-    const safeType = escapeHtml(effectorType);
-    const safeHive = escapeHtml(effectorHive);
-    
-    logMessage('info', `Dodawanie efektora: typ=${safeType}, ul=${safeHive}`);
-    alert(`✅ Dodano effektor ${safeType} dla ula ${safeHive} (symulacja)`);
-    closeModal('addEffectorModal');
-});

@@ -104,11 +104,6 @@ function ensureDirectoryExists($path) {
     return true;
 }
 
-// Alias dla ensureConfigDir - używamy tej samej funkcji (DRY principle)
-function ensureConfigDir($path) {
-    return ensureDirectoryExists($path);
-}
-
 // Utwórz katalogi dla logów
 ensureDirectoryExists(dirname($logFile));
 ensureDirectoryExists(dirname($errorLogFile));

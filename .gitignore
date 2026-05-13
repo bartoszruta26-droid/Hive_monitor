@@ -1,1 +1,1 @@
-Nothing needs to be added to .gitignore since only a source file (src/webui/app.js) was modified and there are no build artifacts, dependencies, or temporary files in the changes.
+Nothing should be ignored since the changes only include source files (.php, .js) without any build artifacts, dependencies, or temporary files.
