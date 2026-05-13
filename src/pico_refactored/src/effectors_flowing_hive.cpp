@@ -22,6 +22,7 @@
 static int currentServoAngle = SERVO_REST_ANGLE;
 static unsigned long lastServoUpdate = 0;
 static bool servoInitialized = false;
+static bool servoDetected = false;  // Track if servo is physically connected
 static bool autoEmptyActive = false;
 static unsigned long autoEmptyStartTime = 0;
 static unsigned long autoEmptyDuration = 0;
@@ -31,6 +32,7 @@ static long hx711_2_value = 0;
 static long hx711_2_offset = 0;
 static float hx711_2_scale = 1.0f;
 static bool hx711_2_initialized = false;
+static bool hx711_2_detected = false;  // Track if HX711 #2 is physically connected
 
 // Flow sensor state
 static volatile unsigned long flowPulseCount = 0;
@@ -38,6 +40,7 @@ static float currentFlowRate = 0.0f;
 static float totalVolume = 0.0f;
 static unsigned long lastFlowUpdate = 0;
 static bool flowSensorInitialized = false;
+static bool flowSensorDetected = false;  // Track if flow sensor is physically connected
 
 // Safe mode state
 static bool flowingHiveSafeMode = false;
@@ -76,6 +79,7 @@ void initServoControl() {
     analogWrite(SERVO_EMPTY_PIN, 0);
     
     servoInitialized = true;
+    servoDetected = true;  // Assume present if pin initialization succeeds
     currentServoAngle = SERVO_REST_ANGLE;
     
     DBG_SERVO("[SERVO] Initialized on GPIO %d\n", SERVO_EMPTY_PIN);
@@ -108,6 +112,13 @@ static uint8_t angleToDuty(uint16_t angle) {
 void setServoAngle(uint16_t angle) {
     TRACE_ENTER(SERVO);
     servo_op_count++;
+    
+    // Check if servo is detected/initialized
+    if (!servoDetected || !servoInitialized) {
+        DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
+        TRACE_EXIT(SERVO);
+        return;
+    }
     
     // Check safe mode
     if (flowingHiveSafeMode) {
@@ -281,9 +292,11 @@ void initHX711_2() {
     
     if (test != 0) {
         hx711_2_initialized = true;
+        hx711_2_detected = true;  // Sensor detected and responding
         DBG_HX711("[HX711_2] Initialized successfully (test reading: %ld)\n", test);
     } else {
         hx711_2_initialized = false;
+        hx711_2_detected = false;  // Sensor not detected
         LOG_ERROR("HX711_2", "Initialization failed - sensor not detected");
     }
     
@@ -354,6 +367,7 @@ void initFlowSensor() {
     attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
     
     flowSensorInitialized = true;
+    flowSensorDetected = true;  // Assume present if interrupt attaches successfully
     flowPulseCount = 0;
     currentFlowRate = 0.0f;
     totalVolume = 0.0f;
@@ -369,7 +383,8 @@ void initFlowSensor() {
  * @brief Update flow sensor calculations
  */
 void updateFlowSensor() {
-    if (!flowSensorInitialized) return;
+    // Check if flow sensor is detected/initialized
+    if (!flowSensorDetected || !flowSensorInitialized) return;
     
     unsigned long now = millis();
     unsigned long elapsed = now - lastFlowUpdate;
@@ -450,26 +465,35 @@ void printFlowingHiveEffectorStatus() {
     
     // Servo status
     Serial.printf("  Servo:\n");
+    Serial.printf("    Detected: %s\n", servoDetected ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", servoInitialized ? "YES" : "NO");
-    Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
-    Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
+    if (servoDetected) {
+        Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
+        Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
+    }
     Serial.printf("    Operations: %lu, Errors: %lu\n", servo_op_count, servo_error_count);
     
     // HX711_2 status
     Serial.printf("  HX711 #2 (Superstructure):\n");
+    Serial.printf("    Detected: %s\n", hx711_2_detected ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", hx711_2_initialized ? "YES" : "NO");
-    if (hx711_2_initialized) {
+    if (hx711_2_detected && hx711_2_initialized) {
         Serial.printf("    Weight: %.1f g\n", getSuperstructureWeightGrams());
+    } else {
+        Serial.println("    (Sensor not detected - skipping readings)");
     }
     Serial.printf("    Reads: %lu, Errors: %lu\n", hx711_2_read_count, hx711_2_error_count);
     
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
+    Serial.printf("    Detected: %s\n", flowSensorDetected ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
-    if (flowSensorInitialized) {
+    if (flowSensorDetected && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
         Serial.printf("    Total volume: %.3f L\n", totalVolume);
         Serial.printf("    Honey flowing: %s\n", isHoneyFlowing() ? "YES" : "NO");
+    } else {
+        Serial.println("    (Sensor not detected - skipping readings)");
     }
     Serial.printf("    Updates: %lu, Errors: %lu\n", flow_read_count, flow_error_count);
     
