@@ -7,9 +7,12 @@
 2. [Specyfikacja Mechaniczna](#specyfikacja-mechaniczna)
 3. [Specyfikacja Elektroniczna](#specyfikacja-elektroniczna)
 4. [Opis Kodu Źródłowego](#opis-kodu-źródłowego)
-5. [Konfiguracja i Kalibracja](#konfiguracja-i-kalibracja)
-6. [API i Komendy](#api-i-komendy)
-7. [Rozwiązywanie Problemów](#rozwiązywanie-problemów)
+5. [Gentle Code Principles](#gentle-code-principles)
+6. [Error Handling Strategy](#error-handling-strategy)
+7. [Debug Log System](#debug-log-system)
+8. [Konfiguracja i Kalibracja](#konfiguracja-i-kalibracja)
+9. [API i Komendy](#api-i-komendy)
+10. [Rozwiązywanie Problemów](#rozwiązywanie-problemów)
 
 ---
 
@@ -26,8 +29,155 @@ System efektorów Flowing Hive to zaawansowany moduł automatyzacji procesu zbie
 - **Automatyczne opróżnianie ramek**: Sekwencja ruchów serwo z możliwością programowania czasu trwania
 - **Monitorowanie wagi w czasie rzeczywistym**: Dwa niezależne czujniki wagi (uli i nadstawki)
 - **Pomiar przepływu miodu**: Dokładny pomiar objętości zebranego miodu
-- **Tryb bezpieczny**: Automatyczne wyłączenie w przypadku wykrycia anomalii
+- **Tryb bezpieczny**: Automatyczne wyłączenie w przypadku wykryciu anomalii
 - **Kompleksowe logowanie**: Szczegółowe informacje diagnostyczne
+- **Hardware Detection**: Automatyczne wykrywanie podłączonych urządzeń
+- **Gentle Code**: Brak crashów - graceful degradation przy błędach
+
+---
+
+## Gentle Code Principles
+
+System Flowing Hive implementuje filozofię **Gentle Code** - kodu odpornego na błędy, który nie powoduje crashów systemu.
+
+### Zasady Gentle Code
+
+1. **Hardware Detection Before Operation**
+   - Każda funkcja sprawdza flagi `*Detected` przed wykonaniem operacji
+   - Jeśli hardware nie jest wykryty - funkcja zwraca gracefully bez błędu
+   - System kontynuuje działanie z pominięciem niedostępnego komponentu
+
+2. **Input Validation with Graceful Degradation**
+   - Wszystkie parametry wejściowe są walidowane
+   - Nieprawidłowe wartości są automatycznie korygowane (constrain)
+   - Zamiast exceptionów - logowanie warningów
+
+3. **No Exceptions, Only Return Codes**
+   - Brak rzucania wyjątków w kodzie embedded
+   - Funkcje zwracają 0 lub false w przypadku błędu
+   - Error counters do monitorowania zdrowia systemu
+
+4. **Safe Mode Automatic Activation**
+   - Przy krytycznych błędach aktywuje się tryb bezpieczny
+   - Serwo wraca do pozycji REST
+   - Sekwencje automatyczne są przerywane
+
+### Przykład: Sprawdzenie Hardware Before Operation
+
+```cpp
+void setServoAngle(uint16_t angle) {
+    // GENTLE CODE: Check hardware presence before operation
+    if (!servoDetected || !servoInitialized) {
+        DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
+        return;  // Graceful exit - no error thrown
+    }
+    
+    // GENTLE CODE: Respect safe mode
+    if (flowingHiveSafeMode) {
+        DBG_SERVO("[SERVO] Command ignored - safe mode active\n");
+        return;  // Blocked for safety
+    }
+    
+    // ... rest of operation
+}
+```
+
+---
+
+## Error Handling Strategy
+
+### Poziomy Obsługi Błędów
+
+| Poziom | Opis | Akcja |
+|--------|------|-------|
+| **INFO** | Normalne operacje | Logowanie debug |
+| **WARNING** | Nieprawidłowe parametry | Auto-korekta + log |
+| **ERROR** | Błąd hardware/timeout | Increment error counter |
+| **CRITICAL** | Wielokrotne błędy | Activate safe mode |
+
+### Timeout Protection
+
+Wszystkie operacje I/O mają zabezpieczenie timeout:
+
+```cpp
+// HX711 read with timeout
+unsigned long start_time = millis();
+while(digitalRead(HX711_2_DT)) {
+    if (millis() - start_time > HX711_2_TIMEOUT_MS) {
+        hx711_2_error_count++;
+        return 0;  // Timeout - graceful failure
+    }
+    delayMicroseconds(10);
+}
+```
+
+### Validation Ranges
+
+Każdy sensor reading jest walidowany:
+
+```cpp
+// Validate HX711 reading
+if (count < HX711_2_MIN_VALID_VALUE || count > HX711_2_MAX_VALID_VALUE) {
+    hx711_2_error_count++;
+    return 0;  // Invalid reading rejected
+}
+```
+
+### Error Counters
+
+System zbiera statystyki błędów dla każdego komponentu:
+
+- `servo_op_count` / `servo_error_count`
+- `hx711_2_read_count` / `hx711_2_error_count`
+- `flow_read_count` / `flow_error_count`
+
+Dostępne przez komendę `STATUS_FLOWING`.
+
+---
+
+## Debug Log System
+
+### Poziomy Debugowania
+
+Zdefiniowane w `config.h`:
+
+| Macro | Opis | Komponent |
+|-------|------|-----------|
+| `DEBUG_SERVO` | Logowanie operacji serwa | Servo control |
+| `DEBUG_FLOW` | Logowanie czujnika przepływu | Flow sensor |
+| `DEBUG_HX711` | Logowanie wag | HX711 #1 & #2 |
+| `DEBUG_VERBOSE` | Szczegółowe trace enter/exit | All modules |
+| `DEBUG_PERF` | Monitoring czasu wykonania | Performance |
+
+### Przykłady Outputu Debug
+
+**Serwo Initialization:**
+```
+[SERVO] Initialized on GPIO 12
+[SERVO] Rest position: 10 degrees
+[SERVO] PWM: 50Hz, pulse width 500-2500 us
+```
+
+**Flow Sensor Update:**
+```
+[FLOW] Initialized on GPIO 25 (interrupt-enabled)
+[FLOW] Pulses per liter: 450
+[FLOW] Rate: 0.125 L/min, Total: 1.250 L
+```
+
+**Error Logging:**
+```
+[ERROR] HX711_2: Initialization failed - sensor not detected
+[WARN] SERVO: Assertion failed (non-fatal): Invalid angle 200
+```
+
+### Trace Enter/Exit (DEBUG_VERBOSE)
+
+Przy pełnym debugowaniu każda funkcja loguje wejście/wyjście:
+```
+[TRACE] ENTER: initServoControl
+[TRACE] EXIT: initServoControl
+```
 
 ---
 

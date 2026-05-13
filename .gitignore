@@ -3,36 +3,28 @@
 *.o
 *.obj
 *.out
-*.elf
-*.hex
-*.bin
-*.map
-*.lst
 
 # Dependencies
 .pio/
-.pioenvs/
-.piolibdeps/
+.platformio/
+lib/
+src/pico_refactored/.pio/
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
-*.swo
 
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
 .idea/
 *.swp
-*.swo
 
-# Build outputs
+# Build directories
 build/
 dist/
-output/
 ```

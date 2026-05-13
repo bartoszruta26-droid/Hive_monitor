@@ -1,11 +1,39 @@
 /*
+ * ============================================================================
  * ApiaryGuard - Flowing Hive Effector Implementation
- * Servo control for automatic frame emptying, second HX711 for superstructure weight,
- * and flow sensor for honey output monitoring
+ * ============================================================================
  * 
- * DEBUG: Enable serial debugging by defining DEBUG_SERVO and DEBUG_FLOW in config.h
- * LOGGING: All operations are logged with state changes
- * EXCEPTIONS: Graceful handling of invalid values and hardware errors
+ * MODUŁ: Implementacja efektorów automatycznego opróżniania ramek Flowing Hive
+ * 
+ * KOMPONENTY:
+ * 1. Serwo mechanizmu obracania ramek (GPIO 12 - PWM)
+ * 2. Drugi czujnik HX711 do wagi nadstawki (GPIO 10, 11)
+ * 3. Czujnik przepływu miodu YF-S201 (GPIO 25 - INT)
+ * 
+ * GENTLE CODE PRINCIPLES:
+ * - Wszystkie funkcje sprawdzają czy hardware jest wykryty przed operacją
+ * - Walidacja parametrów wejściowych z graceful degradation
+ * - Brak exceptionów - return codes i flagi errorów
+ * - Automatyczny safe mode przy wykryciu anomalii
+ * - Comprehensive logging for diagnostics
+ * 
+ * ERROR HANDLING STRATEGY:
+ * - Timeout protection dla wszystkich operacji I/O
+ * - Validation ranges dla wszystkich sensor readings
+ * - Error counters dla monitoringa zdrowia systemu
+ * - Safe mode activation dla critical errors
+ * 
+ * DEBUGOWANIE:
+ * - DEBUG_SERVO: Logowanie operacji serwa
+ * - DEBUG_FLOW: Logowanie czujnika przepływu
+ * - DEBUG_HX711: Logowanie wag
+ * - DEBUG_VERBOSE: Szczegółowe trace enter/exit
+ * - DEBUG_PERF: Monitoring czasu wykonania
+ * 
+ * @file effectors_flowing_hive.cpp
+ * @version 1.0.0
+ * @date 2024
+ * @license MIT
  */
 
 #include "effectors_flowing_hive.h"
@@ -15,48 +43,73 @@
 #endif
 
 // ============================================================================
-// GLOBAL VARIABLES
+// GLOBAL VARIABLES - STATE & DIAGNOSTICS
 // ============================================================================
 
-// Servo state
-static int currentServoAngle = SERVO_REST_ANGLE;
-static unsigned long lastServoUpdate = 0;
-static bool servoInitialized = false;
-static bool servoDetected = false;  // Track if servo is physically connected
-static bool autoEmptyActive = false;
-static unsigned long autoEmptyStartTime = 0;
-static unsigned long autoEmptyDuration = 0;
+// ----------------------------------------------------------------------------
+// Servo State Variables
+// ----------------------------------------------------------------------------
+static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
+static unsigned long lastServoUpdate = 0;                   ///< Last update timestamp (millis)
+static bool servoInitialized = false;                       ///< PWM initialized flag
+static bool servoDetected = false;                          ///< Hardware detection flag
+static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
+static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
+static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
 
-// Second HX711 state
-static long hx711_2_value = 0;
-static long hx711_2_offset = 0;
-static float hx711_2_scale = 1.0f;
-static bool hx711_2_initialized = false;
-static bool hx711_2_detected = false;  // Track if HX711 #2 is physically connected
+// ----------------------------------------------------------------------------
+// HX711 #2 (Superstructure Weight) State Variables
+// ----------------------------------------------------------------------------
+static long hx711_2_value = 0;                              ///< Last raw ADC reading
+static long hx711_2_offset = 0;                             ///< Tare offset for calibration
+static float hx711_2_scale = 1.0f;                          ///< Scale factor for grams conversion
+static bool hx711_2_initialized = false;                    ///< Initialization success flag
+static bool hx711_2_detected = false;                       ///< Hardware detection flag
 
-// Flow sensor state
-static volatile unsigned long flowPulseCount = 0;
-static float currentFlowRate = 0.0f;
-static float totalVolume = 0.0f;
-static unsigned long lastFlowUpdate = 0;
-static bool flowSensorInitialized = false;
-static bool flowSensorDetected = false;  // Track if flow sensor is physically connected
+// ----------------------------------------------------------------------------
+// Flow Sensor State Variables
+// ----------------------------------------------------------------------------
+static volatile unsigned long flowPulseCount = 0;           ///< Pulse counter (volatile - ISR updated)
+static float currentFlowRate = 0.0f;                        ///< Current flow rate in L/min
+static float totalVolume = 0.0f;                            ///< Accumulated volume in liters
+static unsigned long lastFlowUpdate = 0;                    ///< Last calculation timestamp
+static bool flowSensorInitialized = false;                  ///< Interrupt attached flag
+static bool flowSensorDetected = false;                     ///< Hardware detection flag
 
-// Safe mode state
-static bool flowingHiveSafeMode = false;
+// ----------------------------------------------------------------------------
+// Safe Mode State
+// ----------------------------------------------------------------------------
+static bool flowingHiveSafeMode = false;                    ///< Safe mode active flag
 
-// Debug counters
-static unsigned long servo_op_count = 0;
-static unsigned long servo_error_count = 0;
-static unsigned long hx711_2_read_count = 0;
-static unsigned long hx711_2_error_count = 0;
-static unsigned long flow_read_count = 0;
-static unsigned long flow_error_count = 0;
+// ----------------------------------------------------------------------------
+// Diagnostic Counters - For Health Monitoring
+// ----------------------------------------------------------------------------
+static unsigned long servo_op_count = 0;                    ///< Total servo operations
+static unsigned long servo_error_count = 0;                 ///< Servo operation errors
+static unsigned long hx711_2_read_count = 0;                ///< Total HX711 #2 reads
+static unsigned long hx711_2_error_count = 0;               ///< HX711 #2 read errors
+static unsigned long flow_read_count = 0;                   ///< Total flow sensor updates
+static unsigned long flow_error_count = 0;                  ///< Flow calculation errors
 
 // ============================================================================
-// FLOW SENSOR INTERRUPT HANDLER
+// FLOW SENSOR INTERRUPT SERVICE ROUTINE (ISR)
 // ============================================================================
 
+/**
+ * @brief Interrupt handler for flow sensor pulses
+ * 
+ * ISR CHARACTERISTICS:
+ * - Minimal execution time (counter increment only)
+ * - Called on every rising edge of flow sensor output
+ * - Updates volatile counter for thread-safe main loop access
+ * 
+ * THREAD SAFETY:
+ * - flowPulseCount is volatile for atomic access
+ * - No blocking operations in ISR
+ * - No Serial printing in ISR
+ * 
+ * @note Attached to FLOW_SENSOR_PIN (GPIO 25) on RISING edge
+ */
 void IRAM_ATTR flowSensorISR() {
     flowPulseCount++;
 }
@@ -67,40 +120,77 @@ void IRAM_ATTR flowSensorISR() {
 
 /**
  * @brief Initialize servo control system
+ * 
+ * INITIALIZATION STEPS:
+ * 1. Configure GPIO pin as OUTPUT
+ * 2. Setup PWM with 50Hz frequency (20ms period for standard servos)
+ * 3. Initialize state variables
+ * 4. Set detection flag (assumes present if PWM setup succeeds)
+ * 
+ * HARDWARE DETECTION:
+ * - Cannot directly detect servo presence (open-loop control)
+ * - Assumes connected if pin initialization succeeds
+ * - Operator should verify mechanical operation
+ * 
+ * ERROR HANDLING:
+ * - Logs initialization details
+ * - Continues system operation even without servo
+ * - Safe defaults applied (rest position)
  */
 void initServoControl() {
     TRACE_ENTER(SERVO);
     
+    // Configure PWM output pin
     pinMode(SERVO_EMPTY_PIN, OUTPUT);
     
-    // Initialize PWM for servo (50Hz = 20ms period)
-    // RP2040 uses analogWrite for PWM
+    // Initialize PWM for servo control
+    // Standard RC servos use 50Hz (20ms period)
+    // Pulse width: 500us (0°) to 2500us (180°)
     analogWriteFrequency(SERVO_EMPTY_PIN, 50);
-    analogWrite(SERVO_EMPTY_PIN, 0);
+    analogWrite(SERVO_EMPTY_PIN, 0);  // Start at 0% duty cycle
     
+    // Update state
     servoInitialized = true;
-    servoDetected = true;  // Assume present if pin initialization succeeds
+    servoDetected = true;  // Assume present - no feedback from servo
     currentServoAngle = SERVO_REST_ANGLE;
     
+    // Log initialization
     DBG_SERVO("[SERVO] Initialized on GPIO %d\n", SERVO_EMPTY_PIN);
     DBG_SERVO("[SERVO] Rest position: %d degrees\n", SERVO_REST_ANGLE);
+    DBG_SERVO("[SERVO] PWM: 50Hz, pulse width %d-%d us\n", 
+              SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
     
     TRACE_EXIT(SERVO);
 }
 
 /**
  * @brief Convert angle to PWM duty cycle (0-255)
+ * 
+ * CONVERSION PROCESS:
+ * 1. Constrain angle to valid range (0-180°)
+ * 2. Map angle to pulse width (500-2500μs)
+ * 3. Convert pulse width to duty cycle for 50Hz PWM
+ * 
+ * FORMULA:
+ * duty_cycle = (pulse_width / 20000) * 255
+ * where 20000μs = 20ms = 50Hz period
+ * 
+ * @param angle Servo angle in degrees (0-180)
+ * @return uint8_t PWM duty cycle (0-255)
+ * 
+ * @note Internal helper function - not exposed in API
  */
 static uint8_t angleToDuty(uint16_t angle) {
-    // Constrain angle to valid range
+    // Gentle code: Constrain input to prevent hardware damage
     angle = constrain(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
     
-    // Map angle to pulse width (500-2500us)
+    // Map angle to pulse width using linear interpolation
     uint32_t pulseWidth = map(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE, 
                               SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
     
-    // Convert pulse width to duty cycle (for 50Hz = 20ms period)
-    // Duty = (pulseWidth / 20000) * 255
+    // Convert pulse width to duty cycle (8-bit resolution)
+    // For 50Hz: period = 20ms = 20000μs
+    // duty = (pulseWidth / 20000) * 255
     uint8_t duty = (pulseWidth * 255) / 20000;
     
     return duty;
@@ -108,38 +198,59 @@ static uint8_t angleToDuty(uint16_t angle) {
 
 /**
  * @brief Set servo to specific angle
+ * 
+ * OPERATION FLOW:
+ * 1. Check if servo is detected and initialized
+ * 2. Verify safe mode is not active
+ * 3. Validate and constrain angle parameter
+ * 4. Convert angle to PWM duty cycle
+ * 5. Update PWM output
+ * 6. Log operation for diagnostics
+ * 
+ * GENTLE CODE FEATURES:
+ * - Returns early if hardware not detected (no crash)
+ * - Respects safe mode (blocks movement)
+ * - Constrains invalid angles gracefully
+ * - Logs warnings instead of throwing exceptions
+ * 
+ * @param angle Target angle in degrees (0-180)
+ *              Automatically constrained to valid range
+ * 
+ * @note Non-blocking operation - returns immediately
  */
 void setServoAngle(uint16_t angle) {
     TRACE_ENTER(SERVO);
     servo_op_count++;
     
-    // Check if servo is detected/initialized
+    // GENTLE CODE: Check hardware presence before operation
     if (!servoDetected || !servoInitialized) {
         DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
         TRACE_EXIT(SERVO);
-        return;
+        return;  // Graceful exit - no error thrown
     }
     
-    // Check safe mode
+    // GENTLE CODE: Respect safe mode
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Command ignored - safe mode active\n");
         TRACE_EXIT(SERVO);
-        return;
+        return;  // Blocked for safety
     }
     
-    // Validate angle
+    // Validate angle with graceful degradation
     if (angle > SERVO_MAX_ANGLE) {
-        DBG_SERVO("[SERVO] WARNING: Invalid angle %d (max %d)\n", angle, SERVO_MAX_ANGLE);
+        DBG_SERVO("[SERVO] WARNING: Invalid angle %d (max %d), constraining\n", 
+                  angle, SERVO_MAX_ANGLE);
         servo_error_count++;
-        angle = SERVO_MAX_ANGLE;
+        angle = SERVO_MAX_ANGLE;  // Auto-correct instead of failing
     }
     
+    // Update state and apply new position
     currentServoAngle = angle;
     uint8_t duty = angleToDuty(angle);
     
     analogWrite(SERVO_EMPTY_PIN, duty);
     
-    DBG_SERVO("[SERVO] Angle set to %d degrees (duty=%d)\n", angle, duty);
+    DBG_SERVO("[SERVO] Angle set to %d degrees (duty=%d/255)\n", angle, duty);
     
     TRACE_EXIT(SERVO);
 }
