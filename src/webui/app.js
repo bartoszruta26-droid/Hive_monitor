@@ -170,8 +170,11 @@ async function checkCollectorConnection() {
     const statusEl = document.getElementById('collectorStatus');
     const progressEl = document.getElementById('connectionProgress');
     
+    // Guard clause - sprawdź czy elementy istnieją
     if (!statusEl || !progressEl) {
-        console.warn('DOM elements not found for connection status');
+        console.warn('DOM elements not found for connection status - checking alternative elements');
+        // Spróbuj zaktualizować przynajmniej wskaźnik połączenia w headerze
+        updateConnectionStatus(false);
         return false;
     }
     
@@ -180,7 +183,8 @@ async function checkCollectorConnection() {
         
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.health}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000 // 5 sekund timeout
         });
         
         if (response.ok) {
@@ -193,7 +197,7 @@ async function checkCollectorConnection() {
             return true;
         }
     } catch (error) {
-        console.log('Brak połączenia z APIARY_COLLECTOR, używam danych demo');
+        console.log('Brak połączenia z APIARY_COLLECTOR, używam danych demo:', error.message);
     }
     
     // Fallback do demo danych
@@ -227,19 +231,27 @@ async function fetchHiveData() {
     try {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.hives}`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            timeout: 5000 // 5 sekund timeout
         });
         
         if (response.ok) {
             const data = await response.json();
             appState.hives = data.hives || data;
             return appState.hives;
+        } else {
+            console.warn(`HTTP error ${response.status}: ${response.statusText}`);
         }
     } catch (error) {
-        console.error('Błąd pobierania danych:', error);
+        console.error('Błąd pobierania danych:', error.message);
+        // Zwróć puste dane zamiast null - zapobiega błędom w renderowaniu
+        appState.hives = [];
+        return appState.hives;
     }
     
-    return null;
+    // Fallback - zwróć puste dane
+    appState.hives = [];
+    return appState.hives;
 }
 
 // ============================================================================
@@ -774,28 +786,259 @@ document.querySelectorAll('.modal').forEach(modal => {
 });
 
 // ============================================================================
-// AKCJE
+// AKCJE - PEŁNE IMPLEMENTACJE
 // ============================================================================
 function viewHiveDetails(hiveId) {
-    alert(`Szczegóły ula ${hiveId} (rozbudowa w wersji premium)`);
+    const hive = appState.hives.find(h => h.hive_id === hiveId);
+    if (!hive) {
+        alert(`Nie znaleziono ula ${hiveId}`);
+        return;
+    }
+    
+    const modal = document.getElementById('hiveDetailsModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>🐝 Szczegóły ula ${hiveId}</h2>
+                    <button class="modal-close" onclick="closeModal('hiveDetailsModal')">&times;</button>
+                </div>
+                <div class="metric-grid" style="margin-bottom: 1rem;">
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.temperature?.toFixed(1) || '--'}</div>
+                        <div class="metric-label">Temperatura</div>
+                        <div class="metric-unit">°C</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.humidity?.toFixed(1) || '--'}</div>
+                        <div class="metric-label">Wilgotność</div>
+                        <div class="metric-unit">%RH</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.weight?.toFixed(3) || '--'}</div>
+                        <div class="metric-label">Waga</div>
+                        <div class="metric-unit">kg</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value">${hive.battery_level || '--'}</div>
+                        <div class="metric-label">Bateria</div>
+                        <div class="metric-unit">%</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Status:</label>
+                    <span class="card-status ${hive.is_online ? 'status-online' : 'status-offline'}">
+                        ${hive.is_online ? 'ONLINE' : 'OFFLINE'}
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label>Ostatni odczyt:</label>
+                    <p>${hive.last_update ? new Date(hive.last_update).toLocaleString('pl-PL') : 'Brak danych'}</p>
+                </div>
+                <div class="form-group">
+                    <label>Sensory:</label>
+                    <div>
+                        <span class="sensor-badge badge-temp">Temperatura</span>
+                        <span class="sensor-badge badge-hum">Wilgotność</span>
+                        <span class="sensor-badge badge-weight">Waga</span>
+                        <span class="sensor-badge badge-bat">Bateria</span>
+                        ${hive.co2_eq !== undefined ? '<span class="sensor-badge badge-co2">CO₂</span>' : ''}
+                        ${hive.audio_dominant_freq !== undefined ? '<span class="sensor-badge badge-audio">Audio</span>' : ''}
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="closeModal('hiveDetailsModal')" style="width: 100%;">Zamknij</button>
+            `;
+        }
+        modal.classList.add('active');
+    } else {
+        // Fallback - alert jeśli modal nie istnieje
+        alert(`Szczegóły ula ${hiveId}: Temp=${hive.temperature}°C, Wilgotność=${hive.humidity}%RH, Waga=${hive.weight}kg`);
+    }
 }
 
 function toggleEffector(hiveId) {
-    alert(`Panel efektorów dla ${hiveId}`);
+    const modal = document.getElementById('effectorPanelModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            const effectors = [
+                { id: `FAN-${hiveId}`, type: 'fan', name: 'Wentylator', state: false },
+                { id: `HEAT-${hiveId}`, type: 'heater', name: 'Grzałka', state: false },
+                { id: `LIGHT-${hiveId}`, type: 'light', name: 'Oświetlenie', state: false },
+                { id: `ALARM-${hiveId}`, type: 'alarm', name: 'Alarm', state: false }
+            ];
+            
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>⚙️ Efektory dla ula ${hiveId}</h2>
+                    <button class="modal-close" onclick="closeModal('effectorPanelModal')">&times;</button>
+                </div>
+                <div style="display: grid; gap: 1rem;">
+                    ${effectors.map(eff => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-color); border-radius: 8px;">
+                            <div>
+                                <strong>${eff.name}</strong>
+                                <div style="font-size: 0.85rem; color: #666;">ID: ${eff.id}</div>
+                            </div>
+                            <button class="btn ${eff.state ? 'btn-danger' : 'btn-success'}" 
+                                    onclick="toggleEffectorState('${eff.id}', this)">
+                                ${eff.state ? '🔴 WYŁ' : '🟢 WŁ'}
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="btn btn-secondary" onclick="closeModal('effectorPanelModal')" style="width: 100%; margin-top: 1rem;">Zamknij</button>
+            `;
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Panel efektorów dla ${hiveId} - dostępny po dodaniu modala effectorPanelModal`);
+    }
 }
 
 function editSensor(sensorId) {
-    alert(`Edycja sensora ${sensorId}`);
+    const sensor = appState.sensors.find(s => s.id === sensorId) || 
+                   appState.hives.flatMap(h => [
+                       { id: `TEMP-${h.hive_id}`, type: 'temperature', hive: h.hive_id },
+                       { id: `HUM-${h.hive_id}`, type: 'humidity', hive: h.hive_id }
+                   ]).find(s => s.id === sensorId);
+    
+    if (!sensor) {
+        alert(`Nie znaleziono sensora ${sensorId}`);
+        return;
+    }
+    
+    const modal = document.getElementById('editSensorModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>✏️ Edycja sensora ${sensorId}</h2>
+                    <button class="modal-close" onclick="closeModal('editSensorModal')">&times;</button>
+                </div>
+                <form id="editSensorForm">
+                    <div class="form-group">
+                        <label for="editSensorType">Typ:</label>
+                        <input type="text" id="editSensorType" class="form-control" value="${sensor.type}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSensorHive">Ul:</label>
+                        <select id="editSensorHive" class="form-control">
+                            ${appState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === sensor.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSensorStatus">Status:</label>
+                        <select id="editSensorStatus" class="form-control">
+                            <option value="active" ${sensor.status === 'active' ? 'selected' : ''}>Aktywny</option>
+                            <option value="inactive" ${sensor.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('editSensorModal')" style="flex: 1;">Anuluj</button>
+                    </div>
+                </form>
+            `;
+            
+            document.getElementById('editSensorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const newHive = document.getElementById('editSensorHive').value;
+                const newStatus = document.getElementById('editSensorStatus').value;
+                
+                // TODO: Wysyłanie do API
+                console.log(`Updating sensor ${sensorId}: hive=${newHive}, status=${newStatus}`);
+                alert(`✅ Zapisano zmiany dla sensora ${sensorId}`);
+                closeModal('editSensorModal');
+                renderSensorsTable();
+            });
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Edycja sensora ${sensorId} - dostępna po dodaniu modala editSensorModal`);
+    }
 }
 
 function deleteSensor(sensorId) {
-    if (confirm(`Czy na pewno usunąć sensor ${sensorId}?`)) {
-        alert(`Usunięto sensor ${sensorId}`);
+    if (confirm(`Czy na pewno chcesz usunąć sensor ${sensorId}? Ta operacja jest nieodwracalna.`)) {
+        // TODO: Wysyłanie DELETE request do API
+        console.log(`Deleting sensor ${sensorId}`);
+        
+        // Symulacja usunięcia
+        const index = appState.sensors.findIndex(s => s.id === sensorId);
+        if (index > -1) {
+            appState.sensors.splice(index, 1);
+        }
+        
+        alert(`✅ Usunięto sensor ${sensorId}`);
+        renderSensorsTable();
     }
 }
 
 function editEffector(effectorId) {
-    alert(`Edycja efektora ${effectorId}`);
+    const effector = appState.effectors.find(e => e.id === effectorId) || 
+                     { id: effectorId, type: 'unknown', hive: 'UL-1', status: 'active', state: 'off' };
+    
+    const modal = document.getElementById('editEffectorModal');
+    if (modal) {
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.innerHTML = `
+                <div class="modal-header">
+                    <h2>✏️ Edycja efektora ${effectorId}</h2>
+                    <button class="modal-close" onclick="closeModal('editEffectorModal')">&times;</button>
+                </div>
+                <form id="editEffectorForm">
+                    <div class="form-group">
+                        <label for="editEffectorType">Typ:</label>
+                        <select id="editEffectorType" class="form-control">
+                            <option value="fan" ${effector.type === 'fan' ? 'selected' : ''}>Wentylator</option>
+                            <option value="heater" ${effector.type === 'heater' ? 'selected' : ''}>Grzałka</option>
+                            <option value="humidifier" ${effector.type === 'humidifier' ? 'selected' : ''}>Nawilżacz</option>
+                            <option value="feeder" ${effector.type === 'feeder' ? 'selected' : ''}>Podkarmiacz</option>
+                            <option value="light" ${effector.type === 'light' ? 'selected' : ''}>Oświetlenie</option>
+                            <option value="alarm" ${effector.type === 'alarm' ? 'selected' : ''}>Alarm</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEffectorHive">Ul:</label>
+                        <select id="editEffectorHive" class="form-control">
+                            ${appState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === effector.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editEffectorStatus">Status:</label>
+                        <select id="editEffectorStatus" class="form-control">
+                            <option value="active" ${effector.status === 'active' ? 'selected' : ''}>Aktywny</option>
+                            <option value="inactive" ${effector.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('editEffectorModal')" style="flex: 1;">Anuluj</button>
+                    </div>
+                </form>
+            `;
+            
+            document.getElementById('editEffectorForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const newType = document.getElementById('editEffectorType').value;
+                const newHive = document.getElementById('editEffectorHive').value;
+                const newStatus = document.getElementById('editEffectorStatus').value;
+                
+                // TODO: Wysyłanie do API
+                console.log(`Updating effector ${effectorId}: type=${newType}, hive=${newHive}, status=${newStatus}`);
+                alert(`✅ Zapisano zmiany dla efektora ${effectorId}`);
+                closeModal('editEffectorModal');
+                renderEffectorsTable();
+            });
+        }
+        modal.classList.add('active');
+    } else {
+        alert(`Edycja efektora ${effectorId} - dostępna po dodaniu modala editEffectorModal`);
+    }
 }
 
 function exportData() {

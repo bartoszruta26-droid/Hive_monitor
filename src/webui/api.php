@@ -39,12 +39,20 @@ if (DEBUG_MODE) {
 // NAGŁÓWKI HTTP I CORS
 // ============================================================================
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
+
+// Konfiguracja CORS - użyj zmiennej środowiskowej lub ogranicz do localhost w produkcji
+$allowedOrigin = getenv('APIARY_CORS_ORIGIN') ?: 'http://localhost';
+// W produkcji ustaw konkretną domenę zamiast '*'
+// Przykład: $allowedOrigin = 'https://twojadomena.pl';
+header("Access-Control-Allow-Origin: {$allowedOrigin}");
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-API-Key');
 header('Access-Control-Max-Age: 86400'); // Cache preflight przez 24h
-header('X-Content-Type-Options: nosniff'); // Bezpieczeństwo
+header('X-Content-Type-Options: nosniff'); // Bezpieczeństwo - zapobieg MIME sniffing
 header('X-Frame-Options: DENY'); // Clickjacking protection
+header('X-XSS-Protection: 1; mode=block'); // XSS filter
+header('Referrer-Policy: strict-origin-when-cross-origin'); // Ochrona refererów
+header('Permissions-Policy: geolocation=(), microphone=(), camera=()'); // Ograniczenie uprawnień
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -52,10 +60,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Konfiguracja
+// Konfiguracja - używaj HTTPS w produkcji
+$isProduction = getenv('APIARY_ENVIRONMENT') === 'production';
 $COLLECTOR_HOST = getenv('APIARY_COLLECTOR_HOST') ?: 'localhost';
 $COLLECTOR_PORT = (int)(getenv('APIARY_COLLECTOR_PORT') ?: 8080);
-$COLLECTOR_URL = "http://{$COLLECTOR_HOST}:{$COLLECTOR_PORT}";
+// Automatyczne wykrywanie protokołu - HTTPS w produkcji
+$protocol = $isProduction ? 'https' : 'http';
+$COLLECTOR_URL = "{$protocol}://{$COLLECTOR_HOST}:{$COLLECTOR_PORT}";
 
 // ============================================================================
 // KONFIGURACJA ŚCIEŻEK LOGÓW
@@ -64,8 +75,14 @@ $logFile = '/var/log/apiaryguard/webui.log';
 $errorLogFile = '/var/log/apiaryguard/webui_errors.log';
 $accessLogFile = '/var/log/apiaryguard/webui_access.log';
 
-// Funkcja tworząca katalogi rekurencyjnie z obsługą błędów
+// Funkcja tworząca katalogi rekurencyjnie z obsługą błędów i walidacją ścieżki
 function ensureDirectoryExists($path) {
+    // Walidacja ścieżki - zapobiegaj directory traversal attacks
+    if (strpos($path, '..') !== false || strpos($path, "\0") !== false) {
+        error_log("[SECURITY ERROR] Invalid path detected: {$path}");
+        return false;
+    }
+    
     if (!is_dir($path)) {
         try {
             if (!mkdir($path, 0755, true)) {
@@ -261,8 +278,17 @@ if (!in_array(strtoupper($method), $validMethods)) {
     exit();
 }
 
-// Pobierz endpoint z walidacją XSS
-$path = isset($_GET['endpoint']) ? htmlspecialchars(trim($_GET['endpoint']), ENT_QUOTES, 'UTF-8') : '';
+// Pobierz endpoint z walidacją - BEZ htmlspecialchars (to API JSON, nie HTML)
+// htmlspecialchars jest tylko do outputu HTML, nie do ścieżek API
+$path = isset($_GET['endpoint']) ? trim($_GET['endpoint']) : '';
+
+// Walidacja ścieżki - dozwolone znaki: a-z, 0-9, /, -, _
+if ($path && !preg_match('/^[a-zA-Z0-9\/\-_]+$/', $path)) {
+    logMessage('WARNING', "Invalid endpoint path: {$path}", 'Security');
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid endpoint path', 'allowed_chars' => 'a-z, 0-9, /, -, _']);
+    exit();
+}
 
 // Zaloguj żądanie HTTP
 logHttpRequest($_SERVER);
@@ -423,9 +449,13 @@ function loadConfig() {
                     if ($value === 'true' || $value === 'false') {
                         $value = ($value === 'true');
                     } elseif (is_numeric($value)) {
-                        $value = floatval($value);
-                        if (floor($value) == $value) {
-                            $value = intval($value);
+                        // Sprawdź czy liczba jest całkowita - użyj porównania stringów dla precyzji
+                        $floatValue = floatval($value);
+                        // Porównaj reprezentację stringową aby uniknąć błędów konwersji float->int
+                        if (strpos($value, '.') === false && $floatValue == intval($floatValue)) {
+                            $value = intval($floatValue);
+                        } else {
+                            $value = $floatValue;
                         }
                     }
                     
