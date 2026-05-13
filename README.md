@@ -367,3 +367,205 @@ Wkład w rozwój projektu jest mile widziany! Zobacz nasze [wytyczne dla kontryb
 [⬆ Wróć do góry](#-apiaryguard-pro)
 
 </div>
+
+---
+
+## 📊 Kompleksowa Lista Parametrów Systemowych
+
+ApiaryGuard Pro przetwarza **ponad 338+ parametrów** w czasie rzeczywistym, podzielonych na 8 głównych modułów sensorycznych:
+
+| Moduł | Liczba Parametrów | Kategorie Metryk | Przykładowe Wskaźniki |
+|-------|-------------------|------------------|----------------------|
+| **HX711 (Waga)** | 105+ | Statystyki, Trendy, Pożytek, Konsumpcja, Cykle, Zdrowie, Prognozy | `nectar_inflow_rate`, `colony_growth_rate`, `winter_readiness`, `predicted_weight_24h` |
+| **Audio (MEMS Mic)** | 97+ | Czasowe, Częstotliwościowe, FFT, Psychoakustyczne, Bioakustyczne | `swarm_probability`, `bee_activity_index`, `spectral_centroid`, `harmonic_to_noise_ratio` |
+| **Radar MMWave** | 27 | Odległość, Energia, Prędkość, Anomalie, Jakość | `hive_health_index`, `target_density`, `motion_intensity`, `anomaly_score` |
+| **TempHumidity** | 28 | Komfort Termiczny, Stabilność, Trendy, Alarmy | `heat_index`, `dew_point`, `brood_stress_index`, `mold_risk` |
+| **AirQuality** | 24 | Gazy (CO₂/VOC/NOx), IAQ, Wentylacja, Alerty | `iaq_index`, `ventilation_need`, `contamination_risk`, `stress_from_air` |
+| **PiezoVibration** | 22 | Amplituda, Częstotliwość, Klasyfikacja Źródeł | `bee_traffic_score`, `intrusion_probability`, `predator_vib_score` |
+| **Barometric** | 18 | Ciśnienie, Prognoza Pogody, Warunki Wylotów | `weather_trend`, `storm_probability`, `foraging_conditions` |
+| **Light** | 17 | Natężenie, Cykl Dobowy, Synchronizacja Cyrkadiana | `circadian_sync`, `daylight_duration`, `foraging_light_index` |
+
+### Przykładowe Zastosowania Zaawansowanych Metryk
+
+#### 🍯 Detekcja Pożytku i Produkcji Miodu
+```json
+{
+  "nectar_inflow_rate": 0.45,        // kg/h - aktualny napływ nektaru
+  "foraging_efficiency": 87.3,       // % - efektywność zbierania
+  "honey_production_idx": 92.1,      // % - indeks produkcji miodu
+  "bloom_intensity": 78.5,           // % - intensywność kwitnienia
+  "expected_honey_yield": 15.2       // kg - oczekiwany zbiór
+}
+```
+
+#### 🚨 Wczesne Wykrywanie Rójki
+```json
+{
+  "swarm_probability": 87.3,         // % - prawdopodobieństwo rojenia
+  "weight_drop_24h": -2.3,           // kg - utrata wagi
+  "audio_piping_detected": true,     // wykrycie dźwięków piping
+  "radar_activity_spike": 156.7,     // % - wzrost aktywności
+  "temperature_elevation": 3.2       // °C - wzrost temp. w ulu
+}
+```
+
+#### 🦠 Detekcja Chorób i Pasożytów
+```json
+{
+  "varroa_detection_confidence": 0.82,  // pewność wykrycia warrozy
+  "nosema_risk_index": 34.5,            // ryzyko nosemy
+  "colony_growth_rate": -2.3,           // %/dzień - spadek populacji
+  "stress_indicator": 0.67,             // 0-1 - poziom stresu
+  "vitality_index": 45.2                // % - witalność kolonii
+}
+```
+
+---
+
+## 🔧 Szczegółowa Specyfikacja Techniczna
+
+### Architektura Oprogramowania
+
+#### Warstwa Firmware (Raspberry Pi Pico - C++)
+- **Dynamiczna Detekcja Sensorów**: Automatyczne wykrywanie podłączonych sensorów przy starcie
+- **Real-time Processing**: Przetwarzanie sygnałów z częstotliwością do 8kHz (audio)
+- **Watchdog Timer**: 8s timeout z auto-reset dla niezawodności
+- **Low-power Modes**: Zarządzanie energią dla trybu bateryjnego
+- **HTTP API Server**: Wbudowany serwer HTTP dla komunikacji z RPi2
+
+#### Warstwa Backend (Raspberry Pi 2 - C++ + Bash)
+- **UDP Collector**: Wysokowydajny kolektor danych (port 5005)
+- **SQLite Database**: Lokalna baza z historią pomiarów
+- **Gentle Code Pattern**: Odporność na błędy bez przerywania działania
+- **Multi-hive Support**: Obsługa wielu uli jednocześnie
+- **TUI Interface**: Terminal User Interface w Bash
+
+#### Warstwa Frontend (WebUI - HTML/JS/PHP)
+- **Real-time Dashboard**: Aktualizacja co 5 sekund
+- **Responsive Design**: Działa na mobile i desktop
+- **Chart Visualization**: Wykresy trendów i historii
+- **Alert Management**: Panel alertów i powiadomień
+
+### Protokoły Komunikacyjne
+
+| Interfejs | Protokół | Częstotliwość | Zastosowanie |
+|-----------|----------|---------------|--------------|
+| **Pico ↔ RPi2** | HTTP/JSON | 1-10 Hz | Telemetria sensorów |
+| **RPi2 ↔ Database** | SQLite API | Event-driven | Zapis odczytów |
+| **RPi2 ↔ WebUI** | REST/JSON | On-demand | Dashboard dane |
+| **RPi2 ↔ Cloud** | HTTPS/MQTT | 15 min | Sync zdalny |
+| **LTE Modem** | PPP/AT Commands | N/A | Łączność zewnętrzna |
+
+### Bezpieczeństwo i Niezawodność
+
+- **EMF Shielding**: Osłony mu-metal dla radarów MMWave
+- **IP68 Enclosure**: Pełna ochrona przed wodą i pyłem
+- **Thermal Protection**: Thermal fuse 45°C dla grzałek
+- **Data Encryption**: TLS 1.3 dla komunikacji zdalnej
+- **Authentication**: JWT tokens dla API
+- **Redundancy**: Podwójne zasilanie (PoE + bateria)
+- **Auto-recovery**: Watchdog + health check scripts
+
+---
+
+## 🤖 Integracja z AI - Qwen Agent
+
+ApiaryGuard Pro integruje zaawansowanego asystenta AI opartego na modelu **Qwen** (Alibaba Cloud), który zapewnia:
+
+### Funkcjonalności AI
+
+1. **Autonomiczny Monitoring**: Analiza strumieni danych w czasie rzeczywistym z rekomendacjami działań
+2. **Conversational Dashboard**: Naturalna interakcja głosowa/tekstowa z systemem
+3. **Predykcyjne Scenariusze**: Wielowariantowe symulacje przyszłych stanów ula
+4. **Generowanie Kodu**: Automatyczne tworzenie skryptów Bash/C++ na żądanie
+5. **Detekcja Anomalii**: Wykrywanie nietypowych wzorców z wyjaśnieniami przyczyn
+
+### Przykład Dialogu z AI
+
+```
+👤 Użytkownik: "Pokaż mi ule z problemami zdrowotnymi"
+
+🤖 Qwen Agent:
+🔍 Przeanalizowano 12 uli...
+
+Znaleziono 3 ule wymagające uwagi:
+
+📍 Ul #7 - WARROZA (prawdopodobieństwo 87%)
+   - Osyp: 47 roztoczy/24h (norma: <10)
+   - Audio: drapanie w paśmie 200-500Hz
+   - Waga: spadek kondycji -1.2kg
+   💡 Zalecenie: Kwas mrówkowy + termoterapia
+
+📍 Ul #12 - NOSEMA (ryzyko 64%)
+   - Konsumpcja: wzrost o 34% przy spadku masy
+   - Audio: obniżona aktywność (bee_activity_index: 34%)
+   💡 Zalecenie: Badanie mikroskopowe, suplementacja
+
+📍 Ul #3 - STRES TERMICZNY
+   - Temperatura: 38.5°C (przekroczenie o 3.5°C)
+   - Wentylacja: maksymalna (wentylator 100%)
+   💡 Zalecenie: Dodaj izolację, sprawdź cień
+
+Czy chcesz wygenerować plan leczenia dla wszystkich 3 uli?
+```
+
+---
+
+## 📈 Roadmap Rozwoju (Aktualizacja 2025)
+
+### Q1 2025 ✅
+- [x] Integracja Qwen AI Agent
+- [x] Predykcja rójki ML (94% accuracy)
+- [ ] Mobile App (iOS/Android) - w trakcie
+
+### Q2 2025
+- [ ] LoRaWAN mesh networking
+- [ ] Solar power management z MPPT
+- [ ] Multi-apiary dashboard (100+ uli)
+- [ ] Blockchain traceability pilot
+
+### Q3 2025
+- [ ] Computer vision disease detection
+- [ ] Autonomous treatment protocols
+- [ ] Cloud sync & backup (AWS/Azure)
+- [ ] Voice assistant (Alexa/Google)
+
+### Q4 2025
+- [ ] Augmented Reality maintenance app
+- [ ] Predictive yield optimization
+- [ ] Integration with agricultural APIs
+- [ ] Certification for organic beekeeping
+
+---
+
+## 👥 Współpraca (Contribute)
+
+Wkład w rozwój projektu jest mile widziany! Zobacz nasze [wytyczne dla kontrybutorów](docs/13_licencja_i_wspolpraca.md).
+
+### Kontakt
+
+- 📧 Email: contact@apiaryguard.pro
+- 🌐 Strona: https://apiaryguard.pro
+- 💬 Discord: https://discord.gg/apiaryguard
+- 🐦 Twitter: @ApiaryGuardPro
+- 📚 Dokumentacja: [/docs](docs/README.md)
+
+### Jak Kontrybuować?
+
+1. Fork repozytorium
+2. Stwórz branch feature (`git checkout -b feature/AmazingFeature`)
+3. Commit zmian (`git commit -m 'Add AmazingFeature'`)
+4. Push (`git push origin feature/AmazingFeature`)
+5. Otwórz Pull Request
+
+---
+
+<div align="center">
+
+**ApiaryGuard Pro v2.5.0** | **Enterprise Multi-Apiary Monitoring System**
+
+Made with ❤️ for Beekeepers Worldwide
+
+[⬆ Wróć do góry](#-apiaryguard-pro)
+
+</div>
