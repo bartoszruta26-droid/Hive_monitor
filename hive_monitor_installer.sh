@@ -3431,7 +3431,8 @@ option_install_apirray() {
         echo -e "${CYAN}Next steps:${NC}"
         echo "  1. Start the collector: sudo systemctl start apiary-collector"
         echo "  2. Check status: sudo systemctl status apiary-collector"
-        echo "  3. Access WebUI API: http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
+        echo "  3. Access WebUI (GUI): http://$(hostname -I | awk '{print $1}')/apiary/index.html"
+        echo "  4. Access WebUI API: http://$(hostname -I | awk '{print $1}')/apiary/index.php?action=latest"
         echo ""
         log_message "INFO" "Apiary Collector FULL installation completed successfully"
     else
