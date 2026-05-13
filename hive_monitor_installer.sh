@@ -97,7 +97,7 @@ clear_screen() {
 wait_for_key() {
     echo ""
     echo -e "${YELLOW}${LANG[PRESS_KEY]}${NC}"
-    read -n 1 -s
+    read -n 1 -s || true
 }
 
 print_header() {
@@ -380,7 +380,9 @@ option_install_software() {
             read -p "Run install script? (y/N): " run_install
             if [[ $run_install =~ ^[Yy]$ ]]; then
                 chmod +x "$INSTALL_DIR/install.sh"
-                cd "$INSTALL_DIR" && ./install.sh
+                cd "$INSTALL_DIR" || { echo -e "${RED}Failed to change directory${NC}"; return 1; }
+                ./install.sh
+                cd - > /dev/null || true
             fi
         fi
         
@@ -412,8 +414,8 @@ option_install_software() {
                     log_message "ERROR" "g++ not found during C++ compilation"
                 else
                     echo "Build tools found. Compiling..."
-                    cd "$INSTALL_DIR/src/rpi_tui"
-                    
+                    cd "$INSTALL_DIR/src/rpi_tui" || { echo -e "${RED}Failed to change to rpi_tui directory${NC}"; log_message "ERROR" "Failed to cd to src/rpi_tui"; return 1; }
+                                        
                     # Clean previous builds
                     echo "Cleaning previous builds..."
                     make clean 2>/dev/null || true
@@ -433,9 +435,9 @@ option_install_software() {
                         read -p "Install to system? (y/N): " install_system
                         if [[ $install_system =~ ^[Yy]$ ]]; then
                             if [[ $EUID -eq 0 ]]; then
-                                make install
+                                make install || { echo -e "${RED}Failed to install binaries (running as root)${NC}"; log_message "ERROR" "make install failed (root)"; cd - > /dev/null || true; return 1; }
                             else
-                                sudo make install
+                                sudo make install || { echo -e "${RED}Failed to install binaries (sudo)${NC}"; log_message "ERROR" "sudo make install failed"; cd - > /dev/null || true; return 1; }
                             fi
                             if [[ $? -eq 0 ]]; then
                                 echo -e "${GREEN}Binaries installed successfully!${NC}"
@@ -589,7 +591,7 @@ get_config_value() {
         fi
     fi
     echo "$default"
-    return 1
+    return 0
 }
 
 # Bezpieczny zapis pojedynczej wartości do pliku konfiguracyjnego
@@ -814,7 +816,7 @@ setup_database() {
     if [[ ! -f "$DB_PATH" ]] || [[ ! -s "$DB_PATH" ]]; then
         echo "Creating new SQLite database..."
         
-        sqlite3 "$DB_PATH" <<EOF
+        sqlite3 "$DB_PATH" <<'EOF'
 -- Enable WAL mode for better concurrency
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
@@ -3357,7 +3359,7 @@ option_system_status() {
     wait_for_key
 }
 
-option_install_apirray() {
+option_install_apiary() {
     print_header "${LANG[MENU_10]}"
     
     echo "🚀 Instalacja Apiary Collector (PEŁNA z WebUI i API)..."
@@ -3798,7 +3800,7 @@ main() {
             7) option_historical_data ;;
             8) option_system_status ;;
             9) option_reset_defaults ;;
-            10) option_install_apirray ;;
+            10) option_install_apiary ;;
             0)
                 echo -e "${GREEN}Exiting... Goodbye!${NC}"
                 log_message "INFO" "Application exited"
