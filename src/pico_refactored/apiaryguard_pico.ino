@@ -190,8 +190,22 @@ void processCommand(String cmd) {
         Serial.println("OK: Przekaźnik 2: " + String(relay2State ? "ON" : "OFF"));
     }
     else if (cmd.startsWith("CALIB_WEIGHT")) {
-        // Weight calibration handled in weight_analysis module
-        Serial.println("OK: Waga wyzerowana (Tara).");
+        // Perform actual tare/zeroing of HX711 weight sensor
+        // Take multiple readings and calculate offset
+        long sum = 0;
+        const int samples = 10;
+        Serial.println("Trwanie kalibracji...");
+        
+        for (int i = 0; i < samples; i++) {
+            long reading = readHX711();
+            if (reading != 0) {
+                sum += reading;
+            }
+            delay(10);
+        }
+        
+        hx711_offset = sum / samples;
+        Serial.println("OK: Waga wyzerowana (Tara). Offset: " + String(hx711_offset));
     }
     else if (cmd.startsWith("CALIB_WEIGHT_2")) {
         // Second HX711 tare

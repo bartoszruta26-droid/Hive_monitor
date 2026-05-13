@@ -44,7 +44,7 @@ void updateOutputs() {
     if (safe_mode_active) {
         analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
         analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
-        analogWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? 255 : 0);
+        digitalWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? HIGH : LOW);
         DBG_EFF("[EFFECTORS] Safe mode active - outputs overridden\n");
         return;
     }
@@ -52,7 +52,8 @@ void updateOutputs() {
     // Normal operation with validation
     analogWrite(HEATER_PWM, constrain(heaterDuty, 0, 255));
     analogWrite(FAN_PWM, constrain(fanDuty, 0, 255));
-    analogWrite(PUMP_RELAY, constrain(pumpDuty, 0, 255));
+    // PUMP_RELAY is a digital relay, not PWM - use digitalWrite
+    digitalWrite(PUMP_RELAY, pumpDuty > 0 ? HIGH : LOW);
     digitalWrite(RELAY_CH1, relay1State ? HIGH : LOW);
     digitalWrite(RELAY_CH2, relay2State ? HIGH : LOW);
 }

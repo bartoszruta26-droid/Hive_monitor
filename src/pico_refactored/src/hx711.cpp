@@ -23,8 +23,8 @@
 
 // Global calibration variables with debug support
 long hx711_value = 0;
-const long hx711_offset = 0;    // Set during calibration (tare)
-const float hx711_scale = 1.0f; // Set during calibration
+long hx711_offset = 0;    // Set during calibration (tare) - NOT const to allow calibration
+float hx711_scale = 1.0f; // Set during calibration - NOT const to allow calibration
 
 // Debug counter for error tracking
 static unsigned long hx711_error_count = 0;

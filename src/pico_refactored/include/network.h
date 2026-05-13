@@ -20,7 +20,7 @@ void initW6100();
 void handleClients();
 void sendUDPData();
 
-// DHCP fallback configuration
-#define USE_DHCP_FALLBACK true
+// DHCP fallback configuration - moved to config.h for proper organization
+// #define USE_DHCP_FALLBACK true  // Defined in config.h
 
 #endif // NETWORK_H
