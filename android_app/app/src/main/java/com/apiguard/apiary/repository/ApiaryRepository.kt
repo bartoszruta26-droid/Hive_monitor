@@ -173,16 +173,17 @@ class ApiaryRepository(private val application: Application) {
             val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))
             
             try {
-                kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
-                    val response = service.getApiaries()
-                    if (response.isSuccessful) {
-                        response.body()?.let { apiaries ->
-                            cacheReadings(apiaries)
-                            return@withTimeout Result.success(apiaries)
-                        } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
-                    } else {
-                        Result.failure(Exception("Błąd pobierania danych: kod ${response.code()}"))
-                    }
+                val response = kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
+                    service.getApiaries()
+                }
+                
+                if (response.isSuccessful) {
+                    response.body()?.let { apiaries ->
+                        cacheReadings(apiaries)
+                        return@withContext Result.success(apiaries)
+                    } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
+                } else {
+                    Result.failure(Exception("Błąd pobierania danych: kod ${response.code()}"))
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
@@ -198,16 +199,17 @@ class ApiaryRepository(private val application: Application) {
             val lastTimestamp = dao.getLastTimestampForApiary(apiaryId)
             
             try {
-                kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
-                    val response = service.getApiaryHistory(apiaryId, lastTimestamp)
-                    if (response.isSuccessful) {
-                        response.body()?.let { history ->
-                            cacheReadings(history)
-                            return@withTimeout Result.success(history)
-                        } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
-                    } else {
-                        Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
-                    }
+                val response = kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
+                    service.getApiaryHistory(apiaryId, lastTimestamp)
+                }
+                
+                if (response.isSuccessful) {
+                    response.body()?.let { history ->
+                        cacheReadings(history)
+                        return@withContext Result.success(history)
+                    } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
+                } else {
+                    Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
