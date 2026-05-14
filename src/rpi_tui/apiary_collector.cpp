@@ -59,6 +59,9 @@
 #include <regex>
 #include <cmath>
 
+// Dolaczamy naglowek typow HiveData - KRYTYCZNE!
+#include "apiary_collector_types.h"
+
 // Dolaczamy naglowek loggera (nie implementacje .cpp)
 #include "apiary_logger.h"
 #ifdef DEBUG_BUILD
@@ -161,7 +164,9 @@ public:
         data.audio_energy = raw_norm * raw_norm;
         data.audio_mean_amp = raw_norm * 0.5f;
         data.audio_std_amp = raw_norm * 0.25f;
-        data.audio_cv_amp = data.audio_std_amp / (data.audio_mean_amp + 0.001f);
+        // ZABEZPIECZENIE PRZED DZIELENIEM PRZEZ ZERO - audio_cv_amp
+        float mean_amp_safe = std::abs(data.audio_mean_amp) > 0.001f ? data.audio_mean_amp : 0.001f;
+        data.audio_cv_amp = data.audio_std_amp / mean_amp_safe;
         data.audio_skewness = raw_norm * 0.3f - 0.15f;
         data.audio_kurtosis = raw_norm * 2.0f + 1.0f;
         
@@ -264,13 +269,22 @@ public:
                 data.th_heat_index = T;
             }
             
-            // Dew Point (Magnus)
-            float a = 17.27f * T / (237.7f + T) + log(RH / 100.0f);
-            data.th_dew_point = 237.7f * a / (17.27f - a);
+            // Dew Point (Magnus) - ZABEZPIECZENIE PRZED DZIELENIEM PRZEZ ZERO I LOG(0)
+            if (RH > 0.0f) {
+                float a = 17.27f * T / (237.7f + T) + log(RH / 100.0f);
+                float dew_denominator = 17.27f - a;
+                if (std::abs(dew_denominator) > 0.001f) {
+                    data.th_dew_point = 237.7f * a / dew_denominator;
+                } else {
+                    data.th_dew_point = T - 5.0f; // Fallback bezpieczny
+                }
+            } else {
+                data.th_dew_point = T - 5.0f; // Fallback dla RH <= 0
+            }
             
-            // VPD (Vapor Pressure Deficit)
+            // VPD (Vapor Pressure Deficit) - BEZPIECZNE OBLICZENIE
             float SVP = 0.6108f * exp(17.27f * T / (T + 237.3f));
-            float AVP = SVP * RH / 100.0f;
+            float AVP = SVP * std::max(0.0f, std::min(100.0f, RH)) / 100.0f;
             data.th_vpd = SVP - AVP;
             
             // Comfort Index
