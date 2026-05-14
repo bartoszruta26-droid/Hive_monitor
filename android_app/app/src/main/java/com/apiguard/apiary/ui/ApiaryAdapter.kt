@@ -16,24 +16,22 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+/**
+ * Adapter dla RecyclerView wyświetlający listę apiary (pasiek).
+ * Odpowiada za renderowanie pojedynczych elementów listy oraz obsługę kliknięć.
+ * 
+ * @param onItemClick callback wywoływany po kliknięciu w element listy
+ */
 class ApiaryAdapter(
     private val onItemClick: (ApiaryData) -> Unit
 ) : RecyclerView.Adapter<ApiaryAdapter.ApiaryViewHolder>() {
 
-    companion object {
-        private val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-        
-        // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
-        private const val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
-        private const val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
-        private const val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
-        private const val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
-        private const val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
-        
-        // Cache na ostatnio sformatowaną datę aby uniknąć powtarzających się operacji
-        private var lastTimestamp: Long = -1
-        private var lastFormattedDate: String = ""
-    }
+    // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
+    private const val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
+    private const val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
+    private const val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
+    private const val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
+    private const val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
 
     private var apiaryList = emptyList<ApiaryData>()
 
@@ -73,15 +71,11 @@ class ApiaryAdapter(
                 return "brak danych"
             }
             
-            // Optymalizacja: cache dla tego samego timestamp
-            if (timestamp == lastTimestamp) {
-                return lastFormattedDate
-            }
+            // Tworzenie formattera z aktualnym Locale dla obsługi zmiany języka systemu
+            val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
             
             try {
-                lastTimestamp = timestamp
-                lastFormattedDate = dateFormat.format(Date(timestamp))
-                return lastFormattedDate
+                return dateFormat.format(Date(timestamp))
             } catch (e: Exception) {
                 // W przypadku błędu formatowania zwracamy surowy timestamp
                 return "błąd daty"
@@ -115,6 +109,11 @@ class ApiaryAdapter(
     override fun getItemCount() = apiaryList.size
 
     fun submitList(newList: List<ApiaryData>) {
+        // Upewnij się że operacja jest wykonywana na głównym wątku
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            throw IllegalStateException("submitList must be called on the main thread")
+        }
+        
         val diffCallback = ApiaryDiffCallback(apiaryList, newList)
         val diffResult = DiffUtil.calculateDiff(diffCallback)
         apiaryList = newList

@@ -1,6 +1,7 @@
 package com.apiguard.apiary.repository
 
 import android.app.Application
+import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import com.apiguard.apiary.data.local.ApiaryDao
 import com.apiguard.apiary.data.local.ApiaryDatabase
@@ -29,9 +30,39 @@ class ApiaryRepository(private val application: Application) {
         private var apiService: ApiaryApiService? = null
     }
 
-    private val preferences = PreferenceManager.getDefaultSharedPreferences(application)
-    private val database: ApiaryDatabase by lazy { ApiaryDatabase.getDatabase(application) }
+    private val preferences: SharedPreferences by lazy {
+        try {
+            PreferenceManager.getDefaultSharedPreferences(application)
+        } catch (e: SecurityException) {
+            throw IllegalStateException("Brak uprawnień do SharedPreferences: ${e.message}", e)
+        }
+    }
+    private val database: ApiaryDatabase by lazy { 
+        ApiaryDatabase.getDatabase(application).also {
+            // Inicjalizacja czyszczenia starych danych z bazy (co 7 dni)
+            cleanupOldDatabaseEntries(it)
+        }
+    }
     private val dao: ApiaryDao by lazy { database.apiaryDao() }
+    
+    /**
+     * Okresowe czyszczenie starych wpisów z bazy danych
+     * Zapobiega nieograniczonemu wzrostowi bazy
+     */
+    private fun cleanupOldDatabaseEntries(database: ApiaryDatabase) {
+        // Uruchom w tle aby nie blokować inicjalizacji
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                // Usuń wpisy starsze niż 7 dni (7 * 24 * 60 * 60 * 1000 = 604800000 ms)
+                val sevenDaysMillis = 7 * 24 * 60 * 60 * 1000L
+                val cutoffTimestamp = System.currentTimeMillis() - sevenDaysMillis
+                database.apiaryDao().deleteOldReadings(cutoffTimestamp)
+            } catch (e: Exception) {
+                // Ciche ignorowanie błędów czyszczenia - to operacja pomocnicza
+                android.util.Log.w("ApiaryRepository", "Błąd czyszczenia starych danych: ${e.message}")
+            }
+        }
+    }
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
         // Walidacja zakresu portów przed zapisem
@@ -75,15 +106,14 @@ class ApiaryRepository(private val application: Application) {
     }
     
     fun getApiService(): ApiaryApiService? {
-        val ip = getSavedIpAddress() ?: return null
-        val port = getSavedPort()
-        
-        // Double-checked locking pattern dla thread safety
-        return apiService ?: synchronized(this) {
-            if (apiService == null) {
+        // Double-checked locking pattern z pobraniem IP/port wewnątrz synchronized
+        return synchronized(this) {
+            apiService ?: run {
+                val ip = getSavedIpAddress() ?: return@synchronized null
+                val port = getSavedPort()
                 initializeApiService(ip, port)
+                apiService
             }
-            apiService
         }
     }
 
@@ -143,14 +173,19 @@ class ApiaryRepository(private val application: Application) {
             val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))
             
             try {
-                val response = service.getApiaries()
-                if (response.isSuccessful && response.body() != null) {
-                    val apiaries = response.body()!!
-                    cacheReadings(apiaries)
-                    Result.success(apiaries)
-                } else {
-                    Result.failure(Exception("Błąd pobierania danych: kod ${response.code()}"))
+                kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
+                    val response = service.getApiaries()
+                    if (response.isSuccessful) {
+                        response.body()?.let { apiaries ->
+                            cacheReadings(apiaries)
+                            return@withTimeout Result.success(apiaries)
+                        } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
+                    } else {
+                        Result.failure(Exception("Błąd pobierania danych: kod ${response.code()}"))
+                    }
                 }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -163,14 +198,19 @@ class ApiaryRepository(private val application: Application) {
             val lastTimestamp = dao.getLastTimestampForApiary(apiaryId)
             
             try {
-                val response = service.getApiaryHistory(apiaryId, lastTimestamp)
-                if (response.isSuccessful && response.body() != null) {
-                    val history = response.body()!!
-                    cacheReadings(history)
-                    Result.success(history)
-                } else {
-                    Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
+                kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
+                    val response = service.getApiaryHistory(apiaryId, lastTimestamp)
+                    if (response.isSuccessful) {
+                        response.body()?.let { history ->
+                            cacheReadings(history)
+                            return@withTimeout Result.success(history)
+                        } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
+                    } else {
+                        Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
+                    }
                 }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
             } catch (e: Exception) {
                 Result.failure(e)
             }

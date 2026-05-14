@@ -10,6 +10,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
 import com.apiguard.apiary.model.ApiaryData
+import com.apiguard.apiary.util.isValidIpAddress
+import com.apiguard.apiary.util.isValidPort
 
 class MainActivity : AppCompatActivity() {
 
@@ -132,7 +134,9 @@ class MainActivity : AppCompatActivity() {
         ipEditText.setText(savedIp)
         portEditText.setText(savedPort)
         
-        AlertDialog.Builder(this)
+        var dialog: AlertDialog? = null
+        
+        dialog = AlertDialog.Builder(this)
             .setTitle(R.string.dialog_connection_title)
             .setMessage(R.string.dialog_connection_message)
             .setView(view)
@@ -144,28 +148,30 @@ class MainActivity : AppCompatActivity() {
                 ipTextInputLayout?.error = null
                 portTextInputLayout?.error = null
                 
-                // Walidacja adresu IP
+                // Walidacja adresu IP - użyj extension function z AppConstants
                 if (ipAddress.isEmpty()) {
                     ipTextInputLayout?.error = getString(R.string.error_ip_empty)
-                    isIpDialogShowing = false
+                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
                     return@setPositiveButton
                 }
                 
-                // Walidacja formatu IP
-                if (!isValidIpAddress(ipAddress)) {
+                // Walidacja formatu IP - użyj extension function z AppConstants
+                if (!ipAddress.isValidIpAddress()) {
                     ipTextInputLayout?.error = getString(R.string.error_ip_invalid_format)
-                    isIpDialogShowing = false
+                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
                     return@setPositiveButton
                 }
                 
-                // Walidacja portu
+                // Walidacja portu - użyj stałych z AppConstants
                 val port = portText.toIntOrNull()
-                if (port == null || port < 1 || port > 65535) {
+                if (port == null || !port.isValidPort()) {
                     portTextInputLayout?.error = getString(R.string.error_port_invalid_range)
-                    isIpDialogShowing = false
+                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
                     return@setPositiveButton
                 }
                 
+                // Tylko przy poprawnych danych zamknij dialog i zapisz połączenie
+                isIpDialogShowing = false
                 viewModel.verifyAndSaveConnection(ipAddress, port)
             }
             .setNegativeButton(R.string.dialog_cancel_button) { _, _ ->
@@ -174,21 +180,12 @@ class MainActivity : AppCompatActivity() {
             .setOnDismissListener {
                 isIpDialogShowing = false
             }
-            .show()
+            .create()
+        
+        dialog.show()
         
         // Oznacz że dialog jest wyświetlany
         isIpDialogShowing = true
-    }
-
-    /**
-     * Waliduje format adresu IPv4
-     */
-    private fun isValidIpAddress(ip: String): Boolean {
-        val ipPattern = Regex(
-            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
-            "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-        )
-        return ipPattern.matches(ip)
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {
