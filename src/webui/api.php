@@ -309,7 +309,6 @@ $endpoints = [
     'effectors' => '/api/effectors',
     'history' => '/api/history',
     'logs' => '/api/logs',
-    'csv' => '/api/csv',
     'config' => '/api/config'
 ];
 
