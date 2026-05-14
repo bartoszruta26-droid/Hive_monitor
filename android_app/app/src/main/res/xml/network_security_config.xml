@@ -7,16 +7,31 @@
         <domain includeSubdomains="true">127.0.0.1</domain>
         
         <!-- Prywatne zakresy IP (RFC 1918) - typowe adresy lokalne -->
+        <!-- Dla Androida musimy użyć wzorców z wildcard aby obsłużyć całe zakresy -->
         <!-- 10.0.0.0/8 -->
-        <domain includeSubdomains="true">10.0.0.0</domain>
+        <domain includeSubdomains="true">10.*</domain>
         <!-- 172.16.0.0/12 -->
-        <domain includeSubdomains="true">172.16.0.0</domain>
+        <domain includeSubdomains="true">172.16.*</domain>
+        <domain includeSubdomains="true">172.17.*</domain>
+        <domain includeSubdomains="true">172.18.*</domain>
+        <domain includeSubdomains="true">172.19.*</domain>
+        <domain includeSubdomains="true">172.20.*</domain>
+        <domain includeSubdomains="true">172.21.*</domain>
+        <domain includeSubdomains="true">172.22.*</domain>
+        <domain includeSubdomains="true">172.23.*</domain>
+        <domain includeSubdomains="true">172.24.*</domain>
+        <domain includeSubdomains="true">172.25.*</domain>
+        <domain includeSubdomains="true">172.26.*</domain>
+        <domain includeSubdomains="true">172.27.*</domain>
+        <domain includeSubdomains="true">172.28.*</domain>
+        <domain includeSubdomains="true">172.29.*</domain>
+        <domain includeSubdomains="true">172.30.*</domain>
+        <domain includeSubdomains="true">172.31.*</domain>
         <!-- 192.168.0.0/16 -->
-        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.*</domain>
         
         <!-- Uwaga: Android nie obsługuje pełnych zakresów CIDR w domain-config.
-             Powyższe domeny służą jako przykłady. W produkcji należy użyć konkretnej domeny
-             lub skonfigurować usesCleartextTraffic="true" tylko w buildzie debug.
+             Powyższe domeny używają wildcard (*) aby obsłużyć całe zakresy prywatnych IP.
              
              Dla pełnego bezpieczeństwa:
              1. Użyj HTTPS w produkcji
