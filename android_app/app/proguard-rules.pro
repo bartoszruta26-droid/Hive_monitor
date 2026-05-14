@@ -25,7 +25,7 @@
 
 # Room - baza danych
 -keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Entity class *
+-keep @androidx.room.Entity class **
 -dontwarn androidx.room.paging.**
 
 # Kotlin Coroutines
@@ -43,6 +43,12 @@
 
 # RecyclerView i Adaptery
 -keep class * extends androidx.recyclerview.widget.RecyclerView.Adapter { *; }
+
+# ViewBinding - generowane klasy bindingu
+-keep class com.apiguard.apiary.databinding.** { *; }
+-keepclassmembers class * {
+    *** getBinding();
+}
 
 # Wyjątki - zachowaj informacje o błędach dla lepszego debugowania
 -keepattributes SourceFile,LineNumberTable

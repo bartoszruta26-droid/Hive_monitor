@@ -8,8 +8,19 @@ import androidx.lifecycle.viewModelScope
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.repository.ApiaryRepository
 import com.apiguard.apiary.repository.ConnectionResult
+import com.apiguard.apiary.util.isValidPort
 import kotlinx.coroutines.launch
 
+/**
+ * ViewModel dla MainActivity.
+ * Odpowiada za zarządzanie stanem UI, komunikację z Repository oraz obsługę operacji biznesowych.
+ * 
+ * Używa LiveData do eksponowania stanu do warstwy UI:
+ * - connectionState: stan połączenia z API
+ * - isLoading: flaga ładowania danych
+ * - apiaryData: lista pasiek do wyświetlenia
+ * - errorMessage: komunikaty błędów
+ */
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     
     private val repository = ApiaryRepository(application)
@@ -44,45 +55,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun verifyAndSaveConnection(ipAddress: String, port: Int) {
-        // Dodatkowa walidacja po stronie ViewModel (zabezpieczenie przed niepoprawnymi danymi)
-        if (port < 1 || port > 65535) {
+        // Użyj stałych z AppConstants zamiast hardcoded values
+        if (!port.isValidPort()) {
             _errorMessage.value = "Nieprawidłowy numer portu"
             return
         }
         
         viewModelScope.launch {
             _isLoading.value = true
-            val result = repository.verifyConnection(ipAddress, port)
-            
-            when (result) {
-                is ConnectionResult.Success -> {
-                    repository.saveIpAddress(ipAddress, port)
-                    _connectionState.value = true
-                    _errorMessage.value = null
-                    loadData()
+            try {
+                val result = repository.verifyConnection(ipAddress, port)
+                
+                when (result) {
+                    is ConnectionResult.Success -> {
+                        repository.saveIpAddress(ipAddress, port)
+                        _connectionState.value = true
+                        _errorMessage.value = null
+                        loadData()
+                    }
+                    is ConnectionResult.Error -> {
+                        _connectionState.value = false
+                        _errorMessage.value = result.message
+                    }
                 }
-                is ConnectionResult.Error -> {
-                    _connectionState.value = false
-                    _errorMessage.value = result.message
-                }
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 
     fun loadData() {
         viewModelScope.launch {
             _isLoading.value = true
-            val result = repository.fetchApiaries()
-            
-            result.onSuccess { data ->
-                _apiaryData.value = data
-                _errorMessage.value = null
-            }.onFailure { error ->
-                _errorMessage.value = "Błąd pobierania danych: ${error.message}"
+            try {
+                val result = repository.fetchApiaries()
+                
+                result.onSuccess { data ->
+                    _apiaryData.value = data
+                    _errorMessage.value = null
+                }.onFailure { error ->
+                    _errorMessage.value = "Błąd pobierania danych: ${error.message}"
+                }
+            } finally {
+                _isLoading.value = false
             }
-            
-            _isLoading.value = false
         }
     }
 

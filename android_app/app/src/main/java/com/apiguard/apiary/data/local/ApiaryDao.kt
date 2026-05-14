@@ -26,4 +26,12 @@ interface ApiaryDao {
     
     @Query("SELECT MAX(timestamp) FROM apiary_readings WHERE apiaryId = :apiaryId")
     suspend fun getLastTimestampForApiary(apiaryId: String): Long?
+    
+    /**
+     * Czyści stare wpisy z bazy danych (starsze niż określony czas)
+     * Zapobiega nieograniczonemu wzrostowi bazy danych
+     * @param maxAgeMillis maksymalny wiek wpisów w milisekundach (np. 7 dni = 604800000)
+     */
+    @Query("DELETE FROM apiary_readings WHERE timestamp < :maxAgeMillis")
+    suspend fun deleteOldReadings(maxAgeMillis: Long)
 }
