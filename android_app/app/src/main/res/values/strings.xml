@@ -14,4 +14,34 @@
     <string name="status_ok">OK</string>
     <string name="status_warning">UWAGA</string>
     <string name="status_alert">ALERT</string>
+    
+    <!-- Dialog konfiguracji połączenia -->
+    <string name="dialog_connection_title">Konfiguracja połączenia</string>
+    <string name="dialog_connection_message">Podaj statyczny adres IP Raspberry Pi:</string>
+    <string name="dialog_connect_button">Połącz</string>
+    <string name="dialog_cancel_button">Anuluj</string>
+    
+    <!-- Komunikaty błędów walidacji -->
+    <string name="error_ip_empty">Podaj poprawny adres IP</string>
+    <string name="error_ip_invalid_format">Nieprawidłowy format adresu IP</string>
+    <string name="error_port_invalid_range">Port musi być w zakresie 1-65535</string>
+    <string name="error_unknown">Nieznany błąd</string>
+    
+    <!-- Komunikaty o stanie połączenia -->
+    <string name="connection_success">Połączono pomyślnie!</string>
+    <string name="connection_failed">Nie udało się połączyć</string>
+    <string name="connection_timeout">Upłynął czas oczekiwania na połączenie</string>
+    <string name="connection_host_not_found">Nie odnaleziono hosta</string>
+    
+    <!-- Etykiety UI -->
+    <string name="label_ip_address">Adres IP</string>
+    <string name="label_port">Port</string>
+    <string name="label_last_update">Ostatnia aktualizacja</string>
+    <string name="label_no_data">brak danych</string>
+    <string name="label_date_error">błąd daty</string>
+    
+    <!-- Opisy statusów -->
+    <string name="desc_status_ok">Wszystkie parametry w normie</string>
+    <string name="desc_status_warning">Uwaga: parametr poza zakresem</string>
+    <string name="desc_status_alert">Alert: krytyczny parametr</string>
 </resources>

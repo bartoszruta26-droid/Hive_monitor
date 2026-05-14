@@ -1,33 +1,21 @@
 ```
 # Compiled and build artifacts
 *.class
-*.dex
+*.o
+*.obj
+*.exe
+*.dll
 *.so
-*.aar
-*.apk
-*.jar
-
+*.a
+*.out
+build/
 # Dependencies
 node_modules/
 .gradle/
-build/
-
-# Local configuration
-local.properties
-
-# IDE files
-.idea/
-*.iml
-*.iws
-.vscode/
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Logs
+# Logs and temp files
 *.log
-
+*.tmp
+*.swp
 # Environment
 .env
 .env.local

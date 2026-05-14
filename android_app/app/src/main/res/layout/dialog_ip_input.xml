@@ -7,9 +7,10 @@
     android:padding="16dp">
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/text_input_layout_ip"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Adres IP"
+        android:hint="@string/label_ip_address"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -22,9 +23,10 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/text_input_layout_port"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Port API"
+        android:hint="@string/label_port"
         android:layout_marginTop="16dp"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
@@ -33,7 +35,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="number"
-            android:text="8080"
+            android:text="5000"
             android:maxLines="1" />
 
     </com.google.android.material.textfield.TextInputLayout>
