@@ -3,26 +3,75 @@
 *.o
 *.obj
 *.out
-build/
-dist/
+*.so
+*.dll
+*.exe
+*.a
 
 # Dependencies
 venv/
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.py.class
+*.class
+
+# Build directories
+build/
+dist/
+target/
+.deps/
 
 # Logs and temp files
 *.log
 *.tmp
+*.temp
 *.swp
+*.swo
 
-# Editors
-.vscode/
-.idea/
-
-# Environment
+# Environment files
 .env
 .env.local
 *.env.*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Compression files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```

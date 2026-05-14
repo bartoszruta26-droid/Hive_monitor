@@ -38,6 +38,7 @@ struct HiveData {
     // METADANE ŹRÓDŁA DANYCH
     // -------------------------------------------------------------------------
     std::string data_source;            // "pico" (precomputed) lub "nano" (raw only)
+    std::string source_ip;              // Adres IP źródła danych
     bool is_precomputed = false;        // true = dane już wyliczone, false = surowe dane
     
     // -------------------------------------------------------------------------

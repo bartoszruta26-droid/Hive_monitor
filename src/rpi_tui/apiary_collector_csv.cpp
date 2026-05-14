@@ -52,6 +52,7 @@ bool parseCSV(const std::string& raw_data, const std::string& source_ip,
     // Inicjalizacja danych
     data = HiveData();
     data.timestamp = timestamp;
+    data.source_ip = source_ip;  // Zapisz źródło IP
     
     std::stringstream ss(raw_data);
     std::string segment;
