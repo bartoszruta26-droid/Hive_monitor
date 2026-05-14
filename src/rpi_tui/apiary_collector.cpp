@@ -134,6 +134,50 @@ private:
     // Symulacja portu nasluchiwania (w rzeczywistosci Pico wysyla dane na ten port)
     int server_socket;
     struct sockaddr_in server_addr;
+    
+    // Rate limiting - ochrona przed nadmierną liczbą połączeń
+    struct RateLimiter {
+        std::map<std::string, std::vector<long long>> connection_times;
+        std::mutex mutex;
+        static constexpr int MAX_CONNECTIONS_PER_SECOND = 10;
+        static constexpr int CLEANUP_INTERVAL_SEC = 60;
+        
+        bool allowConnection(const std::string& ip) {
+            std::lock_guard<std::mutex> lock(mutex);
+            long long now = std::time(nullptr);
+            
+            // Wyczyść stare wpisy (starsze niż 1 sekunda)
+            auto& times = connection_times[ip];
+            times.erase(
+                std::remove_if(times.begin(), times.end(), 
+                    [now](long long t) { return now - t > 1; }),
+                times.end()
+            );
+            
+            // Sprawdź limit
+            if (times.size() >= MAX_CONNECTIONS_PER_SECOND) {
+                return false;
+            }
+            
+            // Dodaj obecne połączenie
+            times.push_back(now);
+            return true;
+        }
+        
+        void cleanup() {
+            std::lock_guard<std::mutex> lock(mutex);
+            long long now = std::time(nullptr);
+            for (auto it = connection_times.begin(); it != connection_times.end(); ) {
+                if (now - it->second.back() > CLEANUP_INTERVAL_SEC) {
+                    it = connection_times.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+    };
+    
+    RateLimiter rate_limiter;
 
 public:
     ApiaryCollector() {
@@ -624,8 +668,29 @@ public:
                                         (struct sockaddr*)&client_addr, &client_len);
 
             if (recv_len > 0) {
+                // ZABEZPIECZENIE PRZED PRZEPELNIENIEM BUFORA - dodatkowa walidacja
+                if (recv_len >= static_cast<ssize_t>(sizeof(buffer))) {
+                    Logger::getInstance().warning("Ostrzezenie: recv_len >= sizeof(buffer), dane mogly zostac obciete", "NETWORK");
+                    recv_len = sizeof(buffer) - 1;
+                }
+                
                 buffer[recv_len] = '\0';
-                processData(std::string(buffer), inet_ntoa(client_addr.sin_addr));
+                
+                // Walidacja danych wejsciowych - sprawdzenie czy to valid string
+                std::string received_data(buffer);
+                if (received_data.empty() || received_data.find_first_of("{,") == std::string::npos) {
+                    Logger::getInstance().debug("Odrzucono niepoprawne dane od " + std::string(inet_ntoa(client_addr.sin_addr)), "VALIDATION");
+                    continue;
+                }
+                
+                // Rate limiting - sprawdzenie limitu polaczen z danego IP
+                std::string client_ip = inet_ntoa(client_addr.sin_addr);
+                if (!rate_limiter.allowConnection(client_ip)) {
+                    Logger::getInstance().warning("Rate limit przekroczony dla IP: " + client_ip, "RATE_LIMIT");
+                    continue;
+                }
+                
+                processData(received_data, client_ip);
             } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 // Prawdziwy blad sieciowy
                 if (running) Logger::getInstance().warning( "Blad odbioru danych: " + std::string(strerror(errno)));
@@ -859,12 +924,29 @@ public:
                 hives_data[hive_id] = data;
             }
             
-            // Zapis do bazy danych SQLite
-            try {
-                ApiaryDatabase::getInstance().storeRawData(data);
-                Logger::getInstance().debug("Zapisano dane do bazy dla " + hive_id, "DB");
-            } catch (const std::exception& e) {
-                Logger::getInstance().warning("Nie udało się zapisać do bazy: " + std::string(e.what()), "DB");
+            // Zapis do bazy danych SQLite z mechanizmem retry przy bledach
+            bool db_success = false;
+            int retry_count = 0;
+            const int MAX_RETRIES = 3;
+            while (!db_success && retry_count < MAX_RETRIES && running) {
+                try {
+                    ApiaryDatabase::getInstance().storeRawData(data);
+                    Logger::getInstance().debug("Zapisano dane do bazy dla " + hive_id, "DB");
+                    db_success = true;
+                } catch (const std::exception& e) {
+                    retry_count++;
+                    std::string warning_msg = "Nie udalo sie zapisac do bazy (proba " + 
+                                             std::to_string(retry_count) + "/" + 
+                                             std::to_string(MAX_RETRIES) + "): " + std::string(e.what());
+                    Logger::getInstance().warning(warning_msg, "DB");
+                    
+                    if (retry_count < MAX_RETRIES) {
+                        // Czekaj coraz dluzej przed kolejna proba (exponential backoff)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100 * retry_count));
+                    } else {
+                        Logger::getInstance().error("Maksymalna liczba prob zapisu do bazy przekroczona dla " + hive_id, "DB");
+                    }
+                }
             }
             
             Logger::getInstance().debug("JSON: Zaktualizowano " + hive_id + " z " + source_ip);
@@ -968,12 +1050,28 @@ public:
                     new_hive.air_iaq = air_iaq;
                     hives_data[hive_id] = new_hive;
                     
-                    // Zapis do bazy danych SQLite
-                    try {
-                        ApiaryDatabase::getInstance().storeRawData(new_hive);
-                        Logger::getInstance().debug("Zapisano dane CSV do bazy dla " + hive_id, "DB");
-                    } catch (const std::exception& e) {
-                        Logger::getInstance().warning("Nie udało się zapisać CSV do bazy: " + std::string(e.what()), "DB");
+                    // Zapis do bazy danych SQLite z mechanizmem retry przy bledach
+                    bool db_success = false;
+                    int retry_count = 0;
+                    const int MAX_RETRIES = 3;
+                    while (!db_success && retry_count < MAX_RETRIES && running) {
+                        try {
+                            ApiaryDatabase::getInstance().storeRawData(new_hive);
+                            Logger::getInstance().debug("Zapisano dane CSV do bazy dla " + hive_id, "DB");
+                            db_success = true;
+                        } catch (const std::exception& e) {
+                            retry_count++;
+                            std::string warning_msg = "Nie udalo sie zapisac CSV do bazy (proba " + 
+                                                     std::to_string(retry_count) + "/" + 
+                                                     std::to_string(MAX_RETRIES) + "): " + std::string(e.what());
+                            Logger::getInstance().warning(warning_msg, "DB");
+                            
+                            if (retry_count < MAX_RETRIES) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(100 * retry_count));
+                            } else {
+                                Logger::getInstance().error("Maksymalna liczba prob zapisu CSV do bazy przekroczona dla " + hive_id, "DB");
+                            }
+                        }
                     }
                 }
             }
@@ -1030,8 +1128,16 @@ public:
             if (t.joinable()) t.join();
         }
         worker_threads.clear();
-        if (server_socket >= 0) close(server_socket);
+        if (server_socket >= 0) {
+            close(server_socket);
+            server_socket = -1;
+        }
         Logger::getInstance().info( "Kolektor danych zatrzymany.");
+    }
+    
+    // Publiczny interfejs do rate limitingu dla HTTP
+    bool rateLimiterAllowConnection(const std::string& ip) {
+        return rate_limiter.allowConnection(ip);
     }
 
     // Metoda dla TUI/Basha do pobrania aktualnego stanu (eksport do JSON) - OBSLUGA WIELU ULl
@@ -1421,9 +1527,29 @@ int main(int argc, char* argv[]) {
             int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
             
             if (client_fd >= 0) {
-                char buffer[4096] = {0};
-                recv(client_fd, buffer, sizeof(buffer)-1, 0);
+                // Rate limiting dla polaczen HTTP
+                struct sockaddr_in client_addr_check;
+                socklen_t client_len_check = sizeof(client_addr_check);
+                if (getpeername(client_fd, (struct sockaddr*)&client_addr_check, &client_len_check) == 0) {
+                    std::string client_ip_http = inet_ntoa(client_addr_check.sin_addr);
+                    if (!collector.rateLimiterAllowConnection(client_ip_http)) {
+                        Logger::getInstance().warning("HTTP Rate limit przekroczony dla IP: " + client_ip_http, "RATE_LIMIT");
+                        close(client_fd);
+                        continue;
+                    }
+                }
                 
+                char buffer[4096] = {0};
+                ssize_t recv_result = recv(client_fd, buffer, sizeof(buffer)-1, 0);
+                
+                // Zabezpieczenie przed bledem recv
+                if (recv_result < 0) {
+                    Logger::getInstance().warning("Blad recv w HTTP: " + std::string(strerror(errno)), "HTTP");
+                    close(client_fd);
+                    continue;
+                }
+                
+                buffer[recv_result] = '\0';
                 std::string request(buffer);
                 std::string response;
                 std::string content_type = "application/json";
