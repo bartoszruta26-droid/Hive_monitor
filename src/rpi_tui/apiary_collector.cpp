@@ -68,6 +68,9 @@
 // Dolaczamy modul bazy danych dla zapisu i agregacji
 #include "apiary_database.h"
 
+// Dolaczamy modul CSV do parsowania i generowania danych
+#include "apiary_collector_csv.h"
+
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
 
@@ -636,7 +639,15 @@ public:
         if (raw_data.find('{') != std::string::npos && raw_data.find('}') != std::string::npos) {
             parseJSON(raw_data, source_ip, now);
         } else {
-            parseCSV(raw_data, source_ip, now);
+            // Uzywamy nowego modulu CSV do parsowania
+            HiveData data;
+            if (csv::parseCSV(raw_data, source_ip, now, data)) {
+                std::lock_guard<std::mutex> lock(data_mutex);
+                hives_data[data.hive_id] = data;
+                Logger::getInstance().info("Parsed CSV data for hive: " + data.hive_id + " from " + source_ip);
+            } else {
+                Logger::getInstance().warning("Failed to parse CSV data from " + source_ip);
+            }
         }
     }
     
@@ -861,7 +872,7 @@ public:
         GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseJSON");)
     }
     
-    // Parsowanie CSV - kompatybilnosc wsteczna
+    // Parsowanie CSV - pełna obsługa 338+ parametrów
     void parseCSV(const std::string& raw_data, const std::string& source_ip, long long timestamp) {
         DEBUG_FUNC_ENTER();
         GENTLE_TRY
@@ -896,20 +907,379 @@ public:
             int voc = std::stoi(parts[6]);
             int motion = std::stoi(parts[7]);
             
-            // Parametry rozszerzone (opcjonalne)
-            float audio_rms = (parts.size() > 9) ? std::stof(parts[9]) : 0.0f;
-            float audio_dom_freq = (parts.size() > 10) ? std::stof(parts[10]) : 0.0f;
-            float audio_swarm_prob = (parts.size() > 11) ? std::stof(parts[11]) : 0.0f;
-            float radar_dist = (parts.size() > 12) ? std::stof(parts[12]) : 0.0f;
-            float radar_energy = (parts.size() > 13) ? std::stof(parts[13]) : 0.0f;
-            float radar_activity = (parts.size() > 14) ? std::stof(parts[14]) : 0.0f;
-            float weight_rate = (parts.size() > 15) ? std::stof(parts[15]) : 0.0f;
-            float weight_trend = (parts.size() > 16) ? std::stof(parts[16]) : 0.0f;
-            int air_iaq = (parts.size() > 17) ? std::stoi(parts[17]) : 0;
+            // Pomocnicza funkcja do bezpiecznego parsowania float
+            auto getFloat = [&](size_t idx) -> float {
+                return (idx < parts.size()) ? std::stof(parts[idx]) : 0.0f;
+            };
+            
+            // Pomocnicza funkcja do bezpiecznego parsowania int
+            auto getInt = [&](size_t idx) -> int {
+                return (idx < parts.size()) ? std::stoi(parts[idx]) : 0;
+            };
+
+            // =========================================================================
+            // PARAMETRY AUDIO (63 parametry) - indeksy 9-71
+            // =========================================================================
+            float audio_rms = getFloat(9);
+            float audio_peak = getFloat(10);
+            float audio_peak_to_peak = getFloat(11);
+            float audio_zcr = getFloat(12);
+            float audio_energy = getFloat(13);
+            float audio_mean_amp = getFloat(14);
+            float audio_std_amp = getFloat(15);
+            float audio_cv_amp = getFloat(16);
+            float audio_skewness = getFloat(17);
+            float audio_kurtosis = getFloat(18);
+            float audio_dominant_freq = getFloat(19);
+            float audio_spectral_centroid = getFloat(20);
+            float audio_spectral_bandwidth = getFloat(21);
+            float audio_spectral_flatness = getFloat(22);
+            float audio_spectral_rolloff = getFloat(23);
+            float audio_power_bee_band = getFloat(24);
+            float audio_power_swarm_band = getFloat(25);
+            float audio_power_low_freq = getFloat(26);
+            float audio_power_high_freq = getFloat(27);
+            float audio_harmonic_ratio = getFloat(28);
+            // MFCC energy [4] - indeksy 29-32
+            float audio_mfcc_energy[4] = {getFloat(29), getFloat(30), getFloat(31), getFloat(32)};
+            float audio_spectral_entropy = getFloat(33);
+            float audio_spectral_contrast = getFloat(34);
+            float audio_tonal_strength = getFloat(35);
+            float audio_crest_factor = getFloat(36);
+            float audio_formant_f1 = getFloat(37);
+            float audio_formant_f2 = getFloat(38);
+            float audio_fundamental_freq = getFloat(39);
+            float audio_pitch_strength = getFloat(40);
+            float audio_inharmonicity = getFloat(41);
+            float audio_shimmer = getFloat(42);
+            float audio_jitter = getFloat(43);
+            float audio_nhr = getFloat(44);
+            float audio_hnr = getFloat(45);
+            float audio_autocorr_peak = getFloat(46);
+            float audio_attack_time = getFloat(47);
+            float audio_decay_time = getFloat(48);
+            float audio_sustain_level = getFloat(49);
+            float audio_temporal_centroid = getFloat(50);
+            float audio_loudness = getFloat(51);
+            float audio_spectral_flux = getFloat(52);
+            float audio_spectral_slope = getFloat(53);
+            float audio_spectral_kurtosis = getFloat(54);
+            float audio_spectral_skewness = getFloat(55);
+            float audio_fund_salience = getFloat(56);
+            // Power bands [8] - indeksy 57-64
+            float audio_power_band[8] = {getFloat(57), getFloat(58), getFloat(59), getFloat(60), 
+                                         getFloat(61), getFloat(62), getFloat(63), getFloat(64)};
+            float audio_leq = getFloat(65);
+            float audio_l10 = getFloat(66);
+            float audio_l90 = getFloat(67);
+            float audio_noise_floor = getFloat(68);
+            float audio_snr = getFloat(69);
+            float audio_aci = getFloat(70);
+            float audio_bi = getFloat(71);
+            float audio_ndi = getFloat(72);
+            float audio_adi = getFloat(73);
+            float audio_aei = getFloat(74);
+            float audio_bee_activity = getFloat(75);
+            float audio_swarm_prob = getFloat(76);
+            float audio_stress_indicator = getFloat(77);
+            float audio_hive_health = getFloat(78);
+            float audio_foraging_eff = getFloat(79);
+            float audio_colony_coherence = getFloat(80);
+
+            // =========================================================================
+            // PARAMETRY RADAR MMWAVE (28 parametrów) - indeksy 81-108
+            // =========================================================================
+            float radar_distance = getFloat(81);
+            float radar_energy = getFloat(82);
+            float radar_speed = getFloat(83);
+            float radar_distance_std = getFloat(84);
+            float radar_energy_std = getFloat(85);
+            float radar_speed_std = getFloat(86);
+            float radar_distance_min = getFloat(87);
+            float radar_distance_max = getFloat(88);
+            float radar_energy_min = getFloat(89);
+            float radar_energy_max = getFloat(90);
+            float radar_range = getFloat(91);
+            float radar_energy_variance = getFloat(92);
+            float radar_cv = getFloat(93);
+            float radar_activity = getFloat(94);
+            float radar_idle_percent = getFloat(95);
+            float radar_motion_intensity = getFloat(96);
+            float radar_target_rate = getFloat(97);
+            float radar_max_targets = getFloat(98);
+            float radar_target_density = getFloat(99);
+            float radar_slope = getFloat(100);
+            float radar_correlation = getFloat(101);
+            float radar_acceleration = getFloat(102);
+            float radar_signal_quality = getFloat(103);
+            float radar_anomaly_score = getFloat(104);
+            float radar_hive_health = getFloat(105);
+            float radar_power_spectrum = getFloat(106);
+            float radar_zcr = getFloat(107);
+            float radar_entropy = getFloat(108);
+
+            // =========================================================================
+            // PARAMETRY HX711 WAGA (77 parametrów) - indeksy 109-185
+            // =========================================================================
+            float hx711_current = getFloat(109);
+            float hx711_mean = getFloat(110);
+            float hx711_std = getFloat(111);
+            float hx711_min = getFloat(112);
+            float hx711_max = getFloat(113);
+            float hx711_median = getFloat(114);
+            float hx711_range = getFloat(115);
+            float hx711_variance = getFloat(116);
+            float hx711_cv = getFloat(117);
+            float hx711_iqr = getFloat(118);
+            float hx711_rate = getFloat(119);
+            float hx711_mean_rate = getFloat(120);
+            float hx711_max_pos_rate = getFloat(121);
+            float hx711_max_neg_rate = getFloat(122);
+            float hx711_acceleration = getFloat(123);
+            float hx711_slope_1h = getFloat(124);
+            float hx711_slope_4h = getFloat(125);
+            float hx711_slope_24h = getFloat(126);
+            float hx711_corr_1h = getFloat(127);
+            float hx711_corr_4h = getFloat(128);
+            float hx711_corr_24h = getFloat(129);
+            float hx711_direction = getFloat(130);
+            float hx711_nectar_inflow = getFloat(131);
+            float hx711_nectar_accum = getFloat(132);
+            float hx711_foraging_eff = getFloat(133);
+            float hx711_bloom_intensity = getFloat(134);
+            float hx711_honey_prod_idx = getFloat(135);
+            float hx711_nectar_quality = getFloat(136);
+            float hx711_consumption_rate = getFloat(137);
+            float hx711_daily_consumption = getFloat(138);
+            float hx711_food_reserve_days = getFloat(139);
+            float hx711_winter_readiness = getFloat(140);
+            float hx711_starvation_risk = getFloat(141);
+            float hx711_daily_amplitude = getFloat(142);
+            float hx711_circadian_str = getFloat(143);
+            float hx711_seasonal_trend = getFloat(144);
+            float hx711_signal_quality = getFloat(145);
+            float hx711_noise_level = getFloat(146);
+            float hx711_drift_rate = getFloat(147);
+            float hx711_outlier_ratio = getFloat(148);
+            float hx711_sample_count = getFloat(149);
+            float hx711_forecast_1h = getFloat(150);
+            float hx711_forecast_6h = getFloat(151);
+            float hx711_forecast_24h = getFloat(152);
+            float hx711_forecast_conf = getFloat(153);
+            float hx711_prediction_error = getFloat(154);
+            float hx711_harvest_event = getFloat(155);
+            float hx711_swarm_event = getFloat(156);
+            float hx711_feeding_event = getFloat(157);
+            float hx711_water_collection = getFloat(158);
+            float hx711_skewness = getFloat(159);
+            float hx711_kurtosis = getFloat(160);
+            float hx711_entropy = getFloat(161);
+            float hx711_complexity = getFloat(162);
+            float hx711_fractal_dim = getFloat(163);
+            float hx711_colony_mass = getFloat(164);
+            float hx711_bee_population = getFloat(165);
+            float hx711_brood_mass = getFloat(166);
+            float hx711_food_stores = getFloat(167);
+            float hx711_honey_stores = getFloat(168);
+            float hx711_pollen_stores = getFloat(169);
+            float hx711_productivity_idx = getFloat(170);
+            float hx711_efficiency_score = getFloat(171);
+            float hx711_growth_rate = getFloat(172);
+            float hx711_balance_score = getFloat(173);
+            float hx711_resilience_idx = getFloat(174);
+            float hx711_dominant_period = getFloat(175);
+            float hx711_power_24h = getFloat(176);
+            float hx711_power_12h = getFloat(177);
+            float hx711_power_6h = getFloat(178);
+            float hx711_power_1h = getFloat(179);
+            float hx711_completeness = getFloat(180);
+            float hx711_reliability = getFloat(181);
+            float hx711_accuracy_est = getFloat(182);
+            float hx711_precision_est = getFloat(183);
+            float hx711_anomaly_flag = getFloat(184);
+            float hx711_health_score = getFloat(185);
+
+            // =========================================================================
+            // PARAMETRY TEMP/HUMIDITY (32 parametry) - indeksy 186-217
+            // =========================================================================
+            float th_temp_mean = getFloat(186);
+            float th_temp_std = getFloat(187);
+            float th_temp_min = getFloat(188);
+            float th_temp_max = getFloat(189);
+            float th_temp_range = getFloat(190);
+            float th_hum_mean = getFloat(191);
+            float th_hum_std = getFloat(192);
+            float th_hum_min = getFloat(193);
+            float th_hum_max = getFloat(194);
+            float th_hum_range = getFloat(195);
+            float th_heat_index = getFloat(196);
+            float th_dew_point = getFloat(197);
+            float th_comfort_idx = getFloat(198);
+            float th_brood_stress = getFloat(199);
+            float th_mold_risk = getFloat(200);
+            float th_temp_stability = getFloat(201);
+            float th_vpd = getFloat(202);
+            float th_thi = getFloat(203);
+            float th_enthalpy = getFloat(204);
+            float th_air_density = getFloat(205);
+            float th_specific_humidity = getFloat(206);
+            float th_mixing_ratio = getFloat(207);
+            float th_saturation_deficit = getFloat(208);
+            float th_evap_potential = getFloat(209);
+            float th_condensation_risk = getFloat(210);
+            float th_ventilation_need = getFloat(211);
+            float th_cooling_need = getFloat(212);
+            float th_heating_need = getFloat(213);
+            float th_climate_score = getFloat(214);
+            float th_hum_stability_1h = getFloat(215);
+            float th_hum_trend = getFloat(216);
+            float th_temp_trend = getFloat(217);
+
+            // =========================================================================
+            // PARAMETRY AIR QUALITY (37 parametrów) - indeksy 218-254
+            // =========================================================================
+            float aq_iaq = getFloat(218);
+            float aq_iaq_mean = getFloat(219);
+            float aq_contamination = getFloat(220);
+            float aq_mold_risk = getFloat(221);
+            float aq_ventilation_idx = getFloat(222);
+            float aq_co2_mean = getFloat(223);
+            float aq_voc_mean = getFloat(224);
+            float aq_stress_air = getFloat(225);
+            float aq_purity = getFloat(226);
+            float aq_freshness = getFloat(227);
+            float aq_pollution_load = getFloat(228);
+            float aq_gas_idx = getFloat(229);
+            float aq_particulate_idx = getFloat(230);
+            float aq_allergen_risk = getFloat(231);
+            float aq_toxicity_est = getFloat(232);
+            float aq_oxidation_cap = getFloat(233);
+            float aq_reduction_cap = getFloat(234);
+            float aq_buffer_cap = getFloat(235);
+            float aq_recovery_rate = getFloat(236);
+            float aq_stability = getFloat(237);
+            float aq_trend = getFloat(238);
+            float aq_forecast = getFloat(239);
+            float aq_health_impact = getFloat(240);
+            float aq_bee_behavior_impact = getFloat(241);
+            float aq_co2_alert = getFloat(242);
+            float aq_co2_base = getFloat(243);
+            float aq_co2_peak = getFloat(244);
+            float aq_co2_trend = getFloat(245);
+            float aq_co2_variability = getFloat(246);
+            float aq_comfort_score = getFloat(247);
+            float aq_env_correlation = getFloat(248);
+            float aq_stress_level = getFloat(249);
+            float aq_variability_idx = getFloat(250);
+            float aq_voc_base = getFloat(251);
+            float aq_voc_peak = getFloat(252);
+            float aq_voc_variability = getFloat(253);
+            float aq_voc_warning = getFloat(254);
+
+            // =========================================================================
+            // PARAMETRY PIEZO VIBRATION (33 parametry) - indeksy 255-287
+            // =========================================================================
+            float pv_vib_rms = getFloat(255);
+            float pv_vib_peak = getFloat(256);
+            float pv_vib_freq_dom = getFloat(257);
+            float pv_bee_traffic = getFloat(258);
+            float pv_intrusion_prob = getFloat(259);
+            float pv_predator_det = getFloat(260);
+            float pv_queen_piping = getFloat(261);
+            float pv_vibration_energy = getFloat(262);
+            float pv_activity_pattern = getFloat(263);
+            float pv_disturbance_idx = getFloat(264);
+            float pv_health_vib = getFloat(265);
+            float pv_population_est = getFloat(266);
+            float pv_aggression_idx = getFloat(267);
+            float pv_swarm_prep = getFloat(268);
+            float pv_cluster_size = getFloat(269);
+            float pv_cluster_activity = getFloat(270);
+            float pv_fanning行为 = getFloat(271);
+            float pv_buzz_piping = getFloat(272);
+            float pv_tremble_dance = getFloat(273);
+            float pv_waggle_dance = getFloat(274);
+            float pv_foraging_comm = getFloat(275);
+            float pv_alert_level = getFloat(276);
+            float pv_alien_detected = getFloat(277);
+            float pv_confidence = getFloat(278);
+            float pv_continuous_vib = getFloat(279);
+            float pv_event_count = getFloat(280);
+            float pv_impact_flag = getFloat(281);
+            float pv_severity = getFloat(282);
+            float pv_source_type = getFloat(283);
+            float pv_vib_mean = getFloat(284);
+            float pv_vib_std = getFloat(285);
+            float pv_wind_noise = getFloat(286);
+            float pv_zcr = getFloat(287);
+
+            // =========================================================================
+            // PARAMETRY BAROMETRIC (30 parametrów) - indeksy 288-317
+            // =========================================================================
+            float baro_pressure = getFloat(288);
+            float baro_pressure_mean = getFloat(289);
+            float baro_pressure_std = getFloat(290);
+            float baro_pressure_min = getFloat(291);
+            float baro_pressure_max = getFloat(292);
+            float baro_pressure_trend = getFloat(293);
+            float baro_weather_trend = getFloat(294);
+            float baro_storm_prob = getFloat(295);
+            float baro_foraging_cond = getFloat(296);
+            float baro_pressure_change = getFloat(297);
+            float baro_altitude_est = getFloat(298);
+            float baro_sealevel_press = getFloat(299);
+            float baro_density_alt = getFloat(300);
+            float baro_weather_score = getFloat(301);
+            float baro_front_approach = getFloat(302);
+            float baro_stability = getFloat(303);
+            float baro_bee_activity_pred = getFloat(304);
+            float baro_weather_alert = getFloat(305);
+            float baro_activity_pred = getFloat(306);
+            int baro_alert_flag = getInt(307);
+            float baro_foraging_idx = getFloat(308);
+            float baro_improving_flag = getFloat(309);
+            float baro_rain_risk = getFloat(310);
+            float baro_reliability_idx = getFloat(311);
+            float baro_severity = getFloat(312);
+            float baro_storm_risk = getFloat(313);
+            float baro_temperature = getFloat(314);
+            float baro_trend_medium = getFloat(315);
+            float baro_trend_short = getFloat(316);
+            float baro_weather_idx = getFloat(317);
+
+            // =========================================================================
+            // PARAMETRY LIGHT (20 parametrów) - indeksy 318-337
+            // =========================================================================
+            float light_lux = getFloat(318);
+            float light_lux_mean = getFloat(319);
+            float light_lux_min = getFloat(320);
+            float light_lux_max = getFloat(321);
+            float light_daylight_hours = getFloat(322);
+            float light_darkness_hours = getFloat(323);
+            float light_twilight = getFloat(324);
+            float light_circadian_sync = getFloat(325);
+            float light_foraging_idx = getFloat(326);
+            float light_photoperiod = getFloat(327);
+            float light_seasonal_change = getFloat(328);
+            float light_cloud_cover_est = getFloat(329);
+            float light_sunrise_offset = getFloat(330);
+            float light_uv_idx = getFloat(331);
+            float light_spectrum_blue = getFloat(332);
+            float light_spectrum_red = getFloat(333);
+            float light_spectrum_ir = getFloat(334);
+            float light_ir_ratio = getFloat(335);
+            float light_lux_std = getFloat(336);
+            float light_spectrum_data = getFloat(337);
+
+            // Dodatkowe pola backward compatibility
+            float weight_rate = getFloat(338);
+            float weight_trend = getFloat(339);
+            int air_iaq = getInt(340);
 
             {
                 std::lock_guard<std::mutex> lock(data_mutex);
                 if (hives_data.find(hive_id) != hives_data.end()) {
+                    // Podstawowe parametry
                     hives_data[hive_id].temperature = temp;
                     hives_data[hive_id].humidity = humidity;
                     hives_data[hive_id].weight = weight;
@@ -919,21 +1289,353 @@ public:
                     hives_data[hive_id].motion_detected = motion;
                     hives_data[hive_id].timestamp = timestamp;
                     hives_data[hive_id].is_online = true;
+                    
+                    // Audio
                     hives_data[hive_id].audio_rms = audio_rms;
-                    hives_data[hive_id].audio_dominant_freq = audio_dom_freq;
+                    hives_data[hive_id].audio_peak = audio_peak;
+                    hives_data[hive_id].audio_peak_to_peak = audio_peak_to_peak;
+                    hives_data[hive_id].audio_zcr = audio_zcr;
+                    hives_data[hive_id].audio_energy = audio_energy;
+                    hives_data[hive_id].audio_mean_amp = audio_mean_amp;
+                    hives_data[hive_id].audio_std_amp = audio_std_amp;
+                    hives_data[hive_id].audio_cv_amp = audio_cv_amp;
+                    hives_data[hive_id].audio_skewness = audio_skewness;
+                    hives_data[hive_id].audio_kurtosis = audio_kurtosis;
+                    hives_data[hive_id].audio_dominant_freq = audio_dominant_freq;
+                    hives_data[hive_id].audio_spectral_centroid = audio_spectral_centroid;
+                    hives_data[hive_id].audio_spectral_bandwidth = audio_spectral_bandwidth;
+                    hives_data[hive_id].audio_spectral_flatness = audio_spectral_flatness;
+                    hives_data[hive_id].audio_spectral_rolloff = audio_spectral_rolloff;
+                    hives_data[hive_id].audio_power_bee_band = audio_power_bee_band;
+                    hives_data[hive_id].audio_power_swarm_band = audio_power_swarm_band;
+                    hives_data[hive_id].audio_power_low_freq = audio_power_low_freq;
+                    hives_data[hive_id].audio_power_high_freq = audio_power_high_freq;
+                    hives_data[hive_id].audio_harmonic_ratio = audio_harmonic_ratio;
+                    for(int i=0; i<4; i++) hives_data[hive_id].audio_mfcc_energy[i] = audio_mfcc_energy[i];
+                    hives_data[hive_id].audio_spectral_entropy = audio_spectral_entropy;
+                    hives_data[hive_id].audio_spectral_contrast = audio_spectral_contrast;
+                    hives_data[hive_id].audio_tonal_strength = audio_tonal_strength;
+                    hives_data[hive_id].audio_crest_factor = audio_crest_factor;
+                    hives_data[hive_id].audio_formant_f1 = audio_formant_f1;
+                    hives_data[hive_id].audio_formant_f2 = audio_formant_f2;
+                    hives_data[hive_id].audio_fundamental_freq = audio_fundamental_freq;
+                    hives_data[hive_id].audio_pitch_strength = audio_pitch_strength;
+                    hives_data[hive_id].audio_inharmonicity = audio_inharmonicity;
+                    hives_data[hive_id].audio_shimmer = audio_shimmer;
+                    hives_data[hive_id].audio_jitter = audio_jitter;
+                    hives_data[hive_id].audio_nhr = audio_nhr;
+                    hives_data[hive_id].audio_hnr = audio_hnr;
+                    hives_data[hive_id].audio_autocorr_peak = audio_autocorr_peak;
+                    hives_data[hive_id].audio_attack_time = audio_attack_time;
+                    hives_data[hive_id].audio_decay_time = audio_decay_time;
+                    hives_data[hive_id].audio_sustain_level = audio_sustain_level;
+                    hives_data[hive_id].audio_temporal_centroid = audio_temporal_centroid;
+                    hives_data[hive_id].audio_loudness = audio_loudness;
+                    hives_data[hive_id].audio_spectral_flux = audio_spectral_flux;
+                    hives_data[hive_id].audio_spectral_slope = audio_spectral_slope;
+                    hives_data[hive_id].audio_spectral_kurtosis = audio_spectral_kurtosis;
+                    hives_data[hive_id].audio_spectral_skewness = audio_spectral_skewness;
+                    hives_data[hive_id].audio_fund_salience = audio_fund_salience;
+                    for(int i=0; i<8; i++) hives_data[hive_id].audio_power_band[i] = audio_power_band[i];
+                    hives_data[hive_id].audio_leq = audio_leq;
+                    hives_data[hive_id].audio_l10 = audio_l10;
+                    hives_data[hive_id].audio_l90 = audio_l90;
+                    hives_data[hive_id].audio_noise_floor = audio_noise_floor;
+                    hives_data[hive_id].audio_snr = audio_snr;
+                    hives_data[hive_id].audio_aci = audio_aci;
+                    hives_data[hive_id].audio_bi = audio_bi;
+                    hives_data[hive_id].audio_ndi = audio_ndi;
+                    hives_data[hive_id].audio_adi = audio_adi;
+                    hives_data[hive_id].audio_aei = audio_aei;
+                    hives_data[hive_id].audio_bee_activity = audio_bee_activity;
                     hives_data[hive_id].audio_swarm_prob = audio_swarm_prob;
-                    hives_data[hive_id].radar_distance = radar_dist;
+                    hives_data[hive_id].audio_stress_indicator = audio_stress_indicator;
+                    hives_data[hive_id].audio_hive_health = audio_hive_health;
+                    hives_data[hive_id].audio_foraging_eff = audio_foraging_eff;
+                    hives_data[hive_id].audio_colony_coherence = audio_colony_coherence;
+                    
+                    // Radar
+                    hives_data[hive_id].radar_distance = radar_distance;
                     hives_data[hive_id].radar_energy = radar_energy;
+                    hives_data[hive_id].radar_speed = radar_speed;
+                    hives_data[hive_id].radar_distance_std = radar_distance_std;
+                    hives_data[hive_id].radar_energy_std = radar_energy_std;
+                    hives_data[hive_id].radar_speed_std = radar_speed_std;
+                    hives_data[hive_id].radar_distance_min = radar_distance_min;
+                    hives_data[hive_id].radar_distance_max = radar_distance_max;
+                    hives_data[hive_id].radar_energy_min = radar_energy_min;
+                    hives_data[hive_id].radar_energy_max = radar_energy_max;
+                    hives_data[hive_id].radar_range = radar_range;
+                    hives_data[hive_id].radar_energy_variance = radar_energy_variance;
+                    hives_data[hive_id].radar_cv = radar_cv;
                     hives_data[hive_id].radar_activity = radar_activity;
+                    hives_data[hive_id].radar_idle_percent = radar_idle_percent;
+                    hives_data[hive_id].radar_motion_intensity = radar_motion_intensity;
+                    hives_data[hive_id].radar_target_rate = radar_target_rate;
+                    hives_data[hive_id].radar_max_targets = radar_max_targets;
+                    hives_data[hive_id].radar_target_density = radar_target_density;
+                    hives_data[hive_id].radar_slope = radar_slope;
+                    hives_data[hive_id].radar_correlation = radar_correlation;
+                    hives_data[hive_id].radar_acceleration = radar_acceleration;
+                    hives_data[hive_id].radar_signal_quality = radar_signal_quality;
+                    hives_data[hive_id].radar_anomaly_score = radar_anomaly_score;
+                    hives_data[hive_id].radar_hive_health = radar_hive_health;
+                    hives_data[hive_id].radar_power_spectrum = radar_power_spectrum;
+                    hives_data[hive_id].radar_zcr = radar_zcr;
+                    hives_data[hive_id].radar_entropy = radar_entropy;
+                    
+                    // HX711
+                    hives_data[hive_id].hx711_current = hx711_current;
+                    hives_data[hive_id].hx711_mean = hx711_mean;
+                    hives_data[hive_id].hx711_std = hx711_std;
+                    hives_data[hive_id].hx711_min = hx711_min;
+                    hives_data[hive_id].hx711_max = hx711_max;
+                    hives_data[hive_id].hx711_median = hx711_median;
+                    hives_data[hive_id].hx711_range = hx711_range;
+                    hives_data[hive_id].hx711_variance = hx711_variance;
+                    hives_data[hive_id].hx711_cv = hx711_cv;
+                    hives_data[hive_id].hx711_iqr = hx711_iqr;
+                    hives_data[hive_id].hx711_rate = hx711_rate;
+                    hives_data[hive_id].hx711_mean_rate = hx711_mean_rate;
+                    hives_data[hive_id].hx711_max_pos_rate = hx711_max_pos_rate;
+                    hives_data[hive_id].hx711_max_neg_rate = hx711_max_neg_rate;
+                    hives_data[hive_id].hx711_acceleration = hx711_acceleration;
+                    hives_data[hive_id].hx711_slope_1h = hx711_slope_1h;
+                    hives_data[hive_id].hx711_slope_4h = hx711_slope_4h;
+                    hives_data[hive_id].hx711_slope_24h = hx711_slope_24h;
+                    hives_data[hive_id].hx711_corr_1h = hx711_corr_1h;
+                    hives_data[hive_id].hx711_corr_4h = hx711_corr_4h;
+                    hives_data[hive_id].hx711_corr_24h = hx711_corr_24h;
+                    hives_data[hive_id].hx711_direction = hx711_direction;
+                    hives_data[hive_id].hx711_nectar_inflow = hx711_nectar_inflow;
+                    hives_data[hive_id].hx711_nectar_accum = hx711_nectar_accum;
+                    hives_data[hive_id].hx711_foraging_eff = hx711_foraging_eff;
+                    hives_data[hive_id].hx711_bloom_intensity = hx711_bloom_intensity;
+                    hives_data[hive_id].hx711_honey_prod_idx = hx711_honey_prod_idx;
+                    hives_data[hive_id].hx711_nectar_quality = hx711_nectar_quality;
+                    hives_data[hive_id].hx711_consumption_rate = hx711_consumption_rate;
+                    hives_data[hive_id].hx711_daily_consumption = hx711_daily_consumption;
+                    hives_data[hive_id].hx711_food_reserve_days = hx711_food_reserve_days;
+                    hives_data[hive_id].hx711_winter_readiness = hx711_winter_readiness;
+                    hives_data[hive_id].hx711_starvation_risk = hx711_starvation_risk;
+                    hives_data[hive_id].hx711_daily_amplitude = hx711_daily_amplitude;
+                    hives_data[hive_id].hx711_circadian_str = hx711_circadian_str;
+                    hives_data[hive_id].hx711_seasonal_trend = hx711_seasonal_trend;
+                    hives_data[hive_id].hx711_signal_quality = hx711_signal_quality;
+                    hives_data[hive_id].hx711_noise_level = hx711_noise_level;
+                    hives_data[hive_id].hx711_drift_rate = hx711_drift_rate;
+                    hives_data[hive_id].hx711_outlier_ratio = hx711_outlier_ratio;
+                    hives_data[hive_id].hx711_sample_count = hx711_sample_count;
+                    hives_data[hive_id].hx711_forecast_1h = hx711_forecast_1h;
+                    hives_data[hive_id].hx711_forecast_6h = hx711_forecast_6h;
+                    hives_data[hive_id].hx711_forecast_24h = hx711_forecast_24h;
+                    hives_data[hive_id].hx711_forecast_conf = hx711_forecast_conf;
+                    hives_data[hive_id].hx711_prediction_error = hx711_prediction_error;
+                    hives_data[hive_id].hx711_harvest_event = hx711_harvest_event;
+                    hives_data[hive_id].hx711_swarm_event = hx711_swarm_event;
+                    hives_data[hive_id].hx711_feeding_event = hx711_feeding_event;
+                    hives_data[hive_id].hx711_water_collection = hx711_water_collection;
+                    hives_data[hive_id].hx711_skewness = hx711_skewness;
+                    hives_data[hive_id].hx711_kurtosis = hx711_kurtosis;
+                    hives_data[hive_id].hx711_entropy = hx711_entropy;
+                    hives_data[hive_id].hx711_complexity = hx711_complexity;
+                    hives_data[hive_id].hx711_fractal_dim = hx711_fractal_dim;
+                    hives_data[hive_id].hx711_colony_mass = hx711_colony_mass;
+                    hives_data[hive_id].hx711_bee_population = hx711_bee_population;
+                    hives_data[hive_id].hx711_brood_mass = hx711_brood_mass;
+                    hives_data[hive_id].hx711_food_stores = hx711_food_stores;
+                    hives_data[hive_id].hx711_honey_stores = hx711_honey_stores;
+                    hives_data[hive_id].hx711_pollen_stores = hx711_pollen_stores;
+                    hives_data[hive_id].hx711_productivity_idx = hx711_productivity_idx;
+                    hives_data[hive_id].hx711_efficiency_score = hx711_efficiency_score;
+                    hives_data[hive_id].hx711_growth_rate = hx711_growth_rate;
+                    hives_data[hive_id].hx711_balance_score = hx711_balance_score;
+                    hives_data[hive_id].hx711_resilience_idx = hx711_resilience_idx;
+                    hives_data[hive_id].hx711_dominant_period = hx711_dominant_period;
+                    hives_data[hive_id].hx711_power_24h = hx711_power_24h;
+                    hives_data[hive_id].hx711_power_12h = hx711_power_12h;
+                    hives_data[hive_id].hx711_power_6h = hx711_power_6h;
+                    hives_data[hive_id].hx711_power_1h = hx711_power_1h;
+                    hives_data[hive_id].hx711_completeness = hx711_completeness;
+                    hives_data[hive_id].hx711_reliability = hx711_reliability;
+                    hives_data[hive_id].hx711_accuracy_est = hx711_accuracy_est;
+                    hives_data[hive_id].hx711_precision_est = hx711_precision_est;
+                    hives_data[hive_id].hx711_anomaly_flag = hx711_anomaly_flag;
+                    hives_data[hive_id].hx711_health_score = hx711_health_score;
+                    
+                    // Temp/Humidity
+                    hives_data[hive_id].th_temp_mean = th_temp_mean;
+                    hives_data[hive_id].th_temp_std = th_temp_std;
+                    hives_data[hive_id].th_temp_min = th_temp_min;
+                    hives_data[hive_id].th_temp_max = th_temp_max;
+                    hives_data[hive_id].th_temp_range = th_temp_range;
+                    hives_data[hive_id].th_hum_mean = th_hum_mean;
+                    hives_data[hive_id].th_hum_std = th_hum_std;
+                    hives_data[hive_id].th_hum_min = th_hum_min;
+                    hives_data[hive_id].th_hum_max = th_hum_max;
+                    hives_data[hive_id].th_hum_range = th_hum_range;
+                    hives_data[hive_id].th_heat_index = th_heat_index;
+                    hives_data[hive_id].th_dew_point = th_dew_point;
+                    hives_data[hive_id].th_comfort_idx = th_comfort_idx;
+                    hives_data[hive_id].th_brood_stress = th_brood_stress;
+                    hives_data[hive_id].th_mold_risk = th_mold_risk;
+                    hives_data[hive_id].th_temp_stability = th_temp_stability;
+                    hives_data[hive_id].th_vpd = th_vpd;
+                    hives_data[hive_id].th_thi = th_thi;
+                    hives_data[hive_id].th_enthalpy = th_enthalpy;
+                    hives_data[hive_id].th_air_density = th_air_density;
+                    hives_data[hive_id].th_specific_humidity = th_specific_humidity;
+                    hives_data[hive_id].th_mixing_ratio = th_mixing_ratio;
+                    hives_data[hive_id].th_saturation_deficit = th_saturation_deficit;
+                    hives_data[hive_id].th_evap_potential = th_evap_potential;
+                    hives_data[hive_id].th_condensation_risk = th_condensation_risk;
+                    hives_data[hive_id].th_ventilation_need = th_ventilation_need;
+                    hives_data[hive_id].th_cooling_need = th_cooling_need;
+                    hives_data[hive_id].th_heating_need = th_heating_need;
+                    hives_data[hive_id].th_climate_score = th_climate_score;
+                    hives_data[hive_id].th_hum_stability_1h = th_hum_stability_1h;
+                    hives_data[hive_id].th_hum_trend = th_hum_trend;
+                    hives_data[hive_id].th_temp_trend = th_temp_trend;
+                    
+                    // Air Quality
+                    hives_data[hive_id].aq_iaq = aq_iaq;
+                    hives_data[hive_id].aq_iaq_mean = aq_iaq_mean;
+                    hives_data[hive_id].aq_contamination = aq_contamination;
+                    hives_data[hive_id].aq_mold_risk = aq_mold_risk;
+                    hives_data[hive_id].aq_ventilation_idx = aq_ventilation_idx;
+                    hives_data[hive_id].aq_co2_mean = aq_co2_mean;
+                    hives_data[hive_id].aq_voc_mean = aq_voc_mean;
+                    hives_data[hive_id].aq_stress_air = aq_stress_air;
+                    hives_data[hive_id].aq_purity = aq_purity;
+                    hives_data[hive_id].aq_freshness = aq_freshness;
+                    hives_data[hive_id].aq_pollution_load = aq_pollution_load;
+                    hives_data[hive_id].aq_gas_idx = aq_gas_idx;
+                    hives_data[hive_id].aq_particulate_idx = aq_particulate_idx;
+                    hives_data[hive_id].aq_allergen_risk = aq_allergen_risk;
+                    hives_data[hive_id].aq_toxicity_est = aq_toxicity_est;
+                    hives_data[hive_id].aq_oxidation_cap = aq_oxidation_cap;
+                    hives_data[hive_id].aq_reduction_cap = aq_reduction_cap;
+                    hives_data[hive_id].aq_buffer_cap = aq_buffer_cap;
+                    hives_data[hive_id].aq_recovery_rate = aq_recovery_rate;
+                    hives_data[hive_id].aq_stability = aq_stability;
+                    hives_data[hive_id].aq_trend = aq_trend;
+                    hives_data[hive_id].aq_forecast = aq_forecast;
+                    hives_data[hive_id].aq_health_impact = aq_health_impact;
+                    hives_data[hive_id].aq_bee_behavior_impact = aq_bee_behavior_impact;
+                    hives_data[hive_id].aq_co2_alert = aq_co2_alert;
+                    hives_data[hive_id].aq_co2_base = aq_co2_base;
+                    hives_data[hive_id].aq_co2_peak = aq_co2_peak;
+                    hives_data[hive_id].aq_co2_trend = aq_co2_trend;
+                    hives_data[hive_id].aq_co2_variability = aq_co2_variability;
+                    hives_data[hive_id].aq_comfort_score = aq_comfort_score;
+                    hives_data[hive_id].aq_env_correlation = aq_env_correlation;
+                    hives_data[hive_id].aq_stress_level = aq_stress_level;
+                    hives_data[hive_id].aq_variability_idx = aq_variability_idx;
+                    hives_data[hive_id].aq_voc_base = aq_voc_base;
+                    hives_data[hive_id].aq_voc_peak = aq_voc_peak;
+                    hives_data[hive_id].aq_voc_variability = aq_voc_variability;
+                    hives_data[hive_id].aq_voc_warning = aq_voc_warning;
+                    
+                    // Piezo Vibration
+                    hives_data[hive_id].pv_vib_rms = pv_vib_rms;
+                    hives_data[hive_id].pv_vib_peak = pv_vib_peak;
+                    hives_data[hive_id].pv_vib_freq_dom = pv_vib_freq_dom;
+                    hives_data[hive_id].pv_bee_traffic = pv_bee_traffic;
+                    hives_data[hive_id].pv_intrusion_prob = pv_intrusion_prob;
+                    hives_data[hive_id].pv_predator_det = pv_predator_det;
+                    hives_data[hive_id].pv_queen_piping = pv_queen_piping;
+                    hives_data[hive_id].pv_vibration_energy = pv_vibration_energy;
+                    hives_data[hive_id].pv_activity_pattern = pv_activity_pattern;
+                    hives_data[hive_id].pv_disturbance_idx = pv_disturbance_idx;
+                    hives_data[hive_id].pv_health_vib = pv_health_vib;
+                    hives_data[hive_id].pv_population_est = pv_population_est;
+                    hives_data[hive_id].pv_aggression_idx = pv_aggression_idx;
+                    hives_data[hive_id].pv_swarm_prep = pv_swarm_prep;
+                    hives_data[hive_id].pv_cluster_size = pv_cluster_size;
+                    hives_data[hive_id].pv_cluster_activity = pv_cluster_activity;
+                    hives_data[hive_id].pv_fanning行为 = pv_fanning 行为;
+                    hives_data[hive_id].pv_buzz_piping = pv_buzz_piping;
+                    hives_data[hive_id].pv_tremble_dance = pv_tremble_dance;
+                    hives_data[hive_id].pv_waggle_dance = pv_waggle_dance;
+                    hives_data[hive_id].pv_foraging_comm = pv_foraging_comm;
+                    hives_data[hive_id].pv_alert_level = pv_alert_level;
+                    hives_data[hive_id].pv_alien_detected = pv_alien_detected;
+                    hives_data[hive_id].pv_confidence = pv_confidence;
+                    hives_data[hive_id].pv_continuous_vib = pv_continuous_vib;
+                    hives_data[hive_id].pv_event_count = pv_event_count;
+                    hives_data[hive_id].pv_impact_flag = pv_impact_flag;
+                    hives_data[hive_id].pv_severity = pv_severity;
+                    hives_data[hive_id].pv_source_type = pv_source_type;
+                    hives_data[hive_id].pv_vib_mean = pv_vib_mean;
+                    hives_data[hive_id].pv_vib_std = pv_vib_std;
+                    hives_data[hive_id].pv_wind_noise = pv_wind_noise;
+                    hives_data[hive_id].pv_zcr = pv_zcr;
+                    
+                    // Barometric
+                    hives_data[hive_id].baro_pressure = baro_pressure;
+                    hives_data[hive_id].baro_pressure_mean = baro_pressure_mean;
+                    hives_data[hive_id].baro_pressure_std = baro_pressure_std;
+                    hives_data[hive_id].baro_pressure_min = baro_pressure_min;
+                    hives_data[hive_id].baro_pressure_max = baro_pressure_max;
+                    hives_data[hive_id].baro_pressure_trend = baro_pressure_trend;
+                    hives_data[hive_id].baro_weather_trend = baro_weather_trend;
+                    hives_data[hive_id].baro_storm_prob = baro_storm_prob;
+                    hives_data[hive_id].baro_foraging_cond = baro_foraging_cond;
+                    hives_data[hive_id].baro_pressure_change = baro_pressure_change;
+                    hives_data[hive_id].baro_altitude_est = baro_altitude_est;
+                    hives_data[hive_id].baro_sealevel_press = baro_sealevel_press;
+                    hives_data[hive_id].baro_density_alt = baro_density_alt;
+                    hives_data[hive_id].baro_weather_score = baro_weather_score;
+                    hives_data[hive_id].baro_front_approach = baro_front_approach;
+                    hives_data[hive_id].baro_stability = baro_stability;
+                    hives_data[hive_id].baro_bee_activity_pred = baro_bee_activity_pred;
+                    hives_data[hive_id].baro_weather_alert = baro_weather_alert;
+                    hives_data[hive_id].baro_activity_pred = baro_activity_pred;
+                    hives_data[hive_id].baro_alert_flag = baro_alert_flag;
+                    hives_data[hive_id].baro_foraging_idx = baro_foraging_idx;
+                    hives_data[hive_id].baro_improving_flag = baro_improving_flag;
+                    hives_data[hive_id].baro_rain_risk = baro_rain_risk;
+                    hives_data[hive_id].baro_reliability_idx = baro_reliability_idx;
+                    hives_data[hive_id].baro_severity = baro_severity;
+                    hives_data[hive_id].baro_storm_risk = baro_storm_risk;
+                    hives_data[hive_id].baro_temperature = baro_temperature;
+                    hives_data[hive_id].baro_trend_medium = baro_trend_medium;
+                    hives_data[hive_id].baro_trend_short = baro_trend_short;
+                    hives_data[hive_id].baro_weather_idx = baro_weather_idx;
+                    
+                    // Light
+                    hives_data[hive_id].light_lux = light_lux;
+                    hives_data[hive_id].light_lux_mean = light_lux_mean;
+                    hives_data[hive_id].light_lux_min = light_lux_min;
+                    hives_data[hive_id].light_lux_max = light_lux_max;
+                    hives_data[hive_id].light_daylight_hours = light_daylight_hours;
+                    hives_data[hive_id].light_darkness_hours = light_darkness_hours;
+                    hives_data[hive_id].light_twilight = light_twilight;
+                    hives_data[hive_id].light_circadian_sync = light_circadian_sync;
+                    hives_data[hive_id].light_foraging_idx = light_foraging_idx;
+                    hives_data[hive_id].light_photoperiod = light_photoperiod;
+                    hives_data[hive_id].light_seasonal_change = light_seasonal_change;
+                    hives_data[hive_id].light_cloud_cover_est = light_cloud_cover_est;
+                    hives_data[hive_id].light_sunrise_offset = light_sunrise_offset;
+                    hives_data[hive_id].light_uv_idx = light_uv_idx;
+                    hives_data[hive_id].light_spectrum_blue = light_spectrum_blue;
+                    hives_data[hive_id].light_spectrum_red = light_spectrum_red;
+                    hives_data[hive_id].light_spectrum_ir = light_spectrum_ir;
+                    hives_data[hive_id].light_ir_ratio = light_ir_ratio;
+                    hives_data[hive_id].light_lux_std = light_lux_std;
+                    hives_data[hive_id].light_spectrum_data = light_spectrum_data;
+                    
+                    // Backward compatibility
                     hives_data[hive_id].weight_rate = weight_rate;
                     hives_data[hive_id].weight_trend = weight_trend;
                     hives_data[hive_id].air_iaq = air_iaq;
                     
-                    Logger::getInstance().debug("CSV: Zaktualizowano " + hive_id + " z " + source_ip);
+                    Logger::getInstance().debug("CSV: Zaktualizowano " + hive_id + " z " + source_ip + " (" + std::to_string(parts.size()) + " parametrow)");
                 } else {
                     Logger::getInstance().info("Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
                     HiveData new_hive;
                     new_hive.hive_id = hive_id;
+                    // Podstawowe parametry
                     new_hive.temperature = temp;
                     new_hive.humidity = humidity;
                     new_hive.weight = weight;
@@ -943,15 +1645,347 @@ public:
                     new_hive.motion_detected = motion;
                     new_hive.timestamp = timestamp;
                     new_hive.is_online = true;
+                    
+                    // Audio
                     new_hive.audio_rms = audio_rms;
-                    new_hive.audio_dominant_freq = audio_dom_freq;
+                    new_hive.audio_peak = audio_peak;
+                    new_hive.audio_peak_to_peak = audio_peak_to_peak;
+                    new_hive.audio_zcr = audio_zcr;
+                    new_hive.audio_energy = audio_energy;
+                    new_hive.audio_mean_amp = audio_mean_amp;
+                    new_hive.audio_std_amp = audio_std_amp;
+                    new_hive.audio_cv_amp = audio_cv_amp;
+                    new_hive.audio_skewness = audio_skewness;
+                    new_hive.audio_kurtosis = audio_kurtosis;
+                    new_hive.audio_dominant_freq = audio_dominant_freq;
+                    new_hive.audio_spectral_centroid = audio_spectral_centroid;
+                    new_hive.audio_spectral_bandwidth = audio_spectral_bandwidth;
+                    new_hive.audio_spectral_flatness = audio_spectral_flatness;
+                    new_hive.audio_spectral_rolloff = audio_spectral_rolloff;
+                    new_hive.audio_power_bee_band = audio_power_bee_band;
+                    new_hive.audio_power_swarm_band = audio_power_swarm_band;
+                    new_hive.audio_power_low_freq = audio_power_low_freq;
+                    new_hive.audio_power_high_freq = audio_power_high_freq;
+                    new_hive.audio_harmonic_ratio = audio_harmonic_ratio;
+                    for(int i=0; i<4; i++) new_hive.audio_mfcc_energy[i] = audio_mfcc_energy[i];
+                    new_hive.audio_spectral_entropy = audio_spectral_entropy;
+                    new_hive.audio_spectral_contrast = audio_spectral_contrast;
+                    new_hive.audio_tonal_strength = audio_tonal_strength;
+                    new_hive.audio_crest_factor = audio_crest_factor;
+                    new_hive.audio_formant_f1 = audio_formant_f1;
+                    new_hive.audio_formant_f2 = audio_formant_f2;
+                    new_hive.audio_fundamental_freq = audio_fundamental_freq;
+                    new_hive.audio_pitch_strength = audio_pitch_strength;
+                    new_hive.audio_inharmonicity = audio_inharmonicity;
+                    new_hive.audio_shimmer = audio_shimmer;
+                    new_hive.audio_jitter = audio_jitter;
+                    new_hive.audio_nhr = audio_nhr;
+                    new_hive.audio_hnr = audio_hnr;
+                    new_hive.audio_autocorr_peak = audio_autocorr_peak;
+                    new_hive.audio_attack_time = audio_attack_time;
+                    new_hive.audio_decay_time = audio_decay_time;
+                    new_hive.audio_sustain_level = audio_sustain_level;
+                    new_hive.audio_temporal_centroid = audio_temporal_centroid;
+                    new_hive.audio_loudness = audio_loudness;
+                    new_hive.audio_spectral_flux = audio_spectral_flux;
+                    new_hive.audio_spectral_slope = audio_spectral_slope;
+                    new_hive.audio_spectral_kurtosis = audio_spectral_kurtosis;
+                    new_hive.audio_spectral_skewness = audio_spectral_skewness;
+                    new_hive.audio_fund_salience = audio_fund_salience;
+                    for(int i=0; i<8; i++) new_hive.audio_power_band[i] = audio_power_band[i];
+                    new_hive.audio_leq = audio_leq;
+                    new_hive.audio_l10 = audio_l10;
+                    new_hive.audio_l90 = audio_l90;
+                    new_hive.audio_noise_floor = audio_noise_floor;
+                    new_hive.audio_snr = audio_snr;
+                    new_hive.audio_aci = audio_aci;
+                    new_hive.audio_bi = audio_bi;
+                    new_hive.audio_ndi = audio_ndi;
+                    new_hive.audio_adi = audio_adi;
+                    new_hive.audio_aei = audio_aei;
+                    new_hive.audio_bee_activity = audio_bee_activity;
                     new_hive.audio_swarm_prob = audio_swarm_prob;
-                    new_hive.radar_distance = radar_dist;
+                    new_hive.audio_stress_indicator = audio_stress_indicator;
+                    new_hive.audio_hive_health = audio_hive_health;
+                    new_hive.audio_foraging_eff = audio_foraging_eff;
+                    new_hive.audio_colony_coherence = audio_colony_coherence;
+                    
+                    // Radar
+                    new_hive.radar_distance = radar_distance;
                     new_hive.radar_energy = radar_energy;
+                    new_hive.radar_speed = radar_speed;
+                    new_hive.radar_distance_std = radar_distance_std;
+                    new_hive.radar_energy_std = radar_energy_std;
+                    new_hive.radar_speed_std = radar_speed_std;
+                    new_hive.radar_distance_min = radar_distance_min;
+                    new_hive.radar_distance_max = radar_distance_max;
+                    new_hive.radar_energy_min = radar_energy_min;
+                    new_hive.radar_energy_max = radar_energy_max;
+                    new_hive.radar_range = radar_range;
+                    new_hive.radar_energy_variance = radar_energy_variance;
+                    new_hive.radar_cv = radar_cv;
                     new_hive.radar_activity = radar_activity;
+                    new_hive.radar_idle_percent = radar_idle_percent;
+                    new_hive.radar_motion_intensity = radar_motion_intensity;
+                    new_hive.radar_target_rate = radar_target_rate;
+                    new_hive.radar_max_targets = radar_max_targets;
+                    new_hive.radar_target_density = radar_target_density;
+                    new_hive.radar_slope = radar_slope;
+                    new_hive.radar_correlation = radar_correlation;
+                    new_hive.radar_acceleration = radar_acceleration;
+                    new_hive.radar_signal_quality = radar_signal_quality;
+                    new_hive.radar_anomaly_score = radar_anomaly_score;
+                    new_hive.radar_hive_health = radar_hive_health;
+                    new_hive.radar_power_spectrum = radar_power_spectrum;
+                    new_hive.radar_zcr = radar_zcr;
+                    new_hive.radar_entropy = radar_entropy;
+                    
+                    // HX711
+                    new_hive.hx711_current = hx711_current;
+                    new_hive.hx711_mean = hx711_mean;
+                    new_hive.hx711_std = hx711_std;
+                    new_hive.hx711_min = hx711_min;
+                    new_hive.hx711_max = hx711_max;
+                    new_hive.hx711_median = hx711_median;
+                    new_hive.hx711_range = hx711_range;
+                    new_hive.hx711_variance = hx711_variance;
+                    new_hive.hx711_cv = hx711_cv;
+                    new_hive.hx711_iqr = hx711_iqr;
+                    new_hive.hx711_rate = hx711_rate;
+                    new_hive.hx711_mean_rate = hx711_mean_rate;
+                    new_hive.hx711_max_pos_rate = hx711_max_pos_rate;
+                    new_hive.hx711_max_neg_rate = hx711_max_neg_rate;
+                    new_hive.hx711_acceleration = hx711_acceleration;
+                    new_hive.hx711_slope_1h = hx711_slope_1h;
+                    new_hive.hx711_slope_4h = hx711_slope_4h;
+                    new_hive.hx711_slope_24h = hx711_slope_24h;
+                    new_hive.hx711_corr_1h = hx711_corr_1h;
+                    new_hive.hx711_corr_4h = hx711_corr_4h;
+                    new_hive.hx711_corr_24h = hx711_corr_24h;
+                    new_hive.hx711_direction = hx711_direction;
+                    new_hive.hx711_nectar_inflow = hx711_nectar_inflow;
+                    new_hive.hx711_nectar_accum = hx711_nectar_accum;
+                    new_hive.hx711_foraging_eff = hx711_foraging_eff;
+                    new_hive.hx711_bloom_intensity = hx711_bloom_intensity;
+                    new_hive.hx711_honey_prod_idx = hx711_honey_prod_idx;
+                    new_hive.hx711_nectar_quality = hx711_nectar_quality;
+                    new_hive.hx711_consumption_rate = hx711_consumption_rate;
+                    new_hive.hx711_daily_consumption = hx711_daily_consumption;
+                    new_hive.hx711_food_reserve_days = hx711_food_reserve_days;
+                    new_hive.hx711_winter_readiness = hx711_winter_readiness;
+                    new_hive.hx711_starvation_risk = hx711_starvation_risk;
+                    new_hive.hx711_daily_amplitude = hx711_daily_amplitude;
+                    new_hive.hx711_circadian_str = hx711_circadian_str;
+                    new_hive.hx711_seasonal_trend = hx711_seasonal_trend;
+                    new_hive.hx711_signal_quality = hx711_signal_quality;
+                    new_hive.hx711_noise_level = hx711_noise_level;
+                    new_hive.hx711_drift_rate = hx711_drift_rate;
+                    new_hive.hx711_outlier_ratio = hx711_outlier_ratio;
+                    new_hive.hx711_sample_count = hx711_sample_count;
+                    new_hive.hx711_forecast_1h = hx711_forecast_1h;
+                    new_hive.hx711_forecast_6h = hx711_forecast_6h;
+                    new_hive.hx711_forecast_24h = hx711_forecast_24h;
+                    new_hive.hx711_forecast_conf = hx711_forecast_conf;
+                    new_hive.hx711_prediction_error = hx711_prediction_error;
+                    new_hive.hx711_harvest_event = hx711_harvest_event;
+                    new_hive.hx711_swarm_event = hx711_swarm_event;
+                    new_hive.hx711_feeding_event = hx711_feeding_event;
+                    new_hive.hx711_water_collection = hx711_water_collection;
+                    new_hive.hx711_skewness = hx711_skewness;
+                    new_hive.hx711_kurtosis = hx711_kurtosis;
+                    new_hive.hx711_entropy = hx711_entropy;
+                    new_hive.hx711_complexity = hx711_complexity;
+                    new_hive.hx711_fractal_dim = hx711_fractal_dim;
+                    new_hive.hx711_colony_mass = hx711_colony_mass;
+                    new_hive.hx711_bee_population = hx711_bee_population;
+                    new_hive.hx711_brood_mass = hx711_brood_mass;
+                    new_hive.hx711_food_stores = hx711_food_stores;
+                    new_hive.hx711_honey_stores = hx711_honey_stores;
+                    new_hive.hx711_pollen_stores = hx711_pollen_stores;
+                    new_hive.hx711_productivity_idx = hx711_productivity_idx;
+                    new_hive.hx711_efficiency_score = hx711_efficiency_score;
+                    new_hive.hx711_growth_rate = hx711_growth_rate;
+                    new_hive.hx711_balance_score = hx711_balance_score;
+                    new_hive.hx711_resilience_idx = hx711_resilience_idx;
+                    new_hive.hx711_dominant_period = hx711_dominant_period;
+                    new_hive.hx711_power_24h = hx711_power_24h;
+                    new_hive.hx711_power_12h = hx711_power_12h;
+                    new_hive.hx711_power_6h = hx711_power_6h;
+                    new_hive.hx711_power_1h = hx711_power_1h;
+                    new_hive.hx711_completeness = hx711_completeness;
+                    new_hive.hx711_reliability = hx711_reliability;
+                    new_hive.hx711_accuracy_est = hx711_accuracy_est;
+                    new_hive.hx711_precision_est = hx711_precision_est;
+                    new_hive.hx711_anomaly_flag = hx711_anomaly_flag;
+                    new_hive.hx711_health_score = hx711_health_score;
+                    
+                    // Temp/Humidity
+                    new_hive.th_temp_mean = th_temp_mean;
+                    new_hive.th_temp_std = th_temp_std;
+                    new_hive.th_temp_min = th_temp_min;
+                    new_hive.th_temp_max = th_temp_max;
+                    new_hive.th_temp_range = th_temp_range;
+                    new_hive.th_hum_mean = th_hum_mean;
+                    new_hive.th_hum_std = th_hum_std;
+                    new_hive.th_hum_min = th_hum_min;
+                    new_hive.th_hum_max = th_hum_max;
+                    new_hive.th_hum_range = th_hum_range;
+                    new_hive.th_heat_index = th_heat_index;
+                    new_hive.th_dew_point = th_dew_point;
+                    new_hive.th_comfort_idx = th_comfort_idx;
+                    new_hive.th_brood_stress = th_brood_stress;
+                    new_hive.th_mold_risk = th_mold_risk;
+                    new_hive.th_temp_stability = th_temp_stability;
+                    new_hive.th_vpd = th_vpd;
+                    new_hive.th_thi = th_thi;
+                    new_hive.th_enthalpy = th_enthalpy;
+                    new_hive.th_air_density = th_air_density;
+                    new_hive.th_specific_humidity = th_specific_humidity;
+                    new_hive.th_mixing_ratio = th_mixing_ratio;
+                    new_hive.th_saturation_deficit = th_saturation_deficit;
+                    new_hive.th_evap_potential = th_evap_potential;
+                    new_hive.th_condensation_risk = th_condensation_risk;
+                    new_hive.th_ventilation_need = th_ventilation_need;
+                    new_hive.th_cooling_need = th_cooling_need;
+                    new_hive.th_heating_need = th_heating_need;
+                    new_hive.th_climate_score = th_climate_score;
+                    new_hive.th_hum_stability_1h = th_hum_stability_1h;
+                    new_hive.th_hum_trend = th_hum_trend;
+                    new_hive.th_temp_trend = th_temp_trend;
+                    
+                    // Air Quality
+                    new_hive.aq_iaq = aq_iaq;
+                    new_hive.aq_iaq_mean = aq_iaq_mean;
+                    new_hive.aq_contamination = aq_contamination;
+                    new_hive.aq_mold_risk = aq_mold_risk;
+                    new_hive.aq_ventilation_idx = aq_ventilation_idx;
+                    new_hive.aq_co2_mean = aq_co2_mean;
+                    new_hive.aq_voc_mean = aq_voc_mean;
+                    new_hive.aq_stress_air = aq_stress_air;
+                    new_hive.aq_purity = aq_purity;
+                    new_hive.aq_freshness = aq_freshness;
+                    new_hive.aq_pollution_load = aq_pollution_load;
+                    new_hive.aq_gas_idx = aq_gas_idx;
+                    new_hive.aq_particulate_idx = aq_particulate_idx;
+                    new_hive.aq_allergen_risk = aq_allergen_risk;
+                    new_hive.aq_toxicity_est = aq_toxicity_est;
+                    new_hive.aq_oxidation_cap = aq_oxidation_cap;
+                    new_hive.aq_reduction_cap = aq_reduction_cap;
+                    new_hive.aq_buffer_cap = aq_buffer_cap;
+                    new_hive.aq_recovery_rate = aq_recovery_rate;
+                    new_hive.aq_stability = aq_stability;
+                    new_hive.aq_trend = aq_trend;
+                    new_hive.aq_forecast = aq_forecast;
+                    new_hive.aq_health_impact = aq_health_impact;
+                    new_hive.aq_bee_behavior_impact = aq_bee_behavior_impact;
+                    new_hive.aq_co2_alert = aq_co2_alert;
+                    new_hive.aq_co2_base = aq_co2_base;
+                    new_hive.aq_co2_peak = aq_co2_peak;
+                    new_hive.aq_co2_trend = aq_co2_trend;
+                    new_hive.aq_co2_variability = aq_co2_variability;
+                    new_hive.aq_comfort_score = aq_comfort_score;
+                    new_hive.aq_env_correlation = aq_env_correlation;
+                    new_hive.aq_stress_level = aq_stress_level;
+                    new_hive.aq_variability_idx = aq_variability_idx;
+                    new_hive.aq_voc_base = aq_voc_base;
+                    new_hive.aq_voc_peak = aq_voc_peak;
+                    new_hive.aq_voc_variability = aq_voc_variability;
+                    new_hive.aq_voc_warning = aq_voc_warning;
+                    
+                    // Piezo Vibration
+                    new_hive.pv_vib_rms = pv_vib_rms;
+                    new_hive.pv_vib_peak = pv_vib_peak;
+                    new_hive.pv_vib_freq_dom = pv_vib_freq_dom;
+                    new_hive.pv_bee_traffic = pv_bee_traffic;
+                    new_hive.pv_intrusion_prob = pv_intrusion_prob;
+                    new_hive.pv_predator_det = pv_predator_det;
+                    new_hive.pv_queen_piping = pv_queen_piping;
+                    new_hive.pv_vibration_energy = pv_vibration_energy;
+                    new_hive.pv_activity_pattern = pv_activity_pattern;
+                    new_hive.pv_disturbance_idx = pv_disturbance_idx;
+                    new_hive.pv_health_vib = pv_health_vib;
+                    new_hive.pv_population_est = pv_population_est;
+                    new_hive.pv_aggression_idx = pv_aggression_idx;
+                    new_hive.pv_swarm_prep = pv_swarm_prep;
+                    new_hive.pv_cluster_size = pv_cluster_size;
+                    new_hive.pv_cluster_activity = pv_cluster_activity;
+                    new_hive.pv_fanning 行为 = pv_fanning 行为;
+                    new_hive.pv_buzz_piping = pv_buzz_piping;
+                    new_hive.pv_tremble_dance = pv_tremble_dance;
+                    new_hive.pv_waggle_dance = pv_waggle_dance;
+                    new_hive.pv_foraging_comm = pv_foraging_comm;
+                    new_hive.pv_alert_level = pv_alert_level;
+                    new_hive.pv_alien_detected = pv_alien_detected;
+                    new_hive.pv_confidence = pv_confidence;
+                    new_hive.pv_continuous_vib = pv_continuous_vib;
+                    new_hive.pv_event_count = pv_event_count;
+                    new_hive.pv_impact_flag = pv_impact_flag;
+                    new_hive.pv_severity = pv_severity;
+                    new_hive.pv_source_type = pv_source_type;
+                    new_hive.pv_vib_mean = pv_vib_mean;
+                    new_hive.pv_vib_std = pv_vib_std;
+                    new_hive.pv_wind_noise = pv_wind_noise;
+                    new_hive.pv_zcr = pv_zcr;
+                    
+                    // Barometric
+                    new_hive.baro_pressure = baro_pressure;
+                    new_hive.baro_pressure_mean = baro_pressure_mean;
+                    new_hive.baro_pressure_std = baro_pressure_std;
+                    new_hive.baro_pressure_min = baro_pressure_min;
+                    new_hive.baro_pressure_max = baro_pressure_max;
+                    new_hive.baro_pressure_trend = baro_pressure_trend;
+                    new_hive.baro_weather_trend = baro_weather_trend;
+                    new_hive.baro_storm_prob = baro_storm_prob;
+                    new_hive.baro_foraging_cond = baro_foraging_cond;
+                    new_hive.baro_pressure_change = baro_pressure_change;
+                    new_hive.baro_altitude_est = baro_altitude_est;
+                    new_hive.baro_sealevel_press = baro_sealevel_press;
+                    new_hive.baro_density_alt = baro_density_alt;
+                    new_hive.baro_weather_score = baro_weather_score;
+                    new_hive.baro_front_approach = baro_front_approach;
+                    new_hive.baro_stability = baro_stability;
+                    new_hive.baro_bee_activity_pred = baro_bee_activity_pred;
+                    new_hive.baro_weather_alert = baro_weather_alert;
+                    new_hive.baro_activity_pred = baro_activity_pred;
+                    new_hive.baro_alert_flag = baro_alert_flag;
+                    new_hive.baro_foraging_idx = baro_foraging_idx;
+                    new_hive.baro_improving_flag = baro_improving_flag;
+                    new_hive.baro_rain_risk = baro_rain_risk;
+                    new_hive.baro_reliability_idx = baro_reliability_idx;
+                    new_hive.baro_severity = baro_severity;
+                    new_hive.baro_storm_risk = baro_storm_risk;
+                    new_hive.baro_temperature = baro_temperature;
+                    new_hive.baro_trend_medium = baro_trend_medium;
+                    new_hive.baro_trend_short = baro_trend_short;
+                    new_hive.baro_weather_idx = baro_weather_idx;
+                    
+                    // Light
+                    new_hive.light_lux = light_lux;
+                    new_hive.light_lux_mean = light_lux_mean;
+                    new_hive.light_lux_min = light_lux_min;
+                    new_hive.light_lux_max = light_lux_max;
+                    new_hive.light_daylight_hours = light_daylight_hours;
+                    new_hive.light_darkness_hours = light_darkness_hours;
+                    new_hive.light_twilight = light_twilight;
+                    new_hive.light_circadian_sync = light_circadian_sync;
+                    new_hive.light_foraging_idx = light_foraging_idx;
+                    new_hive.light_photoperiod = light_photoperiod;
+                    new_hive.light_seasonal_change = light_seasonal_change;
+                    new_hive.light_cloud_cover_est = light_cloud_cover_est;
+                    new_hive.light_sunrise_offset = light_sunrise_offset;
+                    new_hive.light_uv_idx = light_uv_idx;
+                    new_hive.light_spectrum_blue = light_spectrum_blue;
+                    new_hive.light_spectrum_red = light_spectrum_red;
+                    new_hive.light_spectrum_ir = light_spectrum_ir;
+                    new_hive.light_ir_ratio = light_ir_ratio;
+                    new_hive.light_lux_std = light_lux_std;
+                    new_hive.light_spectrum_data = light_spectrum_data;
+                    
+                    // Backward compatibility
                     new_hive.weight_rate = weight_rate;
                     new_hive.weight_trend = weight_trend;
                     new_hive.air_iaq = air_iaq;
+                    
                     hives_data[hive_id] = new_hive;
                     
                     // Zapis do bazy danych SQLite
@@ -1145,120 +2179,8 @@ public:
     // Pelny format CSV - WSZYSTKIE 338+ PARAMETROW
     std::string getStatusCSV() {
         std::lock_guard<std::mutex> lock(data_mutex);
-        std::stringstream csv;
-        
-        csv << "ID,STATUS,TIMESTAMP,TEMP,HUM,WEIGHT,BAT,CO2,VOC,MOTION,ONLINE,";
-        csv << "AUDIO_RMS,AUDIO_PEAK,AUDIO_PEAK_TO_PEAK,AUDIO_ZCR,AUDIO_ENERGY,AUDIO_MEAN_AMP,AUDIO_STD_AMP,AUDIO_CV_AMP,AUDIO_SKEWNESS,AUDIO_KURTOSIS,";
-        csv << "AUDIO_DOMINANT_FREQ,AUDIO_SPECTRAL_CENTROID,AUDIO_SPECTRAL_BANDWIDTH,AUDIO_SPECTRAL_FLATNESS,AUDIO_SPECTRAL_ROLLOFF,";
-        csv << "AUDIO_POWER_BEE_BAND,AUDIO_POWER_SWARM_BAND,AUDIO_POWER_LOW_FREQ,AUDIO_POWER_HIGH_FREQ,AUDIO_HARMONIC_RATIO,";
-        csv << "AUDIO_MFCC_ENERGY_0,AUDIO_MFCC_ENERGY_1,AUDIO_MFCC_ENERGY_2,AUDIO_MFCC_ENERGY_3,";
-        csv << "AUDIO_SPECTRAL_ENTROPY,AUDIO_SPECTRAL_CONTRAST,AUDIO_TONAL_STRENGTH,";
-        csv << "AUDIO_CREST_FACTOR,AUDIO_FORMANT_F1,AUDIO_FORMANT_F2,AUDIO_FUNDAMENTAL_FREQ,AUDIO_PITCH_STRENGTH,AUDIO_INHARMONICITY,";
-        csv << "AUDIO_SHIMMER,AUDIO_JITTER,AUDIO_NHR,AUDIO_HNR,AUDIO_AUTOCORR_PEAK,";
-        csv << "AUDIO_ATTACK_TIME,AUDIO_DECAY_TIME,AUDIO_SUSTAIN_LEVEL,AUDIO_TEMPORAL_CENTROID,AUDIO_LOUDNESS,";
-        csv << "AUDIO_SPECTRAL_FLUX,AUDIO_SPECTRAL_SLOPE,AUDIO_SPECTRAL_KURTOSIS,AUDIO_SPECTRAL_SKEWNESS,AUDIO_FUND_SALIENCY,";
-        csv << "AUDIO_POWER_BAND_0,AUDIO_POWER_BAND_1,AUDIO_POWER_BAND_2,AUDIO_POWER_BAND_3,AUDIO_POWER_BAND_4,AUDIO_POWER_BAND_5,AUDIO_POWER_BAND_6,AUDIO_POWER_BAND_7,";
-        csv << "AUDIO_LEQ,AUDIO_L10,AUDIO_L90,AUDIO_NOISE_FLOOR,AUDIO_SNR,";
-        csv << "AUDIO_ACI,AUDIO_BI,AUDIO_NDI,AUDIO_ADI,AUDIO_AEI,";
-        csv << "AUDIO_BEE_ACTIVITY,AUDIO_SWARM_PROB,AUDIO_STRESS_INDICATOR,AUDIO_HIVE_HEALTH,AUDIO_FORAGING_EFF,AUDIO_COLONY_COHERENCE,";
-        csv << "RADAR_DISTANCE,RADAR_ENERGY,RADAR_SPEED,RADAR_DISTANCE_STD,RADAR_ENERGY_STD,RADAR_SPEED_STD,";
-        csv << "RADAR_DISTANCE_MIN,RADAR_DISTANCE_MAX,RADAR_ENERGY_MIN,RADAR_ENERGY_MAX,";
-        csv << "RADAR_RANGE,RADAR_ENERGY_VARIANCE,RADAR_CV,RADAR_ACTIVITY,RADAR_IDLE_PERCENT,RADAR_MOTION_INTENSITY,";
-        csv << "RADAR_TARGET_RATE,RADAR_MAX_TARGETS,RADAR_TARGET_DENSITY,RADAR_SLOPE,RADAR_CORRELATION,RADAR_ACCELERATION,";
-        csv << "RADAR_SIGNAL_QUALITY,RADAR_ANOMALY_SCORE,RADAR_HIVE_HEALTH,RADAR_POWER_SPECTRUM,RADAR_ZCR,RADAR_ENTROPY,";
-        csv << "HX711_CURRENT,HX711_MEAN,HX711_STD,HX711_MIN,HX711_MAX,HX711_MEDIAN,HX711_RANGE,HX711_VARIANCE,HX711_CV,HX711_IQR,";
-        csv << "HX711_RATE,HX711_MEAN_RATE,HX711_MAX_POS_RATE,HX711_MAX_NEG_RATE,HX711_ACCELERATION,";
-        csv << "HX711_SLOPE_1H,HX711_SLOPE_4H,HX711_SLOPE_24H,HX711_CORR_1H,HX711_CORR_4H,HX711_CORR_24H,HX711_DIRECTION,";
-        csv << "HX711_NECTAR_INFLOW,HX711_NECTAR_ACCUM,HX711_FORAGING_EFF,HX711_BLOOM_INTENSITY,";
-        csv << "HX711_HONEY_PROD_IDX,HX711_NECTAR_QUALITY,";
-        csv << "HX711_CONSUMPTION_RATE,HX711_DAILY_CONSUMPTION,HX711_FOOD_RESERVE_DAYS,";
-        csv << "HX711_WINTER_READINESS,HX711_STARVATION_RISK,";
-        csv << "HX711_DAILY_AMPLITUDE,HX711_CIRCADIAN_STR,HX711_SEASONAL_TREND,";
-        csv << "HX711_SIGNAL_QUALITY,HX711_NOISE_LEVEL,HX711_DRIFT_RATE,HX711_STABILITY,";
-        csv << "HX711_ANOMALY_SCORE,HX711_SUDDEN_CHANGE,HX711_OSCILLATION_FREQ,";
-        csv << "HX711_COLONY_GROWTH,HX711_BROOD_ACTIVITY,HX711_POPULATION,HX711_HEALTH_WEIGHT,HX711_PRODUCTIVITY,";
-        csv << "HX711_PREDICTED_24H,HX711_FORECAST_CONF,HX711_EXPECTED_YIELD,";
-        csv << "TH_TEMP_MEAN,TH_TEMP_STD,TH_TEMP_MIN,TH_TEMP_MAX,TH_TEMP_RANGE,";
-        csv << "TH_HUM_MEAN,TH_HUM_STD,TH_HUM_MIN,TH_HUM_MAX,TH_HUM_RANGE,";
-        csv << "TH_HEAT_INDEX,TH_DEW_POINT,TH_VPD,TH_COMFORT_INDEX,TH_TEMP_STABILITY,TH_HUM_STABILITY,TH_ENV_VARIANCE,";
-        csv << "TH_TEMP_TREND_1H,TH_HUM_TREND_1H,TH_TEMP_HUM_CORR,TH_OVERHEAT_RISK,TH_CONDENSATION_RISK,TH_MOLD_RISK,TH_BROOD_STRESS,";
-        csv << "AQ_CO2,AQ_VOC,AQ_NOX,AQ_CO2_MEAN,AQ_VOC_MEAN,AQ_CO2_STD,AQ_VOC_STD,";
-        csv << "AQ_CO2_MIN,AQ_CO2_MAX,AQ_VOC_MIN,AQ_VOC_MAX,";
-        csv << "AQ_IAQ_INDEX,AQ_AIR_QUALITY_LEVEL,AQ_VENTILATION_NEED,AQ_STRESS_FROM_AIR,AQ_HIVE_COMFORT,";
-        csv << "AQ_VARIABILITY,AQ_STABILITY_SCORE,AQ_CHANGE_RATE,AQ_TH_CORRELATION,AQ_COMFORT_ZONE_PCT,";
-        csv << "AQ_CO2_WARNING,AQ_VOC_ALERT,AQ_COMBINED_RISK,AQ_CONTAMINATION_RISK,AQ_MOLD_RISK,";
-        csv << "PIEZO_RMS,PIEZO_PEAK,PIEZO_MEAN,PIEZO_STD,PIEZO_DOMINANT_FREQ,PIEZO_ENERGY,PIEZO_ZCR,";
-        csv << "PIEZO_ACTIVITY_IDX,PIEZO_BEE_TRAFFIC,PIEZO_PREDATOR_SCORE,PIEZO_INTRUSION_PROB,PIEZO_QUEEN_PIPING,";
-        csv << "PIEZO_SWARM_PREP,PIEZO_AGGRESSION,PIEZO_ALIEN_SPECIES,PIEZO_WIND_VIBRATION,PIEZO_IMPACT_DETECTED,";
-        csv << "PIEZO_CONTINUOUS_VIB,PIEZO_EVENT_COUNT,PIEZO_SEVERITY,PIEZO_SOURCE_CLASS,PIEZO_CONFIDENCE,";
-        csv << "BARO_PRESSURE,BARO_TEMP,BARO_ALTITUDE,BARO_MEAN,BARO_STD,";
-        csv << "BARO_TREND_1H,BARO_TREND_3H,BARO_TREND_6H,BARO_CHANGE_RATE,";
-        csv << "BARO_WEATHER_TREND,BARO_STORM_PROB,BARO_RAIN_PROB,BARO_IMPROVING,";
-        csv << "BARO_FORAGING_COND,BARO_BEE_ACTIVITY_PRED,BARO_SEVERITY_IDX,BARO_ALERT_LEVEL,BARO_RELIABILITY,";
-        csv << "LIGHT_LUX,LIGHT_IR,LIGHT_UV,LIGHT_FULL_SPEC,LIGHT_MEAN,LIGHT_STD,LIGHT_MIN,LIGHT_MAX,";
-        csv << "LIGHT_DAYLIGHT_HOURS,LIGHT_DARKNESS_HOURS,LIGHT_TWILIGHT,LIGHT_CIRCADIAN_SYNC,";
-        csv << "LIGHT_FORAGING_IDX,LIGHT_PHOTOPERIOD,LIGHT_SEASONAL_CHANGE,LIGHT_CLOUD_COVER_EST,LIGHT_SUNRISE_OFFSET,";
-        csv << "WEIGHT_RATE,WEIGHT_TREND,AIR_IAQ\n";
-        
-        for (const auto& pair : hives_data) {
-            const auto& d = pair.second;
-            std::string status = d.is_online ? "ONLINE" : "OFFLINE";
-            if (d.is_online && (std::time(nullptr) - d.timestamp > 60)) status = "STALE";
-            csv << d.hive_id << "," << status << "," << d.timestamp << ",";
-            csv << d.temperature << "," << d.humidity << "," << d.weight << "," << d.battery_level << "," << d.co2_eq << "," << d.voc_idx << "," << d.motion_detected << "," << (d.is_online ? 1 : 0) << ",";
-            csv << d.audio_rms << "," << d.audio_peak << "," << d.audio_peak_to_peak << "," << d.audio_zcr << "," << d.audio_energy << "," << d.audio_mean_amp << "," << d.audio_std_amp << "," << d.audio_cv_amp << "," << d.audio_skewness << "," << d.audio_kurtosis << ",";
-            csv << d.audio_dominant_freq << "," << d.audio_spectral_centroid << "," << d.audio_spectral_bandwidth << "," << d.audio_spectral_flatness << "," << d.audio_spectral_rolloff << ",";
-            csv << d.audio_power_bee_band << "," << d.audio_power_swarm_band << "," << d.audio_power_low_freq << "," << d.audio_power_high_freq << "," << d.audio_harmonic_ratio << ",";
-            csv << d.audio_mfcc_energy[0] << "," << d.audio_mfcc_energy[1] << "," << d.audio_mfcc_energy[2] << "," << d.audio_mfcc_energy[3] << ",";
-            csv << d.audio_spectral_entropy << "," << d.audio_spectral_contrast << "," << d.audio_tonal_strength << ",";
-            csv << d.audio_crest_factor << "," << d.audio_formant_f1 << "," << d.audio_formant_f2 << "," << d.audio_fundamental_freq << "," << d.audio_pitch_strength << "," << d.audio_inharmonicity << ",";
-            csv << d.audio_shimmer << "," << d.audio_jitter << "," << d.audio_nhr << "," << d.audio_hnr << "," << d.audio_autocorr_peak << ",";
-            csv << d.audio_attack_time << "," << d.audio_decay_time << "," << d.audio_sustain_level << "," << d.audio_temporal_centroid << "," << d.audio_loudness << ",";
-            csv << d.audio_spectral_flux << "," << d.audio_spectral_slope << "," << d.audio_spectral_kurtosis << "," << d.audio_spectral_skewness << "," << d.audio_fund_salience << ",";
-            csv << d.audio_power_band[0] << "," << d.audio_power_band[1] << "," << d.audio_power_band[2] << "," << d.audio_power_band[3] << "," << d.audio_power_band[4] << "," << d.audio_power_band[5] << "," << d.audio_power_band[6] << "," << d.audio_power_band[7] << ",";
-            csv << d.audio_leq << "," << d.audio_l10 << "," << d.audio_l90 << "," << d.audio_noise_floor << "," << d.audio_snr << ",";
-            csv << d.audio_aci << "," << d.audio_bi << "," << d.audio_ndi << "," << d.audio_adi << "," << d.audio_aei << ",";
-            csv << d.audio_bee_activity << "," << d.audio_swarm_prob << "," << d.audio_stress_indicator << "," << d.audio_hive_health << "," << d.audio_foraging_eff << "," << d.audio_colony_coherence << ",";
-            csv << d.radar_distance << "," << d.radar_energy << "," << d.radar_speed << "," << d.radar_distance_std << "," << d.radar_energy_std << "," << d.radar_speed_std << ",";
-            csv << d.radar_distance_min << "," << d.radar_distance_max << "," << d.radar_energy_min << "," << d.radar_energy_max << ",";
-            csv << d.radar_range << "," << d.radar_energy_variance << "," << d.radar_cv << "," << d.radar_activity << "," << d.radar_idle_percent << "," << d.radar_motion_intensity << ",";
-            csv << d.radar_target_rate << "," << d.radar_max_targets << "," << d.radar_target_density << "," << d.radar_slope << "," << d.radar_correlation << "," << d.radar_acceleration << ",";
-            csv << d.radar_signal_quality << "," << d.radar_anomaly_score << "," << d.radar_hive_health << "," << d.radar_power_spectrum << "," << d.radar_zcr << "," << d.radar_entropy << ",";
-            csv << d.hx711_current << "," << d.hx711_mean << "," << d.hx711_std << "," << d.hx711_min << "," << d.hx711_max << "," << d.hx711_median << "," << d.hx711_range << "," << d.hx711_variance << "," << d.hx711_cv << "," << d.hx711_iqr << ",";
-            csv << d.hx711_rate << "," << d.hx711_mean_rate << "," << d.hx711_max_pos_rate << "," << d.hx711_max_neg_rate << "," << d.hx711_acceleration << ",";
-            csv << d.hx711_slope_1h << "," << d.hx711_slope_4h << "," << d.hx711_slope_24h << "," << d.hx711_corr_1h << "," << d.hx711_corr_4h << "," << d.hx711_corr_24h << "," << d.hx711_direction << ",";
-            csv << d.hx711_nectar_inflow << "," << d.hx711_nectar_accum << "," << d.hx711_foraging_eff << "," << d.hx711_bloom_intensity << ",";
-            csv << d.hx711_honey_prod_idx << "," << d.hx711_nectar_quality << ",";
-            csv << d.hx711_consumption_rate << "," << d.hx711_daily_consumption << "," << d.hx711_food_reserve_days << ",";
-            csv << d.hx711_winter_readiness << "," << d.hx711_starvation_risk << ",";
-            csv << d.hx711_daily_amplitude << "," << d.hx711_circadian_str << "," << d.hx711_seasonal_trend << ",";
-            csv << d.hx711_signal_quality << "," << d.hx711_noise_level << "," << d.hx711_drift_rate << "," << d.hx711_signal_quality << ",";
-            csv << d.hx711_anomaly_flag << "," << d.hx711_drift_rate << "," << d.hx711_dominant_period << ",";
-            csv << d.hx711_growth_rate << "," << d.hx711_brood_mass << "," << d.hx711_bee_population << "," << d.hx711_health_score << "," << d.hx711_productivity_idx << ",";
-            csv << d.hx711_forecast_24h << "," << d.hx711_forecast_conf << "," << d.hx711_forecast_24h << ",";
-            csv << d.th_temp_mean << "," << d.th_temp_std << "," << d.th_temp_min << "," << d.th_temp_max << "," << d.th_temp_range << ",";
-            csv << d.th_hum_mean << "," << d.th_hum_std << "," << d.th_hum_min << "," << d.th_hum_max << "," << d.th_hum_range << ",";
-            csv << d.th_heat_index << "," << d.th_dew_point << "," << d.th_vpd << "," << d.th_comfort_idx << "," << d.th_temp_stability << "," << d.th_hum_range << "," << d.th_temp_std << ",";
-            csv << d.th_temp_trend << "," << d.th_hum_trend << "," << d.th_vpd << "," << d.th_brood_stress << "," << d.th_condensation_risk << "," << d.th_mold_risk << "," << d.th_brood_stress << ",";
-            csv << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_voc_mean << "," << d.aq_co2_mean << "," << d.aq_voc_mean << "," << d.aq_co2_variability << "," << d.aq_voc_variability << ",";
-            csv << d.aq_co2_base << "," << d.aq_co2_peak << "," << d.aq_voc_base << "," << d.aq_voc_peak << ",";
-            csv << d.aq_gas_idx << "," << d.aq_ventilation_idx << "," << d.aq_ventilation_idx << "," << d.aq_stress_air << "," << d.aq_comfort_score << ",";
-            csv << d.aq_variability_idx << "," << d.aq_stability << "," << d.aq_co2_trend << "," << d.aq_env_correlation << "," << d.aq_comfort_score << ",";
-            csv << d.aq_voc_warning << "," << d.aq_co2_alert << "," << d.aq_mold_risk << "," << d.aq_contamination << "," << d.aq_mold_risk << ",";
-            csv << d.pv_vib_rms << "," << d.pv_vib_peak << "," << d.pv_vib_mean << "," << d.pv_vib_std << "," << d.pv_vib_freq_dom << "," << d.pv_vibration_energy << "," << d.pv_zcr << ",";
-            csv << d.pv_activity_pattern << "," << d.pv_bee_traffic << "," << d.pv_predator_det << "," << d.pv_intrusion_prob << "," << d.pv_queen_piping << ",";
-            csv << d.pv_swarm_prep << "," << d.pv_aggression_idx << "," << d.pv_alien_detected << "," << d.pv_wind_noise << "," << d.pv_impact_flag << ",";
-            csv << d.pv_continuous_vib << "," << d.pv_event_count << "," << d.pv_severity << "," << d.pv_source_type << "," << d.pv_confidence << ",";
-            csv << d.baro_pressure << "," << d.baro_temperature << "," << d.baro_altitude_est << "," << d.baro_pressure_mean << "," << d.baro_pressure_std << ",";
-            csv << d.baro_pressure_trend << "," << d.baro_trend_short << "," << d.baro_trend_medium << "," << d.baro_pressure_change << ",";
-            csv << d.baro_weather_trend << "," << d.baro_storm_prob << "," << d.baro_rain_risk << "," << d.baro_improving_flag << ",";
-            csv << d.baro_foraging_cond << "," << d.baro_bee_activity_pred << "," << d.baro_severity << "," << d.baro_alert_flag << "," << d.baro_reliability_idx << ",";
-            csv << d.light_lux << "," << d.light_ir_ratio << "," << d.light_uv_idx << "," << d.light_spectrum_ir << "," << d.light_lux_mean << "," << d.light_lux_std << "," << d.light_lux_min << "," << d.light_lux_max << ",";
-            csv << d.light_daylight_hours << "," << d.light_darkness_hours << "," << d.light_twilight << "," << d.light_circadian_sync << ",";
-            csv << d.light_foraging_idx << "," << d.light_photoperiod << "," << d.light_seasonal_change << "," << d.light_cloud_cover_est << "," << d.light_sunrise_offset << ",";
-            csv << d.weight_rate << "," << d.weight_trend << "," << d.air_iaq << "\n";
-        }
-        return csv.str();
+        // Uzywamy nowego modulu CSV do generowania pelnego raportu
+        return csv::generateFullCSV(hives_data);
     }
 
     // Eksport danych do pliku CSV
