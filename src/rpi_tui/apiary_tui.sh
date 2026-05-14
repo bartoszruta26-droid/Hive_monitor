@@ -197,72 +197,159 @@ fetch_hive_data() {
     
     local data_fetched=false
     
-    # Spróbuj pobrać dane z kolektora przez HTTP API
+    # Spróbuj pobrać dane z kolektora przez HTTP API JSON
     if command -v curl &> /dev/null; then
         # Sprawdź czy kolektor jest dostępny
         if curl -s --connect-timeout 2 http://localhost:8080/health > /dev/null 2>&1; then
-            # Pobierz dane CSV z kolektora
-            local csv_data
-            csv_data=$(curl -s --connect-timeout 2 http://localhost:8080/api/csv 2>/dev/null)
+            # Pobierz dane JSON z kolektora
+            local json_data
+            json_data=$(curl -s --connect-timeout 2 http://localhost:8080/api/hives 2>/dev/null)
             
-            if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
-                # Parsuj CSV (pomijaj nagłówek)
-                local first_line=true
-                while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
-                    if $first_line; then
-                        first_line=false
-                        continue
-                    fi
-                    
-                    # Ignoruj puste linie
-                    [ -z "$id" ] && continue
-                    
-                    HIVES+=("$id")
-                    HIVE_STATUS+=("$status")
-                    HIVE_TEMP+=("$temp")
-                    HIVE_HUM+=("$hum")
-                    HIVE_WEIGHT+=("$weight")
-                    HIVE_BAT+=("$bat")
-                    HIVE_CO2+=("$co2")
-                    HIVE_VOC+=("$voc")
-                    HIVE_MOTION+=("$motion")
-                    HIVE_IAQ+=("$air_iaq")
-                    HIVE_AUDIO_RMS+=("$audio_rms")
-                    HIVE_AUDIO_FREQ+=("$audio_freq")
-                    HIVE_SWARM_PROB+=("$swarm_prob")
-                    HIVE_RADAR_DIST+=("$radar_dist")
-                    HIVE_RADAR_ENERGY+=("$radar_energy")
-                    HIVE_RADAR_ACT+=("$radar_act")
-                    HIVE_WAG_RATE+=("$wag_rate")
-                    HIVE_WAG_TREND+=("$wag_trend")
-                    # Parametry domyślne dla rozszerzonych
-                    HIVE_BEE_ACTIVITY+=("0")
-                    HIVE_SPECTRAL_CENTROID+=("0")
-                    HIVE_AUDIO_HEALTH+=("0")
-                    HIVE_RADAR_HEALTH+=("0")
-                    HIVE_RADAR_ANOMALY+=("0")
-                    HIVE_HX_MEAN+=("$weight")
-                    HIVE_NECTAR_INFLOW+=("0")
-                    HIVE_COLONY_GROWTH+=("0")
-                    HIVE_PRODUCTIVITY+=("0")
-                    HIVE_HEAT_INDEX+=("0")
-                    HIVE_COMFORT_INDEX+=("0")
-                    HIVE_BROOD_STRESS+=("0")
-                    HIVE_IAQ_INDEX+=("$air_iaq")
-                    HIVE_VENTILATION_NEED+=("0")
-                    HIVE_PIEZO_ACTIVITY+=("0")
-                    HIVE_PREDATOR_SCORE+=("0")
-                    HIVE_PRESSURE+=("0")
-                    HIVE_WEATHER_TREND+=("0")
-                    HIVE_FORAGING_COND+=("0")
-                    HIVE_LUX+=("0")
-                    HIVE_CIRCADIAN_SYNC+=("0")
-                    
-                    data_fetched=true
-                done <<< "$csv_data"
+            if [ -n "$json_data" ] && [ "$json_data" != "{\"error\"* ]; then
+                # Parsuj JSON za pomocą prostych narzędzi bash
+                # Format: {"timestamp":..., "hive_count":N, "hives":{"UL-001":{...}, ...}}
                 
-                if $data_fetched; then
-                    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] TUI: Pobrano dane z ${#HIVES[@]} uli przez HTTP API" >> "$LOG_FILE" 2>/dev/null || true
+                # Wyodrębnij listę hive_id z JSON
+                local hive_ids
+                hive_ids=$(echo "$json_data" | grep -oP '"\b(UL-\d+|hive_\d+)\b"(?=:)' | tr -d '":' | sort -u)
+                
+                if [ -n "$hive_ids" ]; then
+                    while IFS= read -r hive_id; do
+                        [ -z "$hive_id" ] && continue
+                        
+                        # Ekstrahuj parametry dla każdego ula z JSON
+                        local hive_block
+                        hive_block=$(echo "$json_data" | grep -oP "\"$hive_id\":\{[^}]+\}" | head -1)
+                        
+                        if [ -n "$hive_block" ]; then
+                            # Ekstrakcja podstawowych parametrów
+                            local temp hum weight bat co2 voc motion status
+                            temp=$(echo "$hive_block" | grep -oP '"temp":\K[0-9.]+' || echo "0")
+                            hum=$(echo "$hive_block" | grep -oP '"hum":\K[0-9.]+' || echo "0")
+                            weight=$(echo "$hive_block" | grep -oP '"weight":\K[0-9.]+' || echo "0")
+                            bat=$(echo "$hive_block" | grep -oP '"bat":\K[0-9]+' || echo "0")
+                            co2=$(echo "$hive_block" | grep -oP '"co2":\K[0-9]+' || echo "0")
+                            voc=$(echo "$hive_block" | grep -oP '"voc":\K[0-9]+' || echo "0")
+                            motion=$(echo "$hive_block" | grep -oP '"motion":\K[0-1]+' || echo "0")
+                            status="ONLINE"
+                            
+                            # Ekstrakcja parametrów audio
+                            local audio_block
+                            audio_block=$(echo "$hive_block" | grep -oP '"audio":\{[^}]+\}' || echo "")
+                            local audio_rms audio_freq swarm_prob bee_activity spectral_centroid audio_health
+                            audio_rms=$(echo "$audio_block" | grep -oP '"rms":\K[0-9.]+' || echo "0")
+                            audio_freq=$(echo "$audio_block" | grep -oP '"freq":\K[0-9.]+' || echo "0")
+                            swarm_prob=$(echo "$audio_block" | grep -oP '"swarm_prob":\K[0-9.]+' || echo "0")
+                            bee_activity=$(echo "$audio_block" | grep -oP '"bee_activity":\K[0-9.]+' || echo "0")
+                            spectral_centroid=$(echo "$audio_block" | grep -oP '"spectral_centroid":\K[0-9.]+' || echo "0")
+                            audio_health=$(echo "$audio_block" | grep -oP '"hive_health":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów radar
+                            local radar_block
+                            radar_block=$(echo "$hive_block" | grep -oP '"radar":\{[^}]+\}' || echo "")
+                            local radar_dist radar_energy radar_act radar_health radar_anomaly
+                            radar_dist=$(echo "$radar_block" | grep -oP '"dist":\K[0-9.]+' || echo "0")
+                            radar_energy=$(echo "$radar_block" | grep -oP '"energy":\K[0-9.]+' || echo "0")
+                            radar_act=$(echo "$radar_block" | grep -oP '"activity":\K[0-9.]+' || echo "0")
+                            radar_health=$(echo "$radar_block" | grep -oP '"hive_health":\K[0-9.]+' || echo "0")
+                            radar_anomaly=$(echo "$radar_block" | grep -oP '"anomaly_score":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów hx711/waga
+                            local hx_block
+                            hx_block=$(echo "$hive_block" | grep -oP '"hx711":\{[^}]+\}' || echo "")
+                            local hx_mean wag_rate wag_trend nectar_inflow colony_growth productivity
+                            hx_mean=$(echo "$hx_block" | grep -oP '"mean":\K[0-9.]+' || echo "$weight")
+                            wag_rate=$(echo "$hx_block" | grep -oP '"slope_1h":\K[-0-9.]+' || echo "0")
+                            wag_trend=$(echo "$hx_block" | grep -oP '"slope_4h":\K[-0-9.]+' || echo "0")
+                            nectar_inflow=$(echo "$hx_block" | grep -oP '"nectar_inflow":\K[0-9.]+' || echo "0")
+                            colony_growth=$(echo "$hx_block" | grep -oP '"colony_growth":\K[-0-9.]+' || echo "0")
+                            productivity=$(echo "$hx_block" | grep -oP '"productivity":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów th (temp/humidity)
+                            local th_block
+                            th_block=$(echo "$hive_block" | grep -oP '"th":\{[^}]+\}' || echo "")
+                            local heat_index comfort_idx brood_stress
+                            heat_index=$(echo "$th_block" | grep -oP '"heat_index":\K[0-9.]+' || echo "0")
+                            comfort_idx=$(echo "$th_block" | grep -oP '"comfort_index":\K[0-9.]+' || echo "0")
+                            brood_stress=$(echo "$th_block" | grep -oP '"brood_stress":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów aq (air quality)
+                            local aq_block
+                            aq_block=$(echo "$hive_block" | grep -oP '"aq":\{[^}]+\}' || echo "")
+                            local iaq_index ventilation_need
+                            iaq_index=$(echo "$aq_block" | grep -oP '"iaq_index":\K[0-9.]+' || echo "0")
+                            ventilation_need=$(echo "$aq_block" | grep -oP '"ventilation_need":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów piezo
+                            local piezo_block
+                            piezo_block=$(echo "$hive_block" | grep -oP '"piezo":\{[^}]+\}' || echo "")
+                            local piezo_activity predator_score
+                            piezo_activity=$(echo "$piezo_block" | grep -oP '"activity":\K[0-9.]+' || echo "0")
+                            predator_score=$(echo "$piezo_block" | grep -oP '"predator_score":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów baro
+                            local baro_block
+                            baro_block=$(echo "$hive_block" | grep -oP '"baro":\{[^}]+\}' || echo "")
+                            local pressure weather_trend foraging_cond
+                            pressure=$(echo "$baro_block" | grep -oP '"pressure":\K[0-9.]+' || echo "0")
+                            weather_trend=$(echo "$baro_block" | grep -oP '"weather_trend":\K[-0-9.]+' || echo "0")
+                            foraging_cond=$(echo "$baro_block" | grep -oP '"foraging_cond":\K[0-9.]+' || echo "0")
+                            
+                            # Ekstrakcja parametrów light
+                            local light_block
+                            light_block=$(echo "$hive_block" | grep -oP '"light":\{[^}]+\}' || echo "")
+                            local lux circadian_sync
+                            lux=$(echo "$light_block" | grep -oP '"lux":\K[0-9.]+' || echo "0")
+                            circadian_sync=$(echo "$light_block" | grep -oP '"circadian_sync":\K[0-9.]+' || echo "0")
+                            
+                            # Dodaj dane do tablic
+                            HIVES+=("$hive_id")
+                            HIVE_STATUS+=("$status")
+                            HIVE_TEMP+=("$temp")
+                            HIVE_HUM+=("$hum")
+                            HIVE_WEIGHT+=("$weight")
+                            HIVE_BAT+=("$bat")
+                            HIVE_CO2+=("$co2")
+                            HIVE_VOC+=("$voc")
+                            HIVE_MOTION+=("$motion")
+                            HIVE_IAQ+=("$iaq_index")
+                            HIVE_AUDIO_RMS+=("$audio_rms")
+                            HIVE_AUDIO_FREQ+=("$audio_freq")
+                            HIVE_SWARM_PROB+=("$swarm_prob")
+                            HIVE_BEE_ACTIVITY+=("$bee_activity")
+                            HIVE_SPECTRAL_CENTROID+=("$spectral_centroid")
+                            HIVE_AUDIO_HEALTH+=("$audio_health")
+                            HIVE_RADAR_DIST+=("$radar_dist")
+                            HIVE_RADAR_ENERGY+=("$radar_energy")
+                            HIVE_RADAR_ACT+=("$radar_act")
+                            HIVE_RADAR_HEALTH+=("$radar_health")
+                            HIVE_RADAR_ANOMALY+=("$radar_anomaly")
+                            HIVE_WAG_RATE+=("$wag_rate")
+                            HIVE_WAG_TREND+=("$wag_trend")
+                            HIVE_HX_MEAN+=("$hx_mean")
+                            HIVE_NECTAR_INFLOW+=("$nectar_inflow")
+                            HIVE_COLONY_GROWTH+=("$colony_growth")
+                            HIVE_PRODUCTIVITY+=("$productivity")
+                            HIVE_HEAT_INDEX+=("$heat_index")
+                            HIVE_COMFORT_INDEX+=("$comfort_idx")
+                            HIVE_BROOD_STRESS+=("$brood_stress")
+                            HIVE_IAQ_INDEX+=("$iaq_index")
+                            HIVE_VENTILATION_NEED+=("$ventilation_need")
+                            HIVE_PIEZO_ACTIVITY+=("$piezo_activity")
+                            HIVE_PREDATOR_SCORE+=("$predator_score")
+                            HIVE_PRESSURE+=("$pressure")
+                            HIVE_WEATHER_TREND+=("$weather_trend")
+                            HIVE_FORAGING_COND+=("$foraging_cond")
+                            HIVE_LUX+=("$lux")
+                            HIVE_CIRCADIAN_SYNC+=("$circadian_sync")
+                            
+                            data_fetched=true
+                        fi
+                    done <<< "$hive_ids"
+                    
+                    if $data_fetched; then
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] TUI: Pobrano dane z ${#HIVES[@]} uli przez HTTP API JSON" >> "$LOG_FILE" 2>/dev/null || true
+                    fi
                 fi
             fi
         fi
