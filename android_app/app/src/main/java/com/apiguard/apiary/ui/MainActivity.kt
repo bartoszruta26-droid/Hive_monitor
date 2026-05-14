@@ -47,10 +47,11 @@ class MainActivity : AppCompatActivity() {
             }
             
             // Reset flagi dialogu - Observer i tak wywoła showIpInputDialog() jeśli potrzeba
-        } else {
-            // Sprawdź czy mamy zapisany adres IP tylko przy pierwszym uruchomieniu
-            viewModel.checkSavedConnection()
         }
+        
+        // Sprawdź czy mamy zapisany adres IP przy każdym uruchomieniu (również po odtworzeniu stanu)
+        // Nowy MainViewModel zaczyna z nieustawionym stanem połączenia, więc musimy sprawdzić zapisane dane
+        viewModel.checkSavedConnection()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
