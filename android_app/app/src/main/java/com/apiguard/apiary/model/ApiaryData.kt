@@ -1,10 +1,11 @@
 package com.apiguard.apiary.model
 
+import com.apiguard.apiary.util.AppConstants
 import com.google.gson.annotations.SerializedName
 
 /**
  * Model danych reprezentujący pojedynczy ul z danymi telemetrycznymi.
- * Wszystkie pola są opcjonalne (nullable) aby uniknąć crashów przy niekompletnych danych z API.
+ * Wszystkie pola mają domyślne wartości aby uniknąć crashów przy niekompletnych danych z API.
  */
 data class ApiaryData(
     @SerializedName("id") val id: String,
@@ -22,9 +23,28 @@ data class ApiaryData(
         return id.isNotBlank() && 
                name.isNotBlank() && 
                timestamp > 0 &&
-               temperature >= -50 && temperature <= 100 && // Realistyczny zakres temperatur
-               humidity >= 0 && humidity <= 100 &&          // Zakres wilgotności
-               weight >= 0 && weight <= 200 &&              // Realistyczny zakres wagi ula
-               battery >= 0 && battery <= 100               // Zakres baterii
+               temperature.isValidTemperature() &&
+               humidity.isValidHumidity() &&
+               weight.isValidWeight() &&
+               battery.isValidBatteryLevel()
     }
+}
+
+/**
+ * Rozszerzenia dla walidacji pól ApiaryData
+ */
+private fun Double.isValidTemperature(): Boolean {
+    return this in AppConstants.TEMP_MIN_VALID..AppConstants.TEMP_MAX_VALID
+}
+
+private fun Double.isValidHumidity(): Boolean {
+    return this in AppConstants.HUMIDITY_MIN_VALID..AppConstants.HUMIDITY_MAX_VALID
+}
+
+private fun Double.isValidWeight(): Boolean {
+    return this in AppConstants.WEIGHT_MIN_VALID..AppConstants.WEIGHT_MAX_VALID
+}
+
+private fun Int.isValidBatteryLevel(): Boolean {
+    return this in AppConstants.BATTERY_MIN_VALID..AppConstants.BATTERY_MAX_VALID
 }

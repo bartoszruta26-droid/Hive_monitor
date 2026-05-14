@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.apiguard.apiary.R
 import com.apiguard.apiary.model.ApiaryData
+import com.apiguard.apiary.util.AppConstants
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -22,12 +23,12 @@ class ApiaryAdapter(
     companion object {
         private val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
         
-        // Stałe dla progów statusu - łatwe do konfiguracji
-        private const val TEMP_MIN_THRESHOLD = 10
-        private const val TEMP_MAX_THRESHOLD = 40
-        private const val HUMIDITY_MIN_THRESHOLD = 30
-        private const val HUMIDITY_MAX_THRESHOLD = 80
-        private const val BATTERY_LOW_THRESHOLD = 20
+        // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
+        private const val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
+        private const val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
+        private const val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
+        private const val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
+        private const val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
         
         // Cache na ostatnio sformatowaną datę aby uniknąć powtarzających się operacji
         private var lastTimestamp: Long = -1

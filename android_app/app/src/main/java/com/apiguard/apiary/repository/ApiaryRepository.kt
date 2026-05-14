@@ -8,6 +8,8 @@ import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.data.remote.ApiaryApiService
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.network.RetrofitClient
+import com.apiguard.apiary.util.AppConstants
+import com.apiguard.apiary.util.isValidIpAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -15,13 +17,13 @@ import java.net.URL
 
 class ApiaryRepository(private val application: Application) {
     companion object {
-        private const val PREF_IP_ADDRESS = "pref_ip_address"
-        private const val PREF_API_PORT = "pref_api_port"
-        private const val DEFAULT_PORT = 5000  // Zgodność z README.md
+        private const val PREF_IP_ADDRESS = AppConstants.PREF_IP_ADDRESS
+        private const val PREF_API_PORT = AppConstants.PREF_API_PORT
+        private const val DEFAULT_PORT = AppConstants.DEFAULT_PORT  // Zgodność z README.md
         
         // Walidacja zakresu portów
-        private const val MIN_PORT = 1
-        private const val MAX_PORT = 65535
+        private const val MIN_PORT = AppConstants.MIN_PORT
+        private const val MAX_PORT = AppConstants.MAX_PORT
         
         @Volatile
         private var apiService: ApiaryApiService? = null
@@ -133,11 +135,7 @@ class ApiaryRepository(private val application: Application) {
      * Waliduje format adresu IPv4
      */
     private fun isValidIpAddress(ip: String): Boolean {
-        val ipPattern = Regex(
-            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
-            "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-        )
-        return ipPattern.matches(ip)
+        return ip.isValidIpAddress()
     }
 
     suspend fun fetchApiaries(): Result<List<ApiaryData>> {
