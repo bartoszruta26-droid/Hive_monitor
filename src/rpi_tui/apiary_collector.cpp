@@ -702,12 +702,11 @@ public:
     }
 
     // ============================================================================
-    // PARSOWANIE I PRZETWARZANIE DANYCH - OBSLUGA JSON I CSV
+    // PARSOWANIE I PRZETWARZANIE DANYCH - TYLKO JSON API
     // ============================================================================
     void processData(const std::string& raw_data, const std::string& source_ip) {
-        // Obslugiwane formaty:
-        // 1. JSON: {"hive_id":"UL-1","temp":24.5,"hum":65.2,...}
-        // 2. CSV: UL-1,24.5,65.2,45.300,98,450,35,1,1234567890,...
+        // Obslugiwany format:
+        // JSON: {"hive_id":"UL-1","temp":24.5,"hum":65.2,...}
         
         long long now = std::time(nullptr);
         
@@ -715,7 +714,8 @@ public:
         if (raw_data.find('{') != std::string::npos && raw_data.find('}') != std::string::npos) {
             parseJSON(raw_data, source_ip, now);
         } else {
-            parseCSV(raw_data, source_ip, now);
+            Logger::getInstance().warning("Nieznany format danych z " + source_ip + ": oczekiwano JSON");
+            DEBUG_COUNTER_INC("json_parse_errors");
         }
     }
     
@@ -955,130 +955,6 @@ public:
             Logger::getInstance().error("Blad parsowania JSON: " + std::string(e.what()));
         }
         GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseJSON");)
-    }
-    
-    // Parsowanie CSV - kompatybilnosc wsteczna
-    void parseCSV(const std::string& raw_data, const std::string& source_ip, long long timestamp) {
-        DEBUG_FUNC_ENTER();
-        GENTLE_TRY
-        
-        std::stringstream ss(raw_data);
-        std::string segment;
-        std::vector<std::string> parts;
-
-        while (std::getline(ss, segment, ',')) {
-            parts.push_back(segment);
-        }
-
-        // Wymagane minimum 9 pol dla podstawowych danych
-        if (parts.size() < 9) {
-            Logger::getInstance().warning("Niepoprawny format CSV z " + source_ip + ": " + raw_data);
-            DEBUG_COUNTER_INC("csv_parse_errors");
-            DEBUG_FUNC_EXIT();
-            return;
-        }
-
-        DEBUG_LOG("Parsing CSV with " + std::to_string(parts.size()) + " fields from " + source_ip);
-        DEBUG_COUNTER_INC("csv_parsed");
-        DEBUG_START_TIMER("csv_parse");
-
-        try {
-            std::string hive_id = parts[0];
-            float temp = std::stof(parts[1]);
-            float humidity = std::stof(parts[2]);
-            float weight = std::stof(parts[3]);
-            int battery = std::stoi(parts[4]);
-            int co2 = std::stoi(parts[5]);
-            int voc = std::stoi(parts[6]);
-            int motion = std::stoi(parts[7]);
-            
-            // Parametry rozszerzone (opcjonalne)
-            float audio_rms = (parts.size() > 9) ? std::stof(parts[9]) : 0.0f;
-            float audio_dom_freq = (parts.size() > 10) ? std::stof(parts[10]) : 0.0f;
-            float audio_swarm_prob = (parts.size() > 11) ? std::stof(parts[11]) : 0.0f;
-            float radar_dist = (parts.size() > 12) ? std::stof(parts[12]) : 0.0f;
-            float radar_energy = (parts.size() > 13) ? std::stof(parts[13]) : 0.0f;
-            float radar_activity = (parts.size() > 14) ? std::stof(parts[14]) : 0.0f;
-            float weight_rate = (parts.size() > 15) ? std::stof(parts[15]) : 0.0f;
-            float weight_trend = (parts.size() > 16) ? std::stof(parts[16]) : 0.0f;
-            int air_iaq = (parts.size() > 17) ? std::stoi(parts[17]) : 0;
-
-            {
-                std::lock_guard<std::mutex> lock(data_mutex);
-                if (hives_data.find(hive_id) != hives_data.end()) {
-                    hives_data[hive_id].temperature = temp;
-                    hives_data[hive_id].humidity = humidity;
-                    hives_data[hive_id].weight = weight;
-                    hives_data[hive_id].battery_level = battery;
-                    hives_data[hive_id].co2_eq = co2;
-                    hives_data[hive_id].voc_idx = voc;
-                    hives_data[hive_id].motion_detected = motion;
-                    hives_data[hive_id].timestamp = timestamp;
-                    hives_data[hive_id].is_online = true;
-                    hives_data[hive_id].audio_rms = audio_rms;
-                    hives_data[hive_id].audio_dominant_freq = audio_dom_freq;
-                    hives_data[hive_id].audio_swarm_prob = audio_swarm_prob;
-                    hives_data[hive_id].radar_distance = radar_dist;
-                    hives_data[hive_id].radar_energy = radar_energy;
-                    hives_data[hive_id].radar_activity = radar_activity;
-                    hives_data[hive_id].weight_rate = weight_rate;
-                    hives_data[hive_id].weight_trend = weight_trend;
-                    hives_data[hive_id].air_iaq = air_iaq;
-                    
-                    Logger::getInstance().debug("CSV: Zaktualizowano " + hive_id + " z " + source_ip);
-                } else {
-                    Logger::getInstance().info("Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
-                    HiveData new_hive;
-                    new_hive.hive_id = hive_id;
-                    new_hive.temperature = temp;
-                    new_hive.humidity = humidity;
-                    new_hive.weight = weight;
-                    new_hive.battery_level = battery;
-                    new_hive.co2_eq = co2;
-                    new_hive.voc_idx = voc;
-                    new_hive.motion_detected = motion;
-                    new_hive.timestamp = timestamp;
-                    new_hive.is_online = true;
-                    new_hive.audio_rms = audio_rms;
-                    new_hive.audio_dominant_freq = audio_dom_freq;
-                    new_hive.audio_swarm_prob = audio_swarm_prob;
-                    new_hive.radar_distance = radar_dist;
-                    new_hive.radar_energy = radar_energy;
-                    new_hive.radar_activity = radar_activity;
-                    new_hive.weight_rate = weight_rate;
-                    new_hive.weight_trend = weight_trend;
-                    new_hive.air_iaq = air_iaq;
-                    hives_data[hive_id] = new_hive;
-                    
-                    // Zapis do bazy danych SQLite z mechanizmem retry przy bledach
-                    bool db_success = false;
-                    int retry_count = 0;
-                    const int MAX_RETRIES = 3;
-                    while (!db_success && retry_count < MAX_RETRIES && running) {
-                        try {
-                            ApiaryDatabase::getInstance().storeRawData(new_hive);
-                            Logger::getInstance().debug("Zapisano dane CSV do bazy dla " + hive_id, "DB");
-                            db_success = true;
-                        } catch (const std::exception& e) {
-                            retry_count++;
-                            std::string warning_msg = "Nie udalo sie zapisac CSV do bazy (proba " + 
-                                                     std::to_string(retry_count) + "/" + 
-                                                     std::to_string(MAX_RETRIES) + "): " + std::string(e.what());
-                            Logger::getInstance().warning(warning_msg, "DB");
-                            
-                            if (retry_count < MAX_RETRIES) {
-                                std::this_thread::sleep_for(std::chrono::milliseconds(100 * retry_count));
-                            } else {
-                                Logger::getInstance().error("Maksymalna liczba prob zapisu CSV do bazy przekroczona dla " + hive_id, "DB");
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (const std::exception& e) {
-            Logger::getInstance().error("Blad parsowania CSV: " + std::string(e.what()));
-        }
-        GENTLE_CATCH(Logger::getInstance().error("Krytyczny blad w parseCSV"))
     }
 
     // Symulacja danych (do testow bez fizycznych Pico)
@@ -1560,9 +1436,6 @@ int main(int argc, char* argv[]) {
                     response = collector.getStatusJSON();
                 } else if (request.find("GET /health") != std::string::npos) {
                     response = "{\"status\":\"ok\",\"timestamp\":" + std::to_string(std::time(nullptr)) + ",\"version\":\"1.0.0\",\"collector_url\":\"http://localhost:8080\"}";
-                } else if (request.find("GET /api/csv") != std::string::npos) {
-                    response = collector.getStatusCSV();
-                    content_type = "text/csv";
                 } else if (request.find("GET /api/sensors") != std::string::npos) {
                     response = "{\"sensors\":[],\"note\":\"Endpoint dostepny - dane dostepne w /api/hives\"}";
                 } else if (request.find("GET /api/effectors") != std::string::npos) {
@@ -1572,7 +1445,7 @@ int main(int argc, char* argv[]) {
                 } else if (request.find("GET /api/logs") != std::string::npos) {
                     response = "{\"logs\":[],\"note\":\"Logi dostepne przez TUI\"}";
                 } else {
-                    response = "{\"error\":\"Unknown endpoint\",\"available\":[\"/api/status\",\"/api/hives\",\"/health\",\"/api/csv\",\"/api/sensors\",\"/api/effectors\",\"/api/history\",\"/api/logs\"]}";
+                    response = "{\"error\":\"Unknown endpoint\",\"available\":[\"/api/status\",\"/api/hives\",\"/health\",\"/api/sensors\",\"/api/effectors\",\"/api/history\",\"/api/logs\"]}";
                 }
                 
                 // Naglowki HTTP
@@ -1595,8 +1468,6 @@ int main(int argc, char* argv[]) {
         static time_t last_log = 0;
         if (std::time(nullptr) - last_log >= 5) {
             last_log = std::time(nullptr);
-            // Eksportuj dane do pliku CSV dla TUI
-            collector.exportToCSV("/tmp/apiary_data.csv");
             // Mozna dodac okresowe logowanie statystyk
         }
     }
