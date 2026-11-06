@@ -17,7 +17,6 @@
 #include <DHT.h>
 #include <Adafruit_SGP41.h>
 #include <HardwareSerial.h>
-#include <RP2040Watchdog.h>
 #include <string.h>
 
 // Include module headers
@@ -403,7 +402,7 @@ void setup() {
     Serial.println(">> USB Priority + Ethernet Fallback");
     
     // Enable Watchdog (8 second timeout)
-    rp2040.wdtEnable(8000);
+    rp2040.wdt_begin(8000);
     Serial.println(">> Watchdog enabled (timeout: 8s)");
     
     // Initialize subsystems
@@ -437,7 +436,7 @@ void loop() {
     unsigned long now = millis();
     
     // Feed watchdog
-    rp2040.wdtReset();
+    rp2040.wdt_reset();
     
     // Maintain Ethernet connection
     Ethernet.maintain();
