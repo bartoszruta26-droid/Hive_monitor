@@ -2,6 +2,9 @@
 #include "csv_utils.h"
 
 #include <cassert>
+#include <atomic>
+#include <thread>
+#include <vector>
 #include <cstdio>
 #include <string>
 #include <ctime>
