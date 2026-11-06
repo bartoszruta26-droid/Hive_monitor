@@ -79,7 +79,7 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
                     delay(10_000L)
-                    if (viewModel.isConnected()) viewModel.loadData()
+                    viewModel.refreshConnectionAndData()
                 }
             }
         }
