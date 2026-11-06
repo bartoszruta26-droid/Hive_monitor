@@ -17,6 +17,9 @@ int main() {
     assert(apiary::parseIPv4BindAddress("192.168.10.25", "127.0.0.1", address));
     assert(apiary::ipv4AddressToString(address) == "192.168.10.25");
     assert(!apiary::parseIPv4BindAddress("not-an-ip", "127.0.0.1", address));
+    assert(!apiary::parseIPv4BindAddress("0.0.0.0", "127.0.0.1", address));
+    assert(!apiary::parseIPv4BindAddress("8.8.8.8", "127.0.0.1", address));
+    assert(apiary::parseIPv4BindAddress("10.20.30.40", "127.0.0.1", address));
 
     std::cout << "Network safety helper tests passed\n";
     return 0;
