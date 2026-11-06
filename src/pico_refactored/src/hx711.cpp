@@ -18,7 +18,6 @@
 #include "hx711.h"
 #include <Arduino.h>
 #ifdef ARDUINO_ARCH_RP2040
-#include <RP2040Watchdog.h>
 #endif
 
 // Global calibration variables with debug support
@@ -104,7 +103,7 @@ long readHX711() {
         
         // Prevent watchdog trigger during wait (RP2040 specific)
         #ifdef ARDUINO_ARCH_RP2040
-        rp2040.wdtReset();
+        rp2040.wdt_reset();
         #endif
         
         // Small delay to prevent CPU hogging
