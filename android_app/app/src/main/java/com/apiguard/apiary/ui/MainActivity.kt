@@ -192,10 +192,15 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(apiaryData.name)
             .setMessage(
-                "Temperatura: ${apiaryData.temperature}°C\n" +
-                "Wilgotność: ${apiaryData.humidity}%\n" +
-                "Waga: ${apiaryData.weight}kg\n" +
-                "Bateria: ${apiaryData.battery}%"
+                "Status: ${if (apiaryData.online) "ONLINE" else "OFFLINE"}\n" +
+                if (apiaryData.available) {
+                    "Temperatura: ${apiaryData.temperature}°C\n" +
+                    "Wilgotność: ${apiaryData.humidity}%\n" +
+                    "Waga: ${apiaryData.weight} kg\n" +
+                    "Bateria: ${apiaryData.battery}%"
+                } else {
+                    "Brak kompletnego zestawu aktualnych pomiarów."
+                }
             )
             .setPositiveButton("OK", null)
             .show()
