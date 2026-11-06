@@ -72,15 +72,11 @@
 // Dolaczamy modul bazy danych dla zapisu i agregacji
 #include "apiary_database.h"
 #include "http_protocol.h"
+#include "network_security.h"
 
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
 
-static std::string ipv4ToString(const in_addr& address) {
-    char text[INET_ADDRSTRLEN] = {0};
-    if (inet_ntop(AF_INET, &address, text, sizeof(text)) == nullptr) return "unknown";
-    return std::string(text);
-}
 
 // ============================================================================
 // KONFIGURACJA DEBUGOWANIA I GENTLE CODE
@@ -657,8 +653,7 @@ public:
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
         const char* udp_bind_address = std::getenv("APIARY_UDP_BIND_ADDRESS");
-        if (udp_bind_address == nullptr || *udp_bind_address == '\0') udp_bind_address = "127.0.0.1";
-        if (inet_pton(AF_INET, udp_bind_address, &server_addr.sin_addr) != 1) {
+        if (!apiary::parseIPv4BindAddress(udp_bind_address, "127.0.0.1", server_addr.sin_addr)) {
             Logger::getInstance().error("Niepoprawny APIARY_UDP_BIND_ADDRESS (wymagany adres IPv4): " + std::string(udp_bind_address));
             close(server_socket);
             server_socket = -1;
@@ -696,8 +691,7 @@ public:
             const ssize_t recv_len = recvmsg(server_socket, &message, MSG_TRUNC);
 
             if (recv_len > 0) {
-                if ((message.msg_flags & MSG_TRUNC) != 0 ||
-                    recv_len >= static_cast<ssize_t>(sizeof(buffer))) {
+                if (apiary::datagramWasTruncated(message.msg_flags, recv_len, sizeof(buffer) - 1)) {
                     Logger::getInstance().warning("Odrzucono obcięty datagram UDP", "NETWORK");
                     continue;
                 }
@@ -706,12 +700,12 @@ public:
                 // Walidacja danych wejsciowych - sprawdzenie czy to valid string
                 std::string received_data(buffer);
                 if (received_data.empty() || received_data.find_first_of("{,") == std::string::npos) {
-                    Logger::getInstance().debug("Odrzucono niepoprawne dane od " + ipv4ToString(client_addr.sin_addr), "VALIDATION");
+                    Logger::getInstance().debug("Odrzucono niepoprawne dane od " + apiary::ipv4AddressToString(client_addr.sin_addr), "VALIDATION");
                     continue;
                 }
                 
                 // Rate limiting - sprawdzenie limitu polaczen z danego IP
-                std::string client_ip = ipv4ToString(client_addr.sin_addr);
+                std::string client_ip = apiary::ipv4AddressToString(client_addr.sin_addr);
                 if (!rate_limiter.allowConnection(client_ip)) {
                     Logger::getInstance().warning("Rate limit przekroczony dla IP: " + client_ip, "RATE_LIMIT");
                     continue;
@@ -1513,8 +1507,7 @@ int main(int argc, char* argv[]) {
     memset(&http_addr, 0, sizeof(http_addr));
     http_addr.sin_family = AF_INET;
     const char* http_bind_address = std::getenv("APIARY_HTTP_BIND_ADDRESS");
-    if (http_bind_address == nullptr || *http_bind_address == '\0') http_bind_address = "127.0.0.1";
-    if (inet_pton(AF_INET, http_bind_address, &http_addr.sin_addr) != 1) {
+    if (!apiary::parseIPv4BindAddress(http_bind_address, "127.0.0.1", http_addr.sin_addr)) {
         Logger::getInstance().error("Niepoprawny APIARY_HTTP_BIND_ADDRESS (wymagany adres IPv4): " + std::string(http_bind_address), "HTTP");
         close(server_fd);
         return 1;
@@ -1574,7 +1567,7 @@ int main(int argc, char* argv[]) {
                 struct sockaddr_in client_addr_check;
                 socklen_t client_len_check = sizeof(client_addr_check);
                 if (getpeername(client_fd, (struct sockaddr*)&client_addr_check, &client_len_check) == 0) {
-                    std::string client_ip_http = ipv4ToString(client_addr_check.sin_addr);
+                    std::string client_ip_http = apiary::ipv4AddressToString(client_addr_check.sin_addr);
                     if (!collector.rateLimiterAllowConnection(client_ip_http)) {
                         Logger::getInstance().warning("HTTP Rate limit przekroczony dla IP: " + client_ip_http, "RATE_LIMIT");
                         close(client_fd);
@@ -1682,7 +1675,7 @@ int main(int argc, char* argv[]) {
                 }
                 close(client_fd);
                 
-                Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + ipv4ToString(client_addr.sin_addr));
+                Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + apiary::ipv4AddressToString(client_addr.sin_addr));
             }
         }
         
