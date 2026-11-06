@@ -74,6 +74,6 @@ class ApiaryPayloadMapperTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsPayloadWithoutHiveMap() {
-        ApiaryPayloadMapper.map(JsonParser.parseString("""{"timestamp":2000}""").asJsonObject)
+        ApiaryPayloadMapper.map(JsonParser().parse("""{"timestamp":2000}""").asJsonObject)
     }
 }
