@@ -140,53 +140,7 @@ private:
     struct sockaddr_in server_addr;
     
     // Rate limiting - ochrona przed nadmierną liczbą połączeń
-    struct RateLimiter {
-        std::map<std::string, std::vector<long long>> connection_times;
-        std::mutex mutex;
-        static constexpr int MAX_CONNECTIONS_PER_SECOND = 10;
-        static constexpr int CLEANUP_INTERVAL_SEC = 60;
-        static constexpr size_t MAX_TRACKED_IPS = 4096;
-        long long last_cleanup = 0;
-
-        void cleanupLocked(long long now) {
-            for (auto it = connection_times.begin(); it != connection_times.end(); ) {
-                if (it->second.empty() || now - it->second.back() > CLEANUP_INTERVAL_SEC) {
-                    it = connection_times.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-            last_cleanup = now;
-        }
-
-        bool allowConnection(const std::string& ip) {
-            std::lock_guard<std::mutex> lock(mutex);
-            const long long now = std::time(nullptr);
-            if (now - last_cleanup >= CLEANUP_INTERVAL_SEC) cleanupLocked(now);
-
-            auto entry = connection_times.find(ip);
-            if (entry == connection_times.end()) {
-                if (connection_times.size() >= MAX_TRACKED_IPS) return false;
-                entry = connection_times.emplace(ip, std::vector<long long>{}).first;
-            }
-            auto& times = entry->second;
-            times.erase(
-                std::remove_if(times.begin(), times.end(),
-                    [now](long long t) { return now - t > 1; }),
-                times.end()
-            );
-            if (times.size() >= MAX_CONNECTIONS_PER_SECOND) return false;
-            times.push_back(now);
-            return true;
-        }
-
-        void cleanup() {
-            std::lock_guard<std::mutex> lock(mutex);
-            cleanupLocked(std::time(nullptr));
-        }
-    };
-    
-    RateLimiter rate_limiter;
+    apiary::ConnectionRateLimiter rate_limiter;
 
 public:
     ApiaryCollector() {
