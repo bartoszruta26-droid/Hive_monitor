@@ -241,7 +241,7 @@ async function checkCollectorConnection() {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.health}`, {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
-            timeout: 5000 // 5 sekund timeout
+            signal: AbortSignal.timeout(5000)
         });
         
         if (response.ok) {
@@ -818,39 +818,23 @@ function startCountdown() {
     }, 1000);
 }
 
-function refreshAllData() {
-    // Guard against concurrent refreshes
-    if (AppState.isRefreshing) {
-        logMessage("debug", "Refresh already in progress, skipping");
-        return;
-    }
-    
+async function refreshAllData() {
+    if (AppState.isRefreshing) return;
     AppState.isRefreshing = true;
-    
     try {
-        if (AppState.isConnected) {
-            fetchHiveData().then(data => {
-                if (data && data.length > 0) {
-                    renderDashboard();
-                    renderSensorsTable();
-                    renderEffectorsTable();
-                }
-                AppState.isRefreshing = false;
-            }).catch(error => {
-                logMessage("error", "Błąd pobierania danych", error.message);
-                AppState.isRefreshing = false;
-            });
-        } else {
-            AppState.isRefreshing = false;
-        }
+        // Ponawiaj próbę także po utracie łączności — bez danych demonstracyjnych.
+        await fetchHiveData();
+        renderDashboard();
+        renderSensorsTable();
+        renderEffectorsTable();
+        updateHiveSelects();
     } catch (error) {
-        logMessage("error", "Błąd w refreshAllData", error.message);
+        logMessage("error", "Błąd odświeżania danych", error.message);
+    } finally {
         AppState.isRefreshing = false;
+        AppState.lastRefresh = new Date();
     }
-    
-    AppState.lastRefresh = new Date();
 }
-
 // ============================================================================
 // DEMO DANE (gdy brak połączenia z kolektorem)
 // ============================================================================
