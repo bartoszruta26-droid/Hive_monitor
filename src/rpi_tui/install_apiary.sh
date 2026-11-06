@@ -103,11 +103,17 @@ sudo a2enconf apiaryguard-env
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
 sudo install -d -o apiaryguard -g www-data -m 0750 /var/lib/apiaryguard
+sudo chown apiaryguard:www-data /var/lib/apiaryguard
+sudo chmod 0750 /var/lib/apiaryguard
 sudo touch "$DB_PATH"
 sudo chown apiaryguard:www-data "$DB_PATH"
 sudo chmod 0640 "$DB_PATH"
 sudo install -d -o apiaryguard -g apiaryguard -m 0750 /var/log/apiaryguard
-sudo install -d -o www-data -g www-data -m 0750 /var/log/apiaryguard-web
+sudo chown apiaryguard:apiaryguard /var/log/apiaryguard
+sudo chmod 0750 /var/log/apiaryguard
+sudo install -d -o www-data -g www-data -m 0700 /var/log/apiaryguard-web
+sudo chown www-data:www-data /var/log/apiaryguard-web
+sudo chmod 0700 /var/log/apiaryguard-web
 
 # Inicjalizacja schematu bazy danych z pełną obsługą agregacji
 sudo -u apiaryguard sqlite3 "$DB_PATH" <<EOF
