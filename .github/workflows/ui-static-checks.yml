@@ -63,6 +63,9 @@ jobs:
       - name: Run HTTP protocol regression tests
         run: make -C src/rpi_tui test-http
 
+      - name: Run structural JSON parser regression tests
+        run: make -C src/rpi_tui test-json
+
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network
 
