@@ -14,7 +14,7 @@
 
 // External globals (defined in main .ino file)
 extern Adafruit_SGP41 sgp;
-extern HardwareSerial& radarSerial;
+extern SerialUART& radarSerial;
 extern float temperature;
 extern float humidity;
 extern uint16_t co2_eq;
