@@ -733,7 +733,7 @@ void ApiaryDatabase::exportToCSV(const std::string& filename, const std::string&
     for (const auto& rec : records) {
         file << rec.timestamp_start << ",";
         file << rec.timestamp_end << ",";
-        file << rec.hive_id << ",";
+        file << csvEscape(rec.hive_id) << ",";
         file << static_cast<int>(rec.agg_type) << ",";
         file << rec.temperature_avg << "," << rec.temperature_min << "," << rec.temperature_max << ",";
         file << rec.humidity_avg << "," << rec.humidity_min << "," << rec.humidity_max << ",";
