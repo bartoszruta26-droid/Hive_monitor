@@ -5,6 +5,7 @@ on:
     paths:
       - "src/webui/**"
       - "src/rpi_tui/**"
+      - "hive_monitor_installer.sh"
       - ".github/workflows/ui-static-checks.yml"
   push:
     branches:
@@ -34,10 +35,15 @@ jobs:
         run: node --check src/webui/app.js
 
       - name: Check PHP API syntax
-        run: php -l src/webui/api.php
+        run: |
+          php -l src/webui/api.php
+          php -l src/webui/legacy_api.php
 
       - name: Run PHP API authentication and configuration regressions
         run: php tests/php/api_security_config_test.php
+
+      - name: Run legacy PHP API security regressions
+        run: python3 tests/php/legacy_api_security_test.py
 
       - name: Check TUI Bash syntax
         run: bash -n src/rpi_tui/apiary_tui.sh
@@ -47,6 +53,9 @@ jobs:
 
       - name: Verify software security contracts without hardware
         run: python3 src/rpi_tui/tests/test_security_contracts.py
+
+      - name: Verify deployment and TLS security contracts
+        run: python3 src/rpi_tui/tests/test_deployment_security.py
 
       - name: Verify installer and Android security defaults
         run: python3 src/rpi_tui/tests/test_deployment_security.py
@@ -65,6 +74,9 @@ jobs:
 
       - name: Run structural JSON parser regression tests
         run: make -C src/rpi_tui test-json
+
+      - name: Run sensor measurement domain validation tests
+        run: make -C src/rpi_tui test-validation
 
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network
