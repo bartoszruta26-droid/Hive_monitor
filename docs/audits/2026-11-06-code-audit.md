@@ -98,21 +98,12 @@ PR #107 został scalony metodą squash do `main`. Kontrole uruchomione dla PR za
 - **Ryzyko:** niepoprawny CSV, przesunięcie kolumn lub wstrzyknięcie kolejnych wierszy przy identyfikatorze pochodzącym z danych wejściowych.
 - **Zalecenie:** użyć funkcji serializacji CSV zgodnej z RFC 4180 i testów dla przecinków, cudzysłowów, CR/LF oraz UTF-8.
 
-### HVM-013 — obsługa błędu lokalnego endpointu API PHP może ujawniać szczegóły
-- **Priorytet:** wysoki.
-- **Plik:** `src/webui/api.php`, końcowy handler wyjątku oraz `handleException()`.
-- **Obserwacja:** handler lokalny zwraca treść wyjątku bez sprawdzenia środowiska, a handler globalny dopuszcza szczegóły tylko przy debug. Polityki są niespójne.
-- **Zalecenie:** jeden wspólny serializer błędów i testy dla debug/production.
-
-
-
-### HVM-014 — zatrzaski safe mode nie mają jawnej procedury odzyskiwania
-- **Priorytet:** średni/wysoki.
-- **Pliki:** `src/pico_refactored/apiaryguard_pico.ino`, `src/pico_refactored/src/effectors.cpp`, `src/pico_refactored/src/effectors_flowing_hive.cpp`.
-- **Obserwacja:** istnieją funkcje `deactivateSafeMode()` i `deactivateFlowingHiveSafeMode()`, ale interfejs komend USB w `processCommand()` nie udostępnia komendy kontrolowanego odblokowania. Zatrzaski są zmiennymi RAM i po restarcie MCU wracają do wartości początkowej.
-- **Ryzyko:** operator nie ma jawnej, audytowalnej procedury potwierdzenia usunięcia przyczyny awarii i kontrolowanego odblokowania. Restart kasuje stan zatrzasku bez potwierdzenia przyczyny; po restarcie system może przyjąć nowe komendy.
-- **Zalecenie:** zdefiniować procedurę odzyskiwania z autoryzacją lokalną, warunkami wstępnymi, diagnostyką przyczyny, rejestrem zdarzeń i ponownym sprawdzeniem czujników. Zdecydować, czy krytyczne zatrzaski mają przetrwać restart (np. zapis trwały z kontrolą integralności), czy restart ma wymagać ręcznego potwierdzenia. Nie dodawać prostego polecenia „SAFE_OFF” bez sprawdzenia warunków.
-
+### HVM-013 — health check PHP nie ma jawnego limitu czasu
+- **Priorytet:** średni.
+- **Plik:** `src/webui/api.php`, health check około linii 610.
+- **Obserwacja:** `file_get_contents("{$COLLECTOR_URL}/health")` jest wywoływane bez kontekstu strumienia z krótkim timeoutem. W odróżnieniu od `callCollector()`, które ustawia limit cURL na 5 sekund, health check zależy od globalnego `default_socket_timeout`.
+- **Ryzyko:** endpoint health może blokować żądanie PHP przez dłuższy czas przy niedostępnym lub zawieszonym kolektorze, zużywając procesy PHP-FPM.
+- **Zalecenie:** użyć wspólnej funkcji cURL z timeoutem 2–5 sekund lub jawnie ustawić `stream_context_create(['http' => ['timeout' => 3]])`. Dodać test symulujący brak odpowiedzi kolektora.
 ## 3. Przegląd komponentów
 
 | Komponent | Zakres sprawdzony | Ocena |
