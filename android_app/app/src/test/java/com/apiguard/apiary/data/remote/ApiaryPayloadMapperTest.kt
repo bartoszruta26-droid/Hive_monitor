@@ -8,7 +8,7 @@ import org.junit.Test
 
 class ApiaryPayloadMapperTest {
     private fun payload(hiveFields: String, timestamp: Long = 2_000L) =
-        JsonParser.parseString(
+        JsonParser().parse(
             """{"timestamp":$timestamp,"hive_count":1,"hives":{"UL-1":{$hiveFields}}}"""
         ).asJsonObject
 
