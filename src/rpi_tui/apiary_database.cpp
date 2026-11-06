@@ -105,6 +105,7 @@ void ApiaryDatabase::initialize(const DatabaseConfig& config) {
     // Włączenie optymalizacji. Nie pozostawiaj otwartego, częściowo skonfigurowanego
     // uchwytu SQLite po błędzie inicjalizacji.
     try {
+    sqlite3_busy_timeout(db_, 3000);
     const auto executePragma = [this](const char* sql, const char* label) {
         char* error_message = nullptr;
         const int pragma_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &error_message);
@@ -617,8 +618,15 @@ int ApiaryDatabase::cleanupOldData() {
     
     // Czyszczenie danych surowych - zachowaj ostatnie 7 dni (604800 sekund)
     std::string sql_raw = "DELETE FROM raw_data WHERE timestamp < (strftime('%s', 'now') - 604800)";
-    
-    sqlite3_exec(db_, sql_raw.c_str(), nullptr, nullptr, nullptr);
+    char* error_message = nullptr;
+    const int delete_rc = sqlite3_exec(db_, sql_raw.c_str(), nullptr, nullptr, &error_message);
+    if (delete_rc != SQLITE_OK) {
+        const std::string detail = error_message ? error_message : sqlite3_errmsg(db_);
+        sqlite3_free(error_message);
+        LOG_ERROR("Czyszczenie SQLite nie powiodło się: " + detail);
+        return 0;
+    }
+    sqlite3_free(error_message);
     int raw_deleted = sqlite3_changes(db_);
     total_deleted += raw_deleted;
     
@@ -639,7 +647,15 @@ int ApiaryDatabase::cleanupOldData() {
     
     // VACUUM tylko jeśli coś usunięto
     if (total_deleted > 0) {
-        sqlite3_exec(db_, "VACUUM;", nullptr, nullptr, nullptr);
+        char* vacuum_error = nullptr;
+        const int vacuum_rc = sqlite3_exec(db_, "VACUUM;", nullptr, nullptr, &vacuum_error);
+        if (vacuum_rc != SQLITE_OK) {
+            const std::string detail = vacuum_error ? vacuum_error : sqlite3_errmsg(db_);
+            sqlite3_free(vacuum_error);
+            LOG_WARNING("VACUUM SQLite nie powiódł się po czyszczeniu: " + detail);
+        } else {
+            sqlite3_free(vacuum_error);
+        }
     }
     
     return total_deleted;
