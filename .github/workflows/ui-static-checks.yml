@@ -16,6 +16,10 @@ on:
       - ".github/workflows/ui-static-checks.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
