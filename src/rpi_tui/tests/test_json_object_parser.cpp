@@ -7,7 +7,7 @@
 int main() {
     std::map<std::string, std::string> values;
     assert(apiary::parseJsonObjectScalars(
-        R"({"hive_id":"UL-1","temp":23.75,"nested":{"temp":99},"escaped":"UL\\\"-2","unicode":"Pas\\u0142eka","items":[1,{"x":2}],"enabled":true})",
+        R"({"hive_id":"UL-1","temp":23.75,"nested":{"temp":99},"escaped":"UL\\\"-2","unicode":"Pas\u0142eka","items":[1,{"x":2}],"enabled":true})",
         values));
     assert(values.at("hive_id") == "UL-1");
     assert(values.at("temp") == "23.75");
