@@ -4,7 +4,7 @@
 # Instaluje zależności, konfiguruje bazę danych, Apache2 i usługi systemd
 # UWAGA: Ten skrypt wykonuje PEŁNĄ instalację z WebUI i API
 
-set -e
+set -euo pipefail
 
 echo "🚀 Rozpoczynanie PEŁNEJ instalacji Apiary Collector..."
 echo ""
@@ -40,6 +40,8 @@ sudo apt-get install -y \
     apache2 \
     php \
     libapache2-mod-php \
+    php-sqlite3 \
+    openssl \
     || {
         echo -e "${RED}❌ Failed to install dependencies${NC}"
         exit 1
