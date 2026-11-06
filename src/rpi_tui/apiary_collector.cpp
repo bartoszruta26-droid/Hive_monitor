@@ -1102,24 +1102,25 @@ public:
         }
     }
 
-    void start(bool use_simulation = false) {
-        if (running) return;
-        running = true;
+    bool start(bool use_simulation = false) {
+        if (running) return true;
 
-        if (!use_simulation) {
-            if (!initNetwork()) {
-                Logger::getInstance().warning( "Przelaczanie w tryb symulacji z powodu bledu sieci.");
-                use_simulation = true;
-            }
+        // Tryb symulacji jest wyłącznie jawny (--sim). Błąd sieci nie może
+        // automatycznie zamienić rzeczywistego monitoringu w fikcyjne pomiary.
+        if (!use_simulation && !initNetwork()) {
+            Logger::getInstance().error("Nie uruchomiono odbioru UDP; symulacja pozostaje wyłączona.");
+            return false;
         }
 
+        running = true;
         if (use_simulation) {
-            Logger::getInstance().info( "Uruchamianie symulatora danych uli...");
+            Logger::getInstance().warning("Uruchamianie jawnego trybu SYMULACJI danych uli...");
             worker_threads.emplace_back(&ApiaryCollector::simulationLoop, this);
         } else {
-            Logger::getInstance().info( "Uruchamianie nasluchiwania sieciowego...");
+            Logger::getInstance().info("Uruchamianie nasłuchu sieciowego UDP...");
             worker_threads.emplace_back(&ApiaryCollector::receiveLoop, this);
         }
+        return true;
     }
 
     void stop() {
@@ -1453,6 +1454,15 @@ int main(int argc, char* argv[]) {
     
     ApiaryCollector collector;
 
+    const bool simulationMode = argc > 1 && std::string(argv[1]) == "--sim";
+    if (argc > 1 && !simulationMode) {
+        Logger::getInstance().error("Nieznany argument. Użycie: apiary_collector [--sim]");
+        return 2;
+    }
+    if (!collector.start(simulationMode)) {
+        Logger::getInstance().critical("Nie udało się uruchomić kolektora w trybie sieciowym.");
+        return 1;
+    }
 
     // Serwer HTTP API JSON na porcie 8080
     Logger::getInstance().debug("Tworzenie socketu HTTP...", "HTTP");
