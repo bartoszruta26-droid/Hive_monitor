@@ -23,7 +23,7 @@ CURRENT_LANG="en"
 INSTALL_FAILED=0
 
 # Pliki konfiguracji, dzienniki i kopie mogą zawierać sekrety.
-if [[ -L "$CONFIG_DIR" ]]; then
+if [[ -L "$CONFIG_DIR" || -L "$BACKUP_DIR" || -L "$LOG_FILE" ]]; then
     echo "Refusing to use a symlink as the private configuration directory." >&2
     exit 1
 fi
@@ -538,7 +538,7 @@ option_backup_config() {
     print_header "${LANG[MENU_4]}"
     
     TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-    BACKUP_FILE="${BACKUP_DIR}/hive_monitor_backup_${TIMESTAMP}.tar.gz"
+    BACKUP_FILE=$(mktemp "${BACKUP_DIR}/hive_monitor_backup_${TIMESTAMP}_XXXXXX.tar.gz")
     
     echo "This option will create backups of edited/replaced configuration files."
     echo "Backup location: ${BACKUP_DIR}"
