@@ -236,12 +236,13 @@ bool setServoAngle(uint16_t angle) {
         return false;  // Blocked for safety
     }
     
-    // Validate angle with graceful degradation
-    if (angle > SERVO_MAX_ANGLE) {
-        DBG_SERVO("[SERVO] WARNING: Invalid angle %d (max %d), constraining\n", 
-                  angle, SERVO_MAX_ANGLE);
-        servo_error_count++;
-        angle = SERVO_MAX_ANGLE;  // Auto-correct instead of failing
+    // Reject out-of-range angles rather than silently driving to a limit.
+    if (angle < SERVO_MIN_ANGLE || angle > SERVO_MAX_ANGLE) {
+        DBG_SERVO("[SERVO] ERROR: Invalid angle %d (allowed %d-%d)\n",
+                  angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
+        ++servo_error_count;
+        TRACE_EXIT(SERVO);
+        return false;
     }
     
     // Convert the requested angle to a pulse width in microseconds.
