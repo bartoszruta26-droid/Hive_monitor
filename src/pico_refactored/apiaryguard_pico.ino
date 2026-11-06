@@ -329,7 +329,11 @@ void printStatus(Print& out) {
     out.print(", \"nox\":"); out.print(nox_idx);
     out.print(", \"heater\":"); out.print(heaterDuty);
     out.print(", \"fan\":"); out.print(fanDuty);
+    out.print(", \"pump\":"); out.print(pumpDuty > 0 ? 1 : 0);
     out.print(", \"relay1\":"); out.print(relay1State ? 1 : 0);
+    out.print(", \"relay2\":"); out.print(relay2State ? 1 : 0);
+    out.print(", \"safe_mode\":"); out.print(isSafeModeActive() ? "true" : "false");
+    out.print(", \"flowing_hive_safe_mode\":"); out.print(isFlowingHiveSafeModeActive() ? "true" : "false");
     // Additional metrics from analysis modules
     out.print(", \"audio_bee_idx\":"); out.print(currentAudioMetrics.bee_activity_index, 2);
     out.print(", \"audio_swarm_prob\":"); out.print(currentAudioMetrics.swarm_probability, 2);
