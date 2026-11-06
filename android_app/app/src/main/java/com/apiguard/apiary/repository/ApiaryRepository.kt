@@ -201,7 +201,7 @@ class ApiaryRepository(private val application: Application) {
                                 available = hasCoreMetrics,
                                 online = values.get("online")?.takeUnless { it.isJsonNull }?.asBoolean == true
                                     && lastSeenSeconds > 0L
-                                    && (System.currentTimeMillis() / 1000L - lastSeenSeconds) <= 60L
+                                    && (System.currentTimeMillis() / 1000L - lastSeenSeconds) in 0L..60L
                             )
                         }
                         cacheReadings(apiaries.filter { it.available && it.online })
