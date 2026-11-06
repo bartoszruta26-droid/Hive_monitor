@@ -8,6 +8,11 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
     private const val TIMEOUT_SECONDS = 10L
+
+    fun buildBaseUrl(host: String, port: Int): String {
+        val scheme = if (com.apiguard.apiary.BuildConfig.DEBUG) "http" else "https"
+        return "$scheme://$host:$port/"
+    }
     
     fun createApiService(baseUrl: String): ApiaryApiService {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
