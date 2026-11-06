@@ -37,7 +37,7 @@ $(LOGGER_TARGET): apiary_logger.o
 	@echo "Logger zbudowany jako plik nagłówkowy - użyj w swoim projekcie"
 
 # Budowanie kolektora danych z uli (z obsługą bazy danych)
-$(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h http_protocol.h network_security.h json_object_parser.h
+$(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h http_protocol.h network_security.h json_object_parser.h measurement_validation.h
 	@echo "Budowanie kolektora danych uli z bazą danych SQLite..."
 	$(CXX) $(CXXFLAGS) -DCOLLECTOR_BUILD $(COLLECTOR_SRCS) $(DATABASE_SRCS) $(LOGGER_SRCS) -o $@ $(LDFLAGS)
 	@echo "Gotowe: ./$(COLLECTOR_TARGET)"
