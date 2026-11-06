@@ -27,7 +27,7 @@ inline const std::map<std::string, NumericRange>& measurementRanges() {
         {"air_iaq", {0, 500, true}}, {"motion", {0, 1, true}},
         {"audio_raw", {0, 1023, true}}, {"vibration_raw", {0, 1023, true}},
         {"weight_raw", {-8388608, 8388607, true}},
-        {"audio_rms", {0, 1000, false}}, {"audio_freq", {0, 200000, false}},
+        {"audio_rms", {0, 10, false}}, {"audio_freq", {0, 200000, false}},\n        {"audio_spectral_centroid", {0, 200000, false}},
         {"spectral_centroid", {0, 200000, false}}, {"swarm_prob", {0, 1, false}},
         {"bee_activity", {0, 100, false}}, {"power_bee_band", {-200, 200, false}},
         {"crest_factor", {0, 1000, false}}, {"spectral_entropy", {0, 1000, false}},
