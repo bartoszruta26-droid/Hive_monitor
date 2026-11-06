@@ -58,6 +58,7 @@
 #include <algorithm>
 #include <regex>
 #include <cmath>
+#include <cstdlib>
 
 // Dolaczamy naglowek typow HiveData - KRYTYCZNE!
 #include "apiary_collector_types.h"
@@ -74,6 +75,12 @@
 
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
+
+static std::string ipv4ToString(const in_addr& address) {
+    char text[INET_ADDRSTRLEN] = {0};
+    if (inet_ntop(AF_INET, &address, text, sizeof(text)) == nullptr) return "unknown";
+    return std::string(text);
+}
 
 // ============================================================================
 // KONFIGURACJA DEBUGOWANIA I GENTLE CODE
@@ -142,39 +149,44 @@ private:
         std::mutex mutex;
         static constexpr int MAX_CONNECTIONS_PER_SECOND = 10;
         static constexpr int CLEANUP_INTERVAL_SEC = 60;
-        
-        bool allowConnection(const std::string& ip) {
-            std::lock_guard<std::mutex> lock(mutex);
-            long long now = std::time(nullptr);
-            
-            // Wyczyść stare wpisy (starsze niż 1 sekunda)
-            auto& times = connection_times[ip];
-            times.erase(
-                std::remove_if(times.begin(), times.end(), 
-                    [now](long long t) { return now - t > 1; }),
-                times.end()
-            );
-            
-            // Sprawdź limit
-            if (times.size() >= MAX_CONNECTIONS_PER_SECOND) {
-                return false;
-            }
-            
-            // Dodaj obecne połączenie
-            times.push_back(now);
-            return true;
-        }
-        
-        void cleanup() {
-            std::lock_guard<std::mutex> lock(mutex);
-            long long now = std::time(nullptr);
+        static constexpr size_t MAX_TRACKED_IPS = 4096;
+        long long last_cleanup = 0;
+
+        void cleanupLocked(long long now) {
             for (auto it = connection_times.begin(); it != connection_times.end(); ) {
-                if (now - it->second.back() > CLEANUP_INTERVAL_SEC) {
+                if (it->second.empty() || now - it->second.back() > CLEANUP_INTERVAL_SEC) {
                     it = connection_times.erase(it);
                 } else {
                     ++it;
                 }
             }
+            last_cleanup = now;
+        }
+
+        bool allowConnection(const std::string& ip) {
+            std::lock_guard<std::mutex> lock(mutex);
+            const long long now = std::time(nullptr);
+            if (now - last_cleanup >= CLEANUP_INTERVAL_SEC) cleanupLocked(now);
+
+            auto entry = connection_times.find(ip);
+            if (entry == connection_times.end()) {
+                if (connection_times.size() >= MAX_TRACKED_IPS) return false;
+                entry = connection_times.emplace(ip, std::vector<long long>{}).first;
+            }
+            auto& times = entry->second;
+            times.erase(
+                std::remove_if(times.begin(), times.end(),
+                    [now](long long t) { return now - t > 1; }),
+                times.end()
+            );
+            if (times.size() >= MAX_CONNECTIONS_PER_SECOND) return false;
+            times.push_back(now);
+            return true;
+        }
+
+        void cleanup() {
+            std::lock_guard<std::mutex> lock(mutex);
+            cleanupLocked(std::time(nullptr));
         }
     };
     
@@ -644,7 +656,14 @@ public:
 
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY; // Nasluchuj na wszystkich interfejsach
+        const char* udp_bind_address = std::getenv("APIARY_UDP_BIND_ADDRESS");
+        if (udp_bind_address == nullptr || *udp_bind_address == '\0') udp_bind_address = "127.0.0.1";
+        if (inet_pton(AF_INET, udp_bind_address, &server_addr.sin_addr) != 1) {
+            Logger::getInstance().error("Niepoprawny APIARY_UDP_BIND_ADDRESS (wymagany adres IPv4): " + std::string(udp_bind_address));
+            close(server_socket);
+            server_socket = -1;
+            return false;
+        }
         server_addr.sin_port = htons(port);
 
         if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
@@ -662,31 +681,37 @@ public:
     void receiveLoop() {
         char buffer[1024];
         struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
 
         while (running) {
             memset(buffer, 0, sizeof(buffer));
-            ssize_t recv_len = recvfrom(server_socket, buffer, sizeof(buffer)-1, 0, 
-                                        (struct sockaddr*)&client_addr, &client_len);
+            memset(&client_addr, 0, sizeof(client_addr));
+            socklen_t client_len = sizeof(client_addr);
+            struct iovec payload = {buffer, sizeof(buffer) - 1};
+            struct msghdr message;
+            memset(&message, 0, sizeof(message));
+            message.msg_name = &client_addr;
+            message.msg_namelen = client_len;
+            message.msg_iov = &payload;
+            message.msg_iovlen = 1;
+            const ssize_t recv_len = recvmsg(server_socket, &message, MSG_TRUNC);
 
             if (recv_len > 0) {
-                // ZABEZPIECZENIE PRZED PRZEPELNIENIEM BUFORA - dodatkowa walidacja
-                if (recv_len >= static_cast<ssize_t>(sizeof(buffer))) {
-                    Logger::getInstance().warning("Ostrzezenie: recv_len >= sizeof(buffer), dane mogly zostac obciete", "NETWORK");
-                    recv_len = sizeof(buffer) - 1;
+                if ((message.msg_flags & MSG_TRUNC) != 0 ||
+                    recv_len >= static_cast<ssize_t>(sizeof(buffer))) {
+                    Logger::getInstance().warning("Odrzucono obcięty datagram UDP", "NETWORK");
+                    continue;
                 }
-                
                 buffer[recv_len] = '\0';
                 
                 // Walidacja danych wejsciowych - sprawdzenie czy to valid string
                 std::string received_data(buffer);
                 if (received_data.empty() || received_data.find_first_of("{,") == std::string::npos) {
-                    Logger::getInstance().debug("Odrzucono niepoprawne dane od " + std::string(inet_ntoa(client_addr.sin_addr)), "VALIDATION");
+                    Logger::getInstance().debug("Odrzucono niepoprawne dane od " + ipv4ToString(client_addr.sin_addr), "VALIDATION");
                     continue;
                 }
                 
                 // Rate limiting - sprawdzenie limitu polaczen z danego IP
-                std::string client_ip = inet_ntoa(client_addr.sin_addr);
+                std::string client_ip = ipv4ToString(client_addr.sin_addr);
                 if (!rate_limiter.allowConnection(client_ip)) {
                     Logger::getInstance().warning("Rate limit przekroczony dla IP: " + client_ip, "RATE_LIMIT");
                     continue;
@@ -1487,7 +1512,13 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in http_addr;
     memset(&http_addr, 0, sizeof(http_addr));
     http_addr.sin_family = AF_INET;
-    http_addr.sin_addr.s_addr = INADDR_ANY;
+    const char* http_bind_address = std::getenv("APIARY_HTTP_BIND_ADDRESS");
+    if (http_bind_address == nullptr || *http_bind_address == '\0') http_bind_address = "127.0.0.1";
+    if (inet_pton(AF_INET, http_bind_address, &http_addr.sin_addr) != 1) {
+        Logger::getInstance().error("Niepoprawny APIARY_HTTP_BIND_ADDRESS (wymagany adres IPv4): " + std::string(http_bind_address), "HTTP");
+        close(server_fd);
+        return 1;
+    }
     http_addr.sin_port = htons(8080);
 
     Logger::getInstance().info("Bindowanie portu HTTP 8080...", "HTTP");
@@ -1543,7 +1574,7 @@ int main(int argc, char* argv[]) {
                 struct sockaddr_in client_addr_check;
                 socklen_t client_len_check = sizeof(client_addr_check);
                 if (getpeername(client_fd, (struct sockaddr*)&client_addr_check, &client_len_check) == 0) {
-                    std::string client_ip_http = inet_ntoa(client_addr_check.sin_addr);
+                    std::string client_ip_http = ipv4ToString(client_addr_check.sin_addr);
                     if (!collector.rateLimiterAllowConnection(client_ip_http)) {
                         Logger::getInstance().warning("HTTP Rate limit przekroczony dla IP: " + client_ip_http, "RATE_LIMIT");
                         close(client_fd);
@@ -1601,23 +1632,23 @@ int main(int argc, char* argv[]) {
                         response = collector.getStatusJSON();
                         break;
                     case HttpRoute::Health:
-                        response = "{\"status\":\"ok\",\"timestamp\":" + std::to_string(std::time(nullptr)) + ",\"version\":\"1.0.0\",\"collector_url\":\"http://localhost:8080\"}";
+                        response = "{\"status\":\"ok\",\"check\":\"liveness\",\"timestamp\":" + std::to_string(std::time(nullptr)) + "}";
                         break;
                     case HttpRoute::Csv:
                         response = collector.getStatusCSV();
                         content_type = "text/csv";
                         break;
                     case HttpRoute::Sensors:
-                        response = "{\"sensors\":[],\"note\":\"Endpoint dostepny - dane dostepne w /api/hives\"}";
+                        response = "{\"error\":\"operation_not_implemented\",\"operation\":\"sensors\"}";
                         break;
                     case HttpRoute::Effectors:
-                        response = "{\"effectors\":[],\"note\":\"Endpoint dostepny\"}";
+                        response = "{\"error\":\"operation_not_implemented\",\"operation\":\"effectors\"}";
                         break;
                     case HttpRoute::History:
-                        response = "{\"labels\":[],\"data\":[],\"note\":\"Dane historyczne dostepne przez TUI\"}";
+                        response = "{\"error\":\"operation_not_implemented\",\"operation\":\"history\"}";
                         break;
                     case HttpRoute::Logs:
-                        response = "{\"logs\":[],\"note\":\"Logi dostepne przez TUI\"}";
+                        response = "{\"error\":\"operation_not_implemented\",\"operation\":\"logs\"}";
                         break;
                     case HttpRoute::BadRequest:
                         response = "{\"error\":\"Malformed HTTP request line\"}";
@@ -1651,7 +1682,7 @@ int main(int argc, char* argv[]) {
                 }
                 close(client_fd);
                 
-                Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + std::string(inet_ntoa(client_addr.sin_addr)));
+                Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + ipv4ToString(client_addr.sin_addr));
             }
         }
         
