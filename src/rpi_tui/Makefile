@@ -101,8 +101,8 @@ help:
 	@echo "  clean         - Wyczyść pliki tymczasowe"
 	@echo "  install       - Zainstaluj w systemie"
 	@echo "  uninstall     - Odinstaluj z systemu"
-	@echo "  test          - Uruchom testy loggera
-	@echo "  test-http     - Uruchom testy parsera HTTP""
+	@echo "  test          - Uruchom testy loggera"
+	@echo "  test-http     - Uruchom testy parsera HTTP"
 	@echo "  test-collector- Testuj kolektor w trybie symulacji"
 	@echo "  debug         - Build z symbolami debugowania"
 	@echo "  help          - Pokaż tę pomoc"
