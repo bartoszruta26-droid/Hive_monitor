@@ -270,7 +270,7 @@ async function fetchHiveData() {
             AppState.hives = Object.entries(source).map(([id, hive]) => {
                 const lastSeen = Number(hive.last_seen || payload.timestamp || 0);
                 const online = hive.online === true && lastSeen > 0 &&
-                    (Date.now() / 1000 - lastSeen) <= 60;
+                    (Date.now() / 1000 - lastSeen) >= 0 && (Date.now() / 1000 - lastSeen) <= 60;
                 return {
                     hive_id: id,
                     temperature: Number.isFinite(Number(hive.temp)) ? Number(hive.temp) : null,
@@ -342,22 +342,22 @@ function renderDashboard() {
                 
                 <div class="metric-grid">
                     <div class="metric-item">
-                        <div class="metric-value">${hive.temperature?.toFixed(1) || '--'}</div>
+                        <div class="metric-value">${hive.temperature?.toFixed(1) ?? '--'}</div>
                         <div class="metric-label">Temperatura</div>
                         <div class="metric-unit">°C</div>
                     </div>
                     <div class="metric-item">
-                        <div class="metric-value">${hive.humidity?.toFixed(1) || '--'}</div>
+                        <div class="metric-value">${hive.humidity?.toFixed(1) ?? '--'}</div>
                         <div class="metric-label">Wilgotność</div>
                         <div class="metric-unit">%RH</div>
                     </div>
                     <div class="metric-item">
-                        <div class="metric-value">${hive.weight?.toFixed(3) || '--'}</div>
+                        <div class="metric-value">${hive.weight?.toFixed(3) ?? '--'}</div>
                         <div class="metric-label">Waga</div>
                         <div class="metric-unit">kg</div>
                     </div>
                     <div class="metric-item">
-                        <div class="metric-value">${hive.battery_level || '--'}</div>
+                        <div class="metric-value">${hive.battery_level ?? '--'}</div>
                         <div class="metric-label">Bateria</div>
                         <div class="metric-unit">%</div>
                     </div>
@@ -431,40 +431,31 @@ function updateSummaryMetrics() {
 // ============================================================================
 function renderSensorsTable() {
     const tbody = document.getElementById('sensorsTable');
-    
-    // Generowanie sensorów z danych uli
+    if (!tbody) return;
+
     const sensors = [];
     AppState.hives.forEach(hive => {
-        if (hive.temperature !== undefined) {
-            sensors.push({ id: `TEMP-${hive.hive_id}`, type: 'temperature', hive: hive.hive_id, status: hive.is_online ? 'active' : 'inactive', lastRead: new Date().toISOString() });
-        }
-        if (hive.humidity !== undefined) {
-            sensors.push({ id: `HUM-${hive.hive_id}`, type: 'humidity', hive: hive.hive_id, status: hive.is_online ? 'active' : 'inactive', lastRead: new Date().toISOString() });
-        }
-        if (hive.weight !== undefined) {
-            sensors.push({ id: `WGT-${hive.hive_id}`, type: 'weight', hive: hive.hive_id, status: hive.is_online ? 'active' : 'inactive', lastRead: new Date().toISOString() });
-        }
+        const lastRead = hive.timestamp ? new Date(hive.timestamp * 1000).toLocaleString('pl-PL') : 'Brak znacznika czasu';
+        const status = hive.is_online ? 'active' : 'inactive';
+        if (Number.isFinite(hive.temperature)) sensors.push({ id: `TEMP-${hive.hive_id}`, type: 'Temperatura', hive: hive.hive_id, value: `${hive.temperature.toFixed(1)} °C`, status, lastRead });
+        if (Number.isFinite(hive.humidity)) sensors.push({ id: `HUM-${hive.hive_id}`, type: 'Wilgotność', hive: hive.hive_id, value: `${hive.humidity.toFixed(1)} %RH`, status, lastRead });
+        if (Number.isFinite(hive.weight)) sensors.push({ id: `WGT-${hive.hive_id}`, type: 'Waga', hive: hive.hive_id, value: `${hive.weight.toFixed(3)} kg`, status, lastRead });
+        if (Number.isFinite(hive.battery_level)) sensors.push({ id: `BAT-${hive.hive_id}`, type: 'Bateria', hive: hive.hive_id, value: `${hive.battery_level} %`, status, lastRead });
     });
-    
+
     if (sensors.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">Brak sensorów</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;">Brak rzeczywistych odczytów sensorów</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = sensors.map(sensor => `
         <tr>
             <td><strong>${escapeHtml(sensor.id)}</strong></td>
-            <td><span class="sensor-badge badge-${escapeHtml(sensor.type)}">${escapeHtml(sensor.type)}</span></td>
+            <td>${escapeHtml(sensor.type)}</td>
             <td>${escapeHtml(sensor.hive)}</td>
-            <td>
-                <span class="card-status ${sensor.status === 'active' ? 'status-online' : 'status-offline'}">
-                    ${sensor.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
-                </span>
-            </td>
-            <td>${new Date(sensor.lastRead).toLocaleString('pl-PL')}</td>
-            <td>
-                <span class="metric-label">Tylko odczyt</span>
-            </td>
+            <td>${escapeHtml(sensor.value)}</td>
+            <td><span class="card-status ${sensor.status === 'active' ? 'status-online' : 'status-offline'}">${sensor.status === 'active' ? 'ONLINE' : 'OFFLINE'}</span></td>
+            <td>${escapeHtml(sensor.lastRead)}</td>
         </tr>
     `).join('');
 }
@@ -876,7 +867,7 @@ function viewHiveDetails(hiveId) {
                         <span class="sensor-badge badge-hum">Wilgotność</span>
                         <span class="sensor-badge badge-weight">Waga</span>
                         <span class="sensor-badge badge-bat">Bateria</span>
-                        ${hive.co2_eq !== undefined ? '<span class="sensor-badge badge-co2">CO₂</span>' : ''}
+                        ${hive.co2_available === true ? '<span class="sensor-badge badge-co2">CO₂</span>' : ''}
                         ${hive.audio_dominant_freq !== undefined ? '<span class="sensor-badge badge-audio">Audio</span>' : ''}
                     </div>
                 </div>
