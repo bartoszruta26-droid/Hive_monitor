@@ -264,7 +264,7 @@ HX711EventType detectHX711Events() {
  */
 void processWeightPeriodically(unsigned long now) {
     TRACE_ENTER(DEBUG_WEIGHT);
-    PERF_START(weight_process);
+    APIARY_PERF_START(weight_process);
     
     static unsigned long lastProcess = 0;
     static unsigned long process_count = 0;
@@ -327,6 +327,6 @@ void processWeightPeriodically(unsigned long now) {
     }
     #endif
     
-    PERF_END(weight_process);
+    APIARY_PERF_END(weight_process);
     TRACE_EXIT(DEBUG_WEIGHT);
 }
