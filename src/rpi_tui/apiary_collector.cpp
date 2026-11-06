@@ -1565,7 +1565,7 @@ int main(int argc, char* argv[]) {
                 std::string request(buffer);
                 std::string response;
                 std::string content_type = "application/json";
-                const auto request_line_end = request.find("\\r\\n");
+                const auto request_line_end = request.find("\r\n");
                 const std::string request_line = request_line_end == std::string::npos
                     ? std::string() : request.substr(0, request_line_end);
                 const auto route = resolveHttpRequestLine(request_line);
@@ -1610,19 +1610,19 @@ int main(int argc, char* argv[]) {
 
                 // Jawny kod odpowiedzi; klient nie moze pomylic bledu z sukcesem.
                 std::stringstream http_response;
-                http_response << "HTTP/1.1 " << status_code << " " << httpReasonPhrase(status_code) << "\\r\\n";
-                http_response << "Content-Type: " << content_type << "\\r\\n";
-                if (status_code == 405) http_response << "Allow: GET\\r\\n";
-                http_response << "Access-Control-Allow-Origin: *\\r\\n";
-                http_response << "Content-Length: " << response.length() << "\\r\\n";
-                http_response << "Connection: close\\r\\n\\r\\n";
+                http_response << "HTTP/1.1 " << status_code << " " << httpReasonPhrase(status_code) << "\r\n";
+                http_response << "Content-Type: " << content_type << "\r\n";
+                if (status_code == 405) http_response << "Allow: GET\r\n";
+                http_response << "Access-Control-Allow-Origin: *\r\n";
+                http_response << "Content-Length: " << response.length() << "\r\n";
+                http_response << "Connection: close\r\n\r\n";
                 http_response << response;
 
                 const std::string wire_response = http_response.str();
                 size_t bytes_sent = 0;
                 while (bytes_sent < wire_response.size()) {
                     const ssize_t sent = send(client_fd, wire_response.data() + bytes_sent,
-                                              wire_response.size() - bytes_sent, 0);
+                                              wire_response.size() - bytes_sent, MSG_NOSIGNAL);
                     if (sent <= 0) break;
                     bytes_sent += static_cast<size_t>(sent);
                 }
