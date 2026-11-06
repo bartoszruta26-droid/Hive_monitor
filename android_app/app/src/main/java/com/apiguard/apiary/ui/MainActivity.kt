@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupViewModel() {
         viewModel = ViewModelProvider(this, 
-            MainViewModelFactory(applicationContext)
+            MainViewModelFactory(application)
         )[MainViewModel::class.java]
 
         viewModel.connectionState.observe(this) { isConnected ->
