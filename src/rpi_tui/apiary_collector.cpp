@@ -70,6 +70,7 @@
 
 // Dolaczamy modul bazy danych dla zapisu i agregacji
 #include "apiary_database.h"
+#include "http_protocol.h"
 
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
@@ -1564,38 +1565,67 @@ int main(int argc, char* argv[]) {
                 std::string request(buffer);
                 std::string response;
                 std::string content_type = "application/json";
-                
-                // Parsowanie zadania HTTP - obsluga pelnej listy endpointow
-                if (request.find("GET /api/status") != std::string::npos || 
-                    request.find("GET /api/hives") != std::string::npos) {
-                    response = collector.getStatusJSON();
-                } else if (request.find("GET /health") != std::string::npos) {
-                    response = "{\"status\":\"ok\",\"timestamp\":" + std::to_string(std::time(nullptr)) + ",\"version\":\"1.0.0\",\"collector_url\":\"http://localhost:8080\"}";
-                } else if (request.find("GET /api/csv") != std::string::npos) {
-                    response = collector.getStatusCSV();
-                    content_type = "text/csv";
-                } else if (request.find("GET /api/sensors") != std::string::npos) {
-                    response = "{\"sensors\":[],\"note\":\"Endpoint dostepny - dane dostepne w /api/hives\"}";
-                } else if (request.find("GET /api/effectors") != std::string::npos) {
-                    response = "{\"effectors\":[],\"note\":\"Endpoint dostepny\"}";
-                } else if (request.find("GET /api/history") != std::string::npos) {
-                    response = "{\"labels\":[],\"data\":[],\"note\":\"Dane historyczne dostepne przez TUI\"}";
-                } else if (request.find("GET /api/logs") != std::string::npos) {
-                    response = "{\"logs\":[],\"note\":\"Logi dostepne przez TUI\"}";
-                } else {
-                    response = "{\"error\":\"Unknown endpoint\",\"available\":[\"/api/status\",\"/api/hives\",\"/health\",\"/api/csv\",\"/api/sensors\",\"/api/effectors\",\"/api/history\",\"/api/logs\"]}";
+                const auto request_line_end = request.find("\\r\\n");
+                const std::string request_line = request_line_end == std::string::npos
+                    ? std::string() : request.substr(0, request_line_end);
+                const auto route = resolveHttpRequestLine(request_line);
+                const int status_code = route.statusCode;
+
+                // Routing opiera sie na pelnej linii zadania i dokladnej sciezce.
+                // Nie dopasowujemy fragmentow tekstu z naglowkow ani prefiksow URL.
+                switch (route.route) {
+                    case HttpRoute::Status:
+                        response = collector.getStatusJSON();
+                        break;
+                    case HttpRoute::Health:
+                        response = "{\"status\":\"ok\",\"timestamp\":" + std::to_string(std::time(nullptr)) + ",\"version\":\"1.0.0\",\"collector_url\":\"http://localhost:8080\"}";
+                        break;
+                    case HttpRoute::Csv:
+                        response = collector.getStatusCSV();
+                        content_type = "text/csv";
+                        break;
+                    case HttpRoute::Sensors:
+                        response = "{\"sensors\":[],\"note\":\"Endpoint dostepny - dane dostepne w /api/hives\"}";
+                        break;
+                    case HttpRoute::Effectors:
+                        response = "{\"effectors\":[],\"note\":\"Endpoint dostepny\"}";
+                        break;
+                    case HttpRoute::History:
+                        response = "{\"labels\":[],\"data\":[],\"note\":\"Dane historyczne dostepne przez TUI\"}";
+                        break;
+                    case HttpRoute::Logs:
+                        response = "{\"logs\":[],\"note\":\"Logi dostepne przez TUI\"}";
+                        break;
+                    case HttpRoute::BadRequest:
+                        response = "{\"error\":\"Malformed HTTP request line\"}";
+                        break;
+                    case HttpRoute::MethodNotAllowed:
+                        response = "{\"error\":\"Method not allowed\",\"allowed\":[\"GET\"]}";
+                        break;
+                    case HttpRoute::NotFound:
+                    default:
+                        response = "{\"error\":\"Unknown endpoint\"}";
+                        break;
                 }
-                
-                // Naglowki HTTP
+
+                // Jawny kod odpowiedzi; klient nie moze pomylic bledu z sukcesem.
                 std::stringstream http_response;
-                http_response << "HTTP/1.1 200 OK\r\n";
-                http_response << "Content-Type: " << content_type << "\r\n";
-                http_response << "Access-Control-Allow-Origin: *\r\n";
-                http_response << "Content-Length: " << response.length() << "\r\n";
-                http_response << "Connection: close\r\n\r\n";
+                http_response << "HTTP/1.1 " << status_code << " " << httpReasonPhrase(status_code) << "\\r\\n";
+                http_response << "Content-Type: " << content_type << "\\r\\n";
+                if (status_code == 405) http_response << "Allow: GET\\r\\n";
+                http_response << "Access-Control-Allow-Origin: *\\r\\n";
+                http_response << "Content-Length: " << response.length() << "\\r\\n";
+                http_response << "Connection: close\\r\\n\\r\\n";
                 http_response << response;
-                
-                send(client_fd, http_response.str().c_str(), http_response.str().length(), 0);
+
+                const std::string wire_response = http_response.str();
+                size_t bytes_sent = 0;
+                while (bytes_sent < wire_response.size()) {
+                    const ssize_t sent = send(client_fd, wire_response.data() + bytes_sent,
+                                              wire_response.size() - bytes_sent, 0);
+                    if (sent <= 0) break;
+                    bytes_sent += static_cast<size_t>(sent);
+                }
                 close(client_fd);
                 
                 Logger::getInstance().debug("HTTP: Obsluzono zadanie od " + std::string(inet_ntoa(client_addr.sin_addr)));
