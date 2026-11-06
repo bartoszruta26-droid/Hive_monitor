@@ -46,8 +46,8 @@ jobs:
       - name: Run legacy PHP API security regressions
         run: python3 tests/php/legacy_api_security_test.py
 
-      - name: Check TUI Bash syntax
-        run: bash -n src/rpi_tui/apiary_tui.sh
+      - name: Check installer and TUI Bash syntax
+        run: bash -n hive_monitor_installer.sh src/rpi_tui/install_apiary.sh src/rpi_tui/apiary_tui.sh
 
       - name: Verify collector CSV and TUI column contract
         run: python3 src/rpi_tui/tests/test_csv_contract.py
