@@ -483,7 +483,7 @@ void initSensors() {
  */
 void readSensors(unsigned long now) {
     TRACE_ENTER(SENSORS);
-    PERF_START(readSensors);
+    APIARY_PERF_START(readSensors);
     
     static unsigned long lastRead = 0;
     
@@ -593,6 +593,6 @@ void readSensors(unsigned long now) {
         #endif
     }
     
-    PERF_END(readSensors);
+    APIARY_PERF_END(readSensors);
     TRACE_EXIT(SENSORS);
 }
