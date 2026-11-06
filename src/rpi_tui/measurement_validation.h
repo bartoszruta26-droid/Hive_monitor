@@ -406,6 +406,16 @@ inline bool validateHivePayloadFields(
         return false;
     }
 
+    for (const char* boolean_field : {"is_precomputed", "is_online"}) {
+        const auto boolean_value = values.find(boolean_field);
+        if (boolean_value != values.end() &&
+            boolean_value->second != "true" && boolean_value->second != "false" &&
+            boolean_value->second != "0" && boolean_value->second != "1") {
+            error = std::string(boolean_field) + " must be a boolean";
+            return false;
+        }
+    }
+
     for (const auto& item : values) {
         const auto rule = measurementRanges().find(item.first);
         if (rule == measurementRanges().end()) continue;
