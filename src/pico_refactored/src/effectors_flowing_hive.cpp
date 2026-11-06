@@ -40,7 +40,6 @@
 #include <Arduino.h>
 #include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
-#include <RP2040Watchdog.h>
 #endif
 
 // ============================================================================
@@ -374,7 +373,7 @@ long readHX711_2() {
         }
         
         #ifdef ARDUINO_ARCH_RP2040
-        rp2040.wdtReset();
+        rp2040.wdt_reset();
         #endif
         
         delayMicroseconds(10);
