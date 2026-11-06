@@ -54,7 +54,7 @@ static Servo flowingHiveServo;                         ///< RP2040 PIO-backed se
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
 static unsigned long lastServoUpdate = 0;                   ///< Last update timestamp (millis)
 static bool servoInitialized = false;                       ///< PWM initialized flag
-static bool servoDetected = false;                          ///< Hardware detection flag
+static bool servoControllerReady = false;                          ///< Hardware detection flag
 static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
 static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
 static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
@@ -154,7 +154,7 @@ void initServoControl() {
     );
 
     servoInitialized = (servoAttachResult >= 0);
-    servoDetected = servoInitialized; // Physical servo presence is not sensed.
+    servoControllerReady = servoInitialized; // Physical servo presence is not sensed.
     currentServoAngle = SERVO_REST_ANGLE;
     autoEmptyActive = false;
 
@@ -225,7 +225,7 @@ bool setServoAngle(uint16_t angle) {
     servo_op_count++;
     
     // GENTLE CODE: Check hardware presence before operation
-    if (!servoDetected || !servoInitialized) {
+    if (!servoControllerReady || !servoInitialized) {
         DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
         TRACE_EXIT(SERVO);
         return false;  // Graceful exit - no error thrown
@@ -294,7 +294,7 @@ bool executeAutoEmptySequence(unsigned long duration_ms) {
         return false;
     }
 
-    if (!servoInitialized || !servoDetected) {
+    if (!servoInitialized || !servoControllerReady) {
         ++servo_error_count;
         LOG_WARN("SERVO", "Auto-empty request rejected: servo controller is unavailable");
         TRACE_EXIT(SERVO);
@@ -608,9 +608,9 @@ void printFlowingHiveEffectorStatus() {
     
     // Servo status
     Serial.printf("  Servo:\n");
-    Serial.printf("    Detected: %s\n", servoDetected ? "YES" : "NO");
+    Serial.printf("    Controller ready: %s\n", servoControllerReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", servoInitialized ? "YES" : "NO");
-    if (servoDetected) {
+    if (servoControllerReady) {
         Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
         Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
     }
