@@ -22,6 +22,7 @@
 // Include module headers
 #include "config.h"
 #include "sensors.h"
+#include "hx711.h"
 #include "audio_analysis.h"
 #include "weight_analysis.h"
 #include "air_quality.h"
@@ -35,7 +36,7 @@ EthernetServer server(8080);
 EthernetUDP udp;
 DHT dht(DHT_PIN, DHT22);
 Adafruit_SGP41 sgp;
-HardwareSerial radarSerial(uart1);
+HardwareSerial& radarSerial = Serial2; // RP2040 UART1 on GPIO4 RX / GPIO5 TX
 
 // Global sensor state
 SensorState sensors;
@@ -49,7 +50,6 @@ float temperature = 0.0f;
 float humidity = 0.0f;
 uint16_t co2_eq = 0;
 uint16_t voc_idx = 0;
-long hx711_value = 0;
 
 // Audio buffers
 int16_t audioBuffer[AUDIO_BUFFER_SIZE];
@@ -481,7 +481,7 @@ void loop() {
             ethActive = true;
         }
         
-        if (Ethernet.linkStatus() == LNK) {
+        if (Ethernet.linkStatus() == LinkON) {
             // Handle HTTP clients
             handleClients();
             
