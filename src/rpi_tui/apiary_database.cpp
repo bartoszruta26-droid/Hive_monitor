@@ -277,8 +277,7 @@ void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
 
     if (flush_required) flushBuffer();
 
-    total_records_++;
-    raw_records_++;
+    accepted_records_++;
 }
 
 void ApiaryDatabase::flushBuffer() {
