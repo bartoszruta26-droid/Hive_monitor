@@ -20,6 +20,7 @@ int main() {
     valid["light_lux"] = "200000";
     valid["is_online"] = "true";
     valid["is_precomputed"] = "false";
+    valid["pv_fanning行为"] = "0.5";
     assert(apiary::measurementRanges().size() >= 390);
     assert(apiary::validateHivePayloadFields(valid, error));
 
