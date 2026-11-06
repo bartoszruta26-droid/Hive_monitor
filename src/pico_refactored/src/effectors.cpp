@@ -14,6 +14,7 @@
  */
 
 #include "effectors.h"
+#include "effectors_flowing_hive.h"
 #include <Arduino.h>
 
 // External actuator settings (defined in main .ino)
@@ -79,6 +80,9 @@ void updateOutputs() {
  * @param reason Description of why safe mode was activated
  */
 void activateSafeMode(const char* reason) {
+    // Synchronize the Flowing Hive servo interlock with the main safe mode.
+    // This cancels any active auto-empty sequence before outputs are applied.
+    activateFlowingHiveSafeMode(reason);
     safe_mode_active = true;
     LOG_ERROR("EFFECTORS", reason);
     DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason);
@@ -91,6 +95,8 @@ void activateSafeMode(const char* reason) {
  * @brief Deactivate safe mode and restore normal operation
  */
 void deactivateSafeMode() {
+    // Release both interlocks together to prevent split safety state.
+    deactivateFlowingHiveSafeMode();
     safe_mode_active = false;
     DBG_EFF("[EFFECTORS] Safe mode deactivated - normal operation resumed\n");
 }
