@@ -139,55 +139,21 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================================
 async function loadConfigFromBackend() {
     try {
-        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            timeout: 5000
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.config) {
-                // Scal konfigurację z backendu z domyślnymi ustawieniami
-                if (data.config.preferences) {
-                    const prefs = data.config.preferences;
-                    CONFIG.settings.language = prefs.language || CONFIG.settings.language;
-                    CONFIG.settings.temperatureUnit = prefs.temperature_unit || CONFIG.settings.temperatureUnit;
-                    CONFIG.settings.humidityUnit = prefs.humidity_unit || CONFIG.settings.humidityUnit;
-                    CONFIG.settings.weightUnit = prefs.weight_unit || CONFIG.settings.weightUnit;
-                    CONFIG.settings.dateFormat = prefs.date_format || CONFIG.settings.dateFormat;
-                    CONFIG.settings.timeFormat = prefs.time_format || CONFIG.settings.timeFormat;
-                    CONFIG.settings.theme = prefs.theme || CONFIG.settings.theme;
-                    CONFIG.settings.showCharts = prefs.show_charts !== undefined ? prefs.show_charts : CONFIG.settings.showCharts;
+        const stored = localStorage.getItem('apiaryguard.settings');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && typeof parsed === 'object') {
+                Object.assign(CONFIG.settings, parsed);
+                const seconds = Number(CONFIG.settings.refreshInterval);
+                if (Number.isFinite(seconds)) {
+                    CONFIG.refreshInterval = Math.min(300, Math.max(5, seconds)) * 1000;
                 }
-                
-                if (data.config.notifications) {
-                    const notif = data.config.notifications;
-                    CONFIG.settings.enableNotifications = notif.enable_notifications !== undefined ? notif.enable_notifications : CONFIG.settings.enableNotifications;
-                    CONFIG.settings.emailNotifications = notif.email_notifications !== undefined ? notif.email_notifications : CONFIG.settings.emailNotifications;
-                    CONFIG.settings.pushNotifications = notif.push_notifications !== undefined ? notif.push_notifications : CONFIG.settings.pushNotifications;
-                    CONFIG.settings.tempMinAlert = notif.temp_min_alert || CONFIG.settings.tempMinAlert;
-                    CONFIG.settings.tempMaxAlert = notif.temp_max_alert || CONFIG.settings.tempMaxAlert;
-                    CONFIG.settings.humidityMinAlert = notif.humidity_min_alert || CONFIG.settings.humidityMinAlert;
-                    CONFIG.settings.humidityMaxAlert = notif.humidity_max_alert || CONFIG.settings.humidityMaxAlert;
-                }
-                
-                if (data.config.intervals) {
-                    const intv = data.config.intervals;
-                    CONFIG.settings.refreshInterval = intv.sensor_update_interval || CONFIG.settings.refreshInterval;
-                }
-                
-                logMessage('info', 'Konfiguracja załadowana z backendu', data.config);
             }
         }
     } catch (error) {
-        logMessage('warn', 'Nie udało się załadować konfiguracji z backendu, używam domyślnych', error.message);
+        logMessage('warn', 'Nie udało się odczytać lokalnych ustawień', error.message);
     }
 }
-
-// ============================================================================
-// ZARZĄDZANIE ZAKŁADKAMI
-// ============================================================================
 function initTabs() {
     const tabs = document.querySelectorAll('.nav-tab');
     if (!tabs || tabs.length === 0) return; // Guard clause - check if elements exist
@@ -659,24 +625,9 @@ function renderHistoryChart(labels, data, label) {
 // ============================================================================
 function loadLogs() {
     const container = document.getElementById('logContainer');
-    
-    // Przykładowe logi
-    const logs = [
-        { level: 'info', message: 'System uruchomiony', timestamp: new Date() },
-        { level: 'info', message: 'Połączono z UL-001', timestamp: new Date(Date.now() - 60000) },
-        { level: 'warning', message: 'Wysoka temperatura w UL-002: 38°C', timestamp: new Date(Date.now() - 120000) },
-        { level: 'info', message: 'Zapisano dane pomiarowe', timestamp: new Date(Date.now() - 180000) },
-        { level: 'error', message: 'Utracono połączenie z UL-003', timestamp: new Date(Date.now() - 240000) },
-        { level: 'debug', message: 'Thread sensor_001 started', timestamp: new Date(Date.now() - 300000) }
-    ];
-    
-    container.innerHTML = logs.map(log => `
-        <div class="log-entry log-${log.level}">
-            [${log.timestamp.toLocaleString('pl-PL')}] [${log.level.toUpperCase()}] ${log.message}
-        </div>
-    `).join('');
+    if (!container) return;
+    container.textContent = 'Kolektor nie udostępnia obecnie endpointu dziennika. Nie są wyświetlane przykładowe ani fikcyjne wpisy.';
 }
-
 function clearLogs() {
     document.getElementById('logContainer').innerHTML = '';
 }
@@ -690,7 +641,8 @@ function initSettings() {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
             
-            CONFIG.settings.refreshInterval = parseInt(document.getElementById('refreshInterval').value);
+            CONFIG.settings.refreshInterval = Math.min(300, Math.max(5, parseInt(document.getElementById('refreshInterval').value, 10) || 10));
+            CONFIG.refreshInterval = CONFIG.settings.refreshInterval * 1000;
             CONFIG.settings.alertThreshold = parseFloat(document.getElementById('alertThreshold').value);
             
             // Zapisz konfigurację do backendu
@@ -708,59 +660,14 @@ function initSettings() {
 // ============================================================================
 // ZAPIS KONFIGURACJI DO BACKENDU
 // ============================================================================
-async function saveConfigToBackend() {
+function saveConfigToBackend() {
     try {
-        const configData = {
-            preferences: {
-                language: CONFIG.settings.language,
-                temperature_unit: CONFIG.settings.temperatureUnit,
-                humidity_unit: CONFIG.settings.humidityUnit,
-                weight_unit: CONFIG.settings.weightUnit,
-                date_format: CONFIG.settings.dateFormat,
-                time_format: CONFIG.settings.timeFormat,
-                theme: CONFIG.settings.theme,
-                show_charts: CONFIG.settings.showCharts
-            },
-            notifications: {
-                enable_notifications: CONFIG.settings.enableNotifications,
-                email_notifications: CONFIG.settings.emailNotifications,
-                push_notifications: CONFIG.settings.pushNotifications,
-                temp_min_alert: CONFIG.settings.tempMinAlert,
-                temp_max_alert: CONFIG.settings.tempMaxAlert,
-                humidity_min_alert: CONFIG.settings.humidityMinAlert,
-                humidity_max_alert: CONFIG.settings.humidityMaxAlert
-            },
-            intervals: {
-                sensor_update_interval: CONFIG.settings.refreshInterval,
-                screen_update_interval: 5,
-                log_refresh_interval: 10,
-                data_sync_interval: 300,
-                backup_interval: 86400
-            }
-        };
-        
-        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.config}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ config: configData })
-        });
-        
-        if (response.ok) {
-            logMessage("info", '✅ Konfiguracja zapisana do backendu');
-        } else {
-            logMessage("error", '❌ Błąd zapisu konfiguracji');
-        }
+        localStorage.setItem('apiaryguard.settings', JSON.stringify(CONFIG.settings));
+        logMessage('info', 'Ustawienia zapisano lokalnie w tej przeglądarce.');
     } catch (error) {
-        logMessage("error", '⚠️ Nie udało się zapisać konfiguracji:', error.message);
+        logMessage('error', 'Nie udało się zapisać ustawień lokalnych', error.message);
     }
 }
-
-// ============================================================================
-// AUTO-REFRESH
-// ============================================================================
-let refreshTimer = null;
-let countdownInterval = null;
-
 function startAutoRefresh() {
     refreshTimer = setInterval(() => {
         try {
