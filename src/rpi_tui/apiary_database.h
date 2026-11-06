@@ -219,13 +219,16 @@ private:
     std::string aggregationTypeToString(AggregationType type); // Konwertuje typ na string
     AggregationType stringToAggregationType(const std::string& str); // Konwertuje string na typ
     void workerFunction();                        // Funkcja wątku roboczego
-    void flushBuffer();                           // Zapisuje zawartość bufora do bazy
+    bool flushBuffer();                           // Zapisuje zawartość bufora do bazy; false = dane pozostają w buforze
     
     DatabaseConfig config_;
     sqlite3* db_;
+    // Serializuje initialize/storeRawData/shutdown; workerzy używają db_mutex_ i buffer_mutex_.
+    std::mutex lifecycle_mutex_;
     std::mutex db_mutex_;
     std::atomic<bool> running_;
     std::atomic<bool> initialized_;
+    std::atomic<bool> accepting_{false};
     std::thread aggregation_thread_;
     std::thread cleanup_thread_;
     std::mutex wake_mutex_;
