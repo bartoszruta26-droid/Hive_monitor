@@ -98,6 +98,17 @@ Odkomentuj definicje w config.h:
 
 The SGP41 supplies raw VOC and NOx signals; the firmware converts them to VOC and NOx indices using Sensirion Gas Index Algorithm. The SGP41 does **not** measure CO2 or eCO2. The API therefore exposes `co2_available=false` and `co2=null` rather than reporting a fabricated CO2 value. A separate CO2-capable sensor is required if CO2 data is needed.
 
+## Actuator interlocks and status reporting
+
+The read-only JSON status endpoints also expose:
+- `pump`, `relay1`, and `relay2` as current commanded states.
+- `safe_mode` for the main actuator interlock.
+- `flowing_hive_safe_mode` for the independent Flowing Hive servo interlock.
+
+Releasing the main safe mode clears remembered heater, fan, pump, and relay 1/2 setpoints and forces all relay outputs LOW. The operator must issue fresh commands; previous actuator requests are never resumed automatically. The Flowing Hive latch remains active until separately released, and its release function refuses to clear while the main safe mode is active.
+
+These software interlocks are not a substitute for independent hardware protection. In particular, a DHT22 ambient reading is not a heater-surface measurement. A separately mounted heater sensor and independent thermal fuse/thermostat are required for a heater installation. Verify relay polarity, fan behavior, and all inactive states on the actual hardware before connecting loads.
+
 ## HTTP read-only endpoints
 
 - `GET /` and `GET /index.html` return the read-only HTML dashboard.
