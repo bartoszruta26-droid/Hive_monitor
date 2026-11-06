@@ -494,39 +494,42 @@ void readSensors(unsigned long now) {
     }
     #endif
     
-    // Read temperature/humidity with exception handling
+    // Read temperature/humidity. Temperature validity is tracked separately
+    // because it is a safety prerequisite whenever the heater is requested.
     if (sensors.tempHum.active) {
         float h = dht.readHumidity();
         float t = dht.readTemperature();
-        
-        if (!isnan(h)) {
-            humidity = h;
-            sensors.tempHum.error_count = 0; // Reset error counter on success
+
+        if (!isnan(t) && t >= -40.0f && t <= 80.0f) {
+            temperature = t;
+            sensors.tempHum.critical_error_count = 0;
+            sensors.tempHum.last_read_time = now;
         } else {
-            sensors.tempHum.error_count++;
+            if (sensors.tempHum.critical_error_count < 255) {
+                sensors.tempHum.critical_error_count++;
+            }
+            #ifdef DEBUG_SENSORS
+            Serial.printf("[SENSORS] Invalid temperature sample (consecutive: %u)\\n",
+                          sensors.tempHum.critical_error_count);
+            #endif
+        }
+
+        if (!isnan(h) && h >= 0.0f && h <= 100.0f) {
+            humidity = h;
+            sensors.tempHum.error_count = 0;
+        } else {
+            if (sensors.tempHum.error_count < 255) {
+                sensors.tempHum.error_count++;
+            }
             dht_read_errors++;
             #ifdef DEBUG_SENSORS
             if (sensors.tempHum.error_count % 5 == 0) {
                 LOG_WARN("DHT", "Humidity read error");
-                Serial.printf("[SENSORS] WARNING: DHT humidity read error (consecutive: %lu)\n", 
-                             sensors.tempHum.error_count);
             }
             #endif
         }
-        
-        if (!isnan(t)) {
-            temperature = t;
-        } else {
-            #ifdef DEBUG_SENSORS
-            Serial.println("[SENSORS] WARNING: DHT temperature read returned NaN");
-            #endif
-        }
-        
-        // Validate temperature and humidity ranges
-        GENTLE_ASSERT(humidity >= 0.0f && humidity <= 100.0f, "SENSORS", "Humidity out of valid range");
-        GENTLE_ASSERT(temperature >= -40.0f && temperature <= 80.0f, "SENSORS", "Temperature out of valid range");
     }
-    
+
     // Read HX711 weight sensor with error tracking
     if (sensors.hx711.active) {
         long raw = readHX711();
