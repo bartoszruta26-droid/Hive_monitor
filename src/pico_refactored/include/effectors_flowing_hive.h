@@ -69,7 +69,7 @@ void initServoControl();
  * @param angle Angle in degrees (0-180)
  *              Constrained automatically to valid range
  * 
- * @return void - operation is fire-and-forget
+ * @return true if the command was accepted and queued; false if blocked
  * 
  * @note Controls the servo motor that tilts the Flowing Hive frames
  *       for automatic honey extraction
@@ -113,6 +113,8 @@ bool setServoEmptyPosition();
  * @param duration_ms Duration to hold emptying position
  *                    Default: 1800000ms (30 minutes)
  *                    Range: 1000ms - 1800000ms (30 minutes maximum)
+ * @return true when the sequence starts; false if the servo is unavailable,
+ *         safe mode is active, or the requested duration is invalid
  * 
  * @note Call from main loop, then periodically call updateServoLoop()
  */
