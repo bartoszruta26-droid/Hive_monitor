@@ -277,22 +277,28 @@ void setServoEmptyPosition() {
  */
 void executeAutoEmptySequence(unsigned long duration_ms) {
     TRACE_ENTER(SERVO);
-    
+
     if (flowingHiveSafeMode) {
-        DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\n");
+        DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\\n");
         TRACE_EXIT(SERVO);
         return;
     }
-    
-    DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\n", duration_ms);
-    
-    // Move to emptying position
+
+    if (duration_ms < SERVO_AUTO_EMPTY_MIN_MS ||
+        duration_ms > SERVO_AUTO_EMPTY_MAX_MS) {
+        ++servo_error_count;
+        LOG_WARN("SERVO", "Auto-empty duration outside permitted 1-1800 second range");
+        TRACE_EXIT(SERVO);
+        return;
+    }
+
+    DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\\n", duration_ms);
     setServoEmptyPosition();
-    
+
     autoEmptyActive = true;
     autoEmptyStartTime = millis();
     autoEmptyDuration = duration_ms;
-    
+
     TRACE_EXIT(SERVO);
 }
 
@@ -495,44 +501,44 @@ void initFlowSensor() {
  * @brief Update flow sensor calculations
  */
 void updateFlowSensor() {
-    // Check if flow sensor is detected/initialized
     if (!flowSensorDetected || !flowSensorInitialized) return;
-    
-    unsigned long now = millis();
-    unsigned long elapsed = now - lastFlowUpdate;
-    
+
+    const unsigned long now = millis();
+    const unsigned long elapsed = now - lastFlowUpdate;
     if (elapsed < FLOW_SAMPLE_INTERVAL_MS) return;
-    
-    flow_read_count++;
-    
-    // Calculate flow rate from pulse count
-    // Flow rate (L/min) = (pulses / pulses_per_liter) / (time_minutes)
-    float timeMinutes = elapsed / 60000.0f;
-    
-    if (timeMinutes > 0) {
-        float liters = (float)flowPulseCount / FLOW_SENSOR_PULSES_PER_LITER;
-        currentFlowRate = liters / timeMinutes;
-        
-        // Validate flow rate
-        if (currentFlowRate < 0 || currentFlowRate > FLOW_MAX_RATE) {
-            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\n", currentFlowRate);
-            flow_error_count++;
-            currentFlowRate = 0.0f;
-        }
-        
-        // Add to total volume
-        totalVolume += liters;
-    }
-    
-    // Reset pulse counter for next interval
+
+    ++flow_read_count;
+
+    // Snapshot and clear the ISR-owned pulse counter atomically. Otherwise
+    // a pulse arriving between read and reset could be lost.
+    noInterrupts();
+    const unsigned long pulses = flowPulseCount;
     flowPulseCount = 0;
-    lastFlowUpdate = now;
-    
-    #ifdef DEBUG_FLOW
-    if (flow_read_count % 10 == 0) {
-        DBG_FLOW("[FLOW] Rate: %.3f L/min, Total: %.3f L\n", currentFlowRate, totalVolume);
+    interrupts();
+
+    const float timeMinutes = elapsed / 60000.0f;
+    if (timeMinutes > 0.0f) {
+        const float liters = static_cast<float>(pulses) /
+                             static_cast<float>(FLOW_SENSOR_PULSES_PER_LITER);
+        const float measuredRate = liters / timeMinutes;
+
+        if (measuredRate < 0.0f || measuredRate > FLOW_MAX_RATE) {
+            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\\n", measuredRate);
+            ++flow_error_count;
+            currentFlowRate = 0.0f;
+        } else {
+            currentFlowRate = measuredRate;
+            totalVolume += liters;
+        }
     }
-    #endif
+
+    lastFlowUpdate = now;
+
+#ifdef DEBUG_FLOW
+    if (flow_read_count % 10 == 0) {
+        DBG_FLOW("[FLOW] Rate: %.3f L/min, Total: %.3f L\\n", currentFlowRate, totalVolume);
+    }
+#endif
 }
 
 /**
@@ -554,8 +560,12 @@ float getTotalVolumeLiters() {
  */
 void resetFlowCounter() {
     totalVolume = 0.0f;
+    noInterrupts();
     flowPulseCount = 0;
-    DBG_FLOW("[FLOW] Volume counter reset\n");
+    interrupts();
+    currentFlowRate = 0.0f;
+    lastFlowUpdate = millis();
+    DBG_FLOW("[FLOW] Volume counter reset\\n");
 }
 
 /**
