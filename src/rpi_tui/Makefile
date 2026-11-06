@@ -16,6 +16,7 @@ LOGGER_TARGET = apiary_logger
 COLLECTOR_TARGET = apiary_collector
 TEST_TARGET = apiary_logger_test
 HTTP_TEST_TARGET = http_protocol_test
+DATABASE_TEST_TARGET = database_regression_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -51,9 +52,15 @@ $(HTTP_TEST_TARGET): tests/test_http_protocol.cpp http_protocol.h
 test-http: $(HTTP_TEST_TARGET)
 	./$(HTTP_TEST_TARGET)
 
+$(DATABASE_TEST_TARGET): tests/test_database.cpp apiary_database.cpp apiary_database.h apiary_collector_types.h apiary_logger.cpp apiary_logger.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_database.cpp apiary_database.cpp apiary_logger.cpp -o $@ $(LDFLAGS)
+
+test-database: $(DATABASE_TEST_TARGET)
+	./$(DATABASE_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
@@ -103,6 +110,7 @@ help:
 	@echo "  uninstall     - Odinstaluj z systemu"
 	@echo "  test          - Uruchom testy loggera"
 	@echo "  test-http     - Uruchom testy parsera HTTP"
+	@echo "  test-database - Uruchom testy regresyjne SQLite"
 	@echo "  test-collector- Testuj kolektor w trybie symulacji"
 	@echo "  debug         - Build z symbolami debugowania"
 	@echo "  help          - Pokaż tę pomoc"
@@ -113,4 +121,4 @@ help:
 	@echo "  make test-collector # Testuj kolektor (symulacja)"
 	@echo "  sudo make install # Instaluj"
 
-.PHONY: all clean install uninstall test test-http test-collector debug help
+.PHONY: all clean install uninstall test test-http test-database test-collector debug help
