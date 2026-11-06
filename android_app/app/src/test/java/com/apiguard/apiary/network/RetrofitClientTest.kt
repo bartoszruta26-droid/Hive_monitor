@@ -11,6 +11,18 @@ class RetrofitClientTest {
     }
 
     @Test
+    fun supportsDnsNamesForCertificateHostnameVerification() {
+        assertEquals("https://apiary.example.org:443/", RetrofitClient.buildBaseUrl("apiary.example.org", 443))
+    }
+
+    @Test
+    fun rejectsUrlInjectionInHostField() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RetrofitClient.buildBaseUrl("https://evil.example/path", 443)
+        }
+    }
+
+    @Test
     fun rejectsInvalidPort() {
         assertThrows(IllegalArgumentException::class.java) {
             RetrofitClient.buildBaseUrl("192.168.1.20", 70000)
