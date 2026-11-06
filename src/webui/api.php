@@ -20,8 +20,8 @@
 // ============================================================================
 // KONFIGURACJA DEBUGOWANIA I LOGOWANIA
 // ============================================================================
-define('DEBUG_MODE', true); // Włącz/wyłącz tryb debugowania
-define('LOG_ALL_REQUESTS', true); // Loguj wszystkie żądania HTTP
+define('DEBUG_MODE', filter_var(getenv('APIARY_DEBUG') ?: 'false', FILTER_VALIDATE_BOOLEAN));
+define('LOG_ALL_REQUESTS', filter_var(getenv('APIARY_LOG_REQUESTS') ?: 'true', FILTER_VALIDATE_BOOLEAN));
 define('LOG_ERRORS_TO_FILE', true); // Loguj błędy do pliku
 define('DISPLAY_ERRORS', false); // Nie wyświetlaj błędów użytkownikom (bezpieczeństwo)
 
@@ -31,7 +31,7 @@ if (DEBUG_MODE) {
     ini_set('display_errors', DISPLAY_ERRORS ? '1' : '0');
     ini_set('log_errors', '1');
 } else {
-    error_reporting(0);
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
     ini_set('display_errors', '0');
 }
 
@@ -42,9 +42,12 @@ header('Content-Type: application/json; charset=utf-8');
 
 // Konfiguracja CORS - użyj zmiennej środowiskowej lub ogranicz do localhost w produkcji
 $allowedOrigin = getenv('APIARY_CORS_ORIGIN') ?: 'http://localhost';
-// W produkcji ustaw konkretną domenę zamiast '*'
-// Przykład: $allowedOrigin = 'https://twojadomena.pl';
-header("Access-Control-Allow-Origin: {$allowedOrigin}");
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+// Nigdy nie odsyłaj dowolnego Origin. Dozwolony jest wyłącznie skonfigurowany adres.
+if ($requestOrigin !== '' && hash_equals($allowedOrigin, $requestOrigin)) {
+    header("Access-Control-Allow-Origin: {$allowedOrigin}");
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-API-Key');
 header('Access-Control-Max-Age: 86400'); // Cache preflight przez 24h
@@ -56,7 +59,11 @@ header('Permissions-Policy: geolocation=(), microphone=(), camera=()'); // Ogran
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
+    if ($requestOrigin !== '' && !hash_equals($allowedOrigin, $requestOrigin)) {
+        http_response_code(403);
+        exit();
+    }
+    http_response_code(204);
     exit();
 }
 
@@ -212,7 +219,7 @@ function handleException($exception) {
         http_response_code(500);
         echo json_encode([
             'error' => 'Internal server error',
-            'type' => get_class($exception),
+            'type' => DEBUG_MODE ? get_class($exception) : 'InternalServerError',
             'file' => DEBUG_MODE ? $exception->getFile() : null,
             'line' => DEBUG_MODE ? $exception->getLine() : null,
             'message' => DEBUG_MODE ? $exception->getMessage() : 'An unexpected error occurred'
@@ -296,6 +303,23 @@ if ($path && !preg_match('/^[a-zA-Z0-9\/\-_]+$/', $path)) {
     exit();
 }
 
+// Operacje zmieniające stan wymagają klucza API skonfigurowanego poza repozytorium.
+// Brak klucza oznacza zamknięcie zapisu (fail closed), a nie dostęp anonimowy.
+if (in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'], true) && $path !== 'health') {
+    $configuredApiKey = getenv('APIARY_API_KEY') ?: '';
+    $providedApiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
+    if ($configuredApiKey === '') {
+        http_response_code(503);
+        echo json_encode(['error' => 'write_api_disabled', 'message' => 'Zapis wyłączony: administrator musi skonfigurować APIARY_API_KEY.']);
+        exit();
+    }
+    if ($providedApiKey === '' || !hash_equals($configuredApiKey, $providedApiKey)) {
+        http_response_code(401);
+        echo json_encode(['error' => 'unauthorized']);
+        exit();
+    }
+}
+
 // Zaloguj żądanie HTTP
 logHttpRequest($_SERVER);
 logMessage('DEBUG', "Incoming request: {$method} {$path}", 'RequestHandler');
@@ -369,6 +393,20 @@ function ensureConfigDir($path) {
 
 ensureConfigDir($configDir);
 
+// Dane demonstracyjne są dostępne wyłącznie po jawnym włączeniu APIARY_DEMO_MODE=true.
+function isDemoModeEnabled() {
+    return filter_var(getenv('APIARY_DEMO_MODE') ?: 'false', FILTER_VALIDATE_BOOLEAN);
+}
+
+function respondNotImplemented($operation) {
+    http_response_code(501);
+    return [
+        'error' => 'operation_not_implemented',
+        'message' => 'Operacja nie jest jeszcze obsługiwana przez backend.',
+        'operation' => $operation
+    ];
+}
+
 // Demo dane gdy kolektor nie odpowiada
 function getDemoData() {
     return [
@@ -418,7 +456,9 @@ function getDemoData() {
         ],
         'sensors' => [],
         'effectors' => [],
-        'mode' => 'demo'
+        'mode' => 'demo',
+        'data_quality' => 'DEMO',
+        'warning' => 'Dane demonstracyjne — nie są pomiarami z rzeczywistych uli.'
     ];
 }
 
@@ -545,7 +585,7 @@ function callCollector($endpoint, $method = 'GET', $data = null) {
     $error = curl_error($ch);
     curl_close($ch);
     
-    if ($error || $httpCode >= 400) {
+    if ($error || $httpCode < 200 || $httpCode >= 300 || $response === false) {
         logMessage('ERROR', "Failed to call collector: {$error} (HTTP {$httpCode})");
         return null;
     }
@@ -570,9 +610,10 @@ try {
         $collectorHealth = @file_get_contents("{$COLLECTOR_URL}/health");
         if ($collectorHealth !== false) {
             $healthData['collector'] = 'connected';
+            $healthData['mode'] = 'live';
         } else {
             $healthData['collector'] = 'disconnected';
-            $healthData['mode'] = 'demo';
+            $healthData['mode'] = isDemoModeEnabled() ? 'demo' : 'unavailable';
         }
         
         echo json_encode($healthData);
@@ -586,64 +627,60 @@ try {
         case 'status':
         case 'hives':
             $response = callCollector($endpoints[$path] ?? '/' . $path);
-            if (!$response) {
-                $response = getDemoData();
-                $response['warning'] = 'Using demo data - collector not available';
+            if ($response === null) {
+                if (isDemoModeEnabled()) {
+                    $response = getDemoData();
+                } else {
+                    http_response_code(503);
+                    $response = [
+                        'error' => 'collector_unavailable',
+                        'message' => 'Kolektor jest niedostępny. Dane demonstracyjne są wyłączone.',
+                        'mode' => 'unavailable'
+                    ];
+                }
             }
             break;
             
         case 'sensors':
             if ($method === 'GET') {
-                $response = ['sensors' => []];
-            } elseif ($method === 'POST') {
-                $input = json_decode(file_get_contents('php://input'), true);
-                logMessage('INFO', "Adding sensor: " . json_encode($input));
-                $response = ['success' => true, 'id' => $input['id'] ?? 'new'];
+                $response = callCollector($endpoints['sensors']);
+                if ($response === null) {
+                    http_response_code(503);
+                    $response = ['error' => 'sensor_service_unavailable'];
+                }
+            } else {
+                $response = respondNotImplemented('sensors.' . strtolower($method));
             }
             break;
             
         case 'effectors':
             if ($method === 'GET') {
-                $response = ['effectors' => []];
-            } elseif ($method === 'POST') {
-                $input = json_decode(file_get_contents('php://input'), true);
-                logMessage('INFO', "Adding effector: " . json_encode($input));
-                $response = ['success' => true, 'id' => $input['id'] ?? 'new'];
-            } elseif ($method === 'PUT') {
-                $input = json_decode(file_get_contents('php://input'), true);
-                logMessage('INFO', "Updating effector: " . json_encode($input));
-                $response = ['success' => true];
+                $response = callCollector($endpoints['effectors']);
+                if ($response === null) {
+                    http_response_code(503);
+                    $response = ['error' => 'effector_service_unavailable'];
+                }
+            } else {
+                // Nie potwierdzaj wykonania polecenia, dopóki firmware nie obsługuje
+                // bezpiecznego, uwierzytelnionego sterowania z potwierdzeniem stanu.
+                $response = respondNotImplemented('effectors.' . strtolower($method));
             }
             break;
             
         case 'history':
-            // Generuj przykładowe dane historyczne
-            $labels = [];
-            $data = [];
-            $now = time();
-            
-            for ($i = 24; $i >= 0; $i--) {
-                $labels[] = date('H:i', $now - $i * 3600);
-                $data[] = 20 + rand(0, 10) + sin($i / 4) * 5;
+            $response = callCollector($endpoints['history']);
+            if ($response === null) {
+                http_response_code(503);
+                $response = ['error' => 'history_service_unavailable', 'data_quality' => 'UNAVAILABLE'];
             }
-            
-            $response = [
-                'labels' => $labels,
-                'data' => $data,
-                'metric' => $_GET['metric'] ?? 'temperature',
-                'hive' => $_GET['hive'] ?? 'all'
-            ];
             break;
             
         case 'logs':
-            $logs = [
-                ['level' => 'info', 'message' => 'System uruchomiony', 'timestamp' => date('Y-m-d H:i:s')],
-                ['level' => 'info', 'message' => 'Połączono z UL-001', 'timestamp' => date('Y-m-d H:i:s', time() - 60)],
-                ['level' => 'warning', 'message' => 'Wysoka temperatura w UL-002: 38°C', 'timestamp' => date('Y-m-d H:i:s', time() - 120)],
-                ['level' => 'info', 'message' => 'Zapisano dane pomiarowe', 'timestamp' => date('Y-m-d H:i:s', time() - 180)],
-                ['level' => 'error', 'message' => 'Utracono połączenie z UL-003', 'timestamp' => date('Y-m-d H:i:s', time() - 240)]
-            ];
-            $response = ['logs' => $logs];
+            $response = callCollector($endpoints['logs']);
+            if ($response === null) {
+                http_response_code(503);
+                $response = ['error' => 'log_service_unavailable'];
+            }
             break;
             
         case 'config':
@@ -684,7 +721,7 @@ try {
             }
     }
     
-    echo json_encode($response);
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     
 } catch (Exception $e) {
     logMessage('ERROR', $e->getMessage());
