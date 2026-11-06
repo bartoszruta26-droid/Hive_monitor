@@ -624,7 +624,7 @@ function saveConfig($configData) {
 }
 
 // Funkcja do komunikacji z kolektorem
-function callCollector($endpoint, $method = 'GET', $data = null) {
+function callCollector($endpoint, $method = 'GET', $data = null, $timeoutSeconds = 5) {
     global $COLLECTOR_URL;
     
     $url = $COLLECTOR_URL . $endpoint;
@@ -632,7 +632,9 @@ function callCollector($endpoint, $method = 'GET', $data = null) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    $timeoutSeconds = max(1, min(10, (int)$timeoutSeconds));
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, min(2, $timeoutSeconds));
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'Accept: application/json'
@@ -675,8 +677,8 @@ try {
         ];
         
         // Sprawdź czy kolektor odpowiada
-        $collectorHealth = @file_get_contents("{$COLLECTOR_URL}/health");
-        if ($collectorHealth !== false) {
+        $collectorHealth = callCollector('/health', 'GET', null, 3);
+        if ($collectorHealth !== null) {
             $healthData['collector'] = 'connected';
             $healthData['mode'] = 'live';
         } else {
