@@ -193,23 +193,8 @@
 #define LOG_DEBUG_SERVO(msg)
 #endif
 
-// Exception handling macros for gentle code principles
-#define TRY_CATCH_LOG(module) try {
-#define CATCH_LOG(module) } catch(const std::exception& e) { \
-    LOG_ERROR(module, e.what()); \
-} catch(...) { \
-    LOG_ERROR(module, "Unknown exception occurred"); \
-}
-
-// Try-catch with recovery action
-#define TRY_CATCH_RECOVER(module, recovery_action) try {
-#define CATCH_RECOVER(module, recovery_action) } catch(const std::exception& e) { \
-    LOG_ERROR(module, e.what()); \
-    recovery_action; \
-} catch(...) { \
-    LOG_ERROR(module, "Unknown exception occurred"); \
-    recovery_action; \
-}
+// Arduino-Pico builds with C++ exceptions disabled. Use explicit return codes,
+// status flags and error counters instead of try/catch blocks.
 
 // Assert macro for development debugging with graceful failure
 #ifdef DEBUG_VERBOSE
