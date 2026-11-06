@@ -499,16 +499,20 @@ void initFlowSensor() {
     TRACE_ENTER(FLOW);
     
     pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-    
-    // Attach interrupt on rising edge
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
-    
-    flowSensorInitialized = true;
-    flowSensorDetected = true;  // Assume present if interrupt attaches successfully
+
+    // Initialize all ISR-shared state before enabling the interrupt.
+    noInterrupts();
     flowPulseCount = 0;
+    interrupts();
     currentFlowRate = 0.0f;
     totalVolume = 0.0f;
     lastFlowUpdate = millis();
+
+    // Attach interrupt only after the pulse counter and timestamps are ready.
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
+
+    flowSensorInitialized = true;
+    flowSensorDetected = true;  // Interrupt setup succeeded; physical sensor presence is not verified.
     
     DBG_FLOW("[FLOW] Initialized on GPIO %d (interrupt-enabled)\n", FLOW_SENSOR_PIN);
     DBG_FLOW("[FLOW] Pulses per liter: %d\n", FLOW_SENSOR_PULSES_PER_LITER);
