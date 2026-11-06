@@ -147,13 +147,13 @@ void initServoControl() {
 
     // The Arduino-Pico core includes a PIO-backed Servo implementation.
     // It generates the 20ms servo frame independently of the main loop.
-    const int servoChannel = flowingHiveServo.attach(
+    const int servoAttachResult = flowingHiveServo.attach(
         SERVO_EMPTY_PIN,
         SERVO_PULSE_WIDTH_MIN,
         SERVO_PULSE_WIDTH_MAX
     );
 
-    servoInitialized = (servoChannel > 0);
+    servoInitialized = (servoAttachResult >= 0);
     servoDetected = servoInitialized; // Physical servo presence is not sensed.
     currentServoAngle = SERVO_REST_ANGLE;
     autoEmptyActive = false;
@@ -173,8 +173,8 @@ void initServoControl() {
     );
     flowingHiveServo.writeMicroseconds(static_cast<int>(restPulse));
 
-    DBG_SERVO("[SERVO] Initialized on GPIO %d, PIO channel %d\n",
-              SERVO_EMPTY_PIN, servoChannel);
+    DBG_SERVO("[SERVO] Initialized on GPIO %d using RP2040 PIO servo driver\n",
+              SERVO_EMPTY_PIN);
     DBG_SERVO("[SERVO] Pulse range: %d-%d us; refresh interval: 20 ms\n",
               SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
 
