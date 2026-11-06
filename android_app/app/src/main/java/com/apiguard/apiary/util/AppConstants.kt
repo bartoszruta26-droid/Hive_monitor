@@ -53,6 +53,23 @@ fun String.isValidIpAddress(): Boolean {
 }
 
 /**
+ * Waliduje host DNS albo adres IPv4 używany jako nazwa hosta TLS.
+ * Nie przyjmuje URL, portu, ścieżki ani znaków sterujących.
+ */
+fun String.isValidApiHost(): Boolean {
+    if (isValidIpAddress()) return true
+    if (isBlank() || length > 253 || any { it.isWhitespace() || it == '/' || it == ':' || it == '@' }) {
+        return false
+    }
+    if (matches(Regex("^[0-9.]+$"))) return false
+    val labels = split('.')
+    return labels.all { label ->
+        label.length in 1..63 &&
+            Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$").matches(label)
+    }
+}
+
+/**
  * Sprawdza czy numer portu jest w prawidłowym zakresie
  */
 fun Int.isValidPort(): Boolean {
