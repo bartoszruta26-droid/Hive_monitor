@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = pathlib.Path(__file__).resolve().parents[3]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 WEBUI = ROOT / "src" / "webui"
 KEY = "test-api-key-0123456789abcdef"
 
