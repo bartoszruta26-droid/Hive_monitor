@@ -453,6 +453,90 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Dostępność, obsługa klawiatury i małe ekrany */
+        :focus-visible {
+            outline: 3px solid var(--accent-color);
+            outline-offset: 3px;
+        }
+
+        button, .nav-tab, .btn {
+            min-height: 44px;
+        }
+
+        .nav-tabs {
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .table-responsive {
+            max-width: 100%;
+            overscroll-behavior-x: contain;
+        }
+
+        @media (max-width: 560px) {
+            .header {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                padding: 0.85rem 1rem;
+            }
+
+            .header h1 {
+                flex-wrap: wrap;
+                font-size: 1.2rem;
+                line-height: 1.35;
+            }
+
+            .header .status {
+                width: 100%;
+                margin-left: 0;
+                font-size: 0.85rem;
+            }
+
+            .nav-tabs {
+                gap: 0.25rem;
+                padding: 0.5rem;
+            }
+
+            .nav-tab {
+                padding: 0.65rem 0.9rem;
+                font-size: 0.9rem;
+            }
+
+            .container {
+                padding: 0.75rem;
+            }
+
+            .card, .chart-container {
+                padding: 1rem;
+                border-radius: 10px;
+            }
+
+            th, td {
+                padding: 0.65rem;
+                font-size: 0.88rem;
+            }
+
+            .metric-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.6rem;
+            }
+
+            .metric-value {
+                font-size: 1.45rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
     </style>
 </head>
 <body>
