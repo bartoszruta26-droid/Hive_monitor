@@ -11,7 +11,7 @@ object RetrofitClient {
     
     fun createApiService(baseUrl: String): ApiaryApiService {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (com.apiguard.apiary.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
         }
         
         val okHttpClient = OkHttpClient.Builder()
