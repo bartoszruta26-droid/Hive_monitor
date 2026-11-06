@@ -26,7 +26,7 @@ object ApiaryPayloadMapper {
                 weight != null && battery != null && reportedLastSeen != null && lastSeen > 0L
             val reportedOnline = values.booleanOrNull("online") == true
             val ageSeconds = nowEpochSeconds - lastSeen
-            val isOnline = reportedOnline && lastSeen > 0L && ageSeconds in 0L..60L
+            val isOnline = reportedOnline && reportedLastSeen != null && lastSeen > 0L && ageSeconds in 0L..60L
 
             ApiaryData(
                 id = entry.key,
