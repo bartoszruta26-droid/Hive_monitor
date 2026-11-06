@@ -12,8 +12,9 @@ object RetrofitClient {
     private const val TIMEOUT_SECONDS = 10L
 
     fun buildBaseUrl(host: String, port: Int): String {
-        val scheme = if (com.apiguard.apiary.BuildConfig.DEBUG) "http" else "https"
-        return "$scheme://$host:$port/"
+        require(host.isNotBlank()) { "Host nie może być pusty" }
+        require(port in 1..65535) { "Port musi należeć do zakresu 1..65535" }
+        return "https://$host:$port/"
     }
     
     fun createApiService(baseUrl: String): ApiaryApiService {
