@@ -305,7 +305,14 @@ if ($path && !preg_match('/^[a-zA-Z0-9\/\-_]+$/', $path)) {
 
 // Operacje zmieniające stan wymagają klucza API skonfigurowanego poza repozytorium.
 // Brak klucza oznacza zamknięcie zapisu (fail closed), a nie dostęp anonimowy.
-if (in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'], true) && $path !== 'health') {
+// Odczyt konfiguracji również wymaga uwierzytelnienia — pliki mogą zawierać sekrety.
+$requiresApiKey = (
+    in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'], true) && $path !== 'health'
+) || (
+    strtoupper($method) === 'GET' && $path === 'config'
+);
+
+if ($requiresApiKey) {
     $configuredApiKey = getenv('APIARY_API_KEY') ?: '';
     $providedApiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
     if ($configuredApiKey === '') {
