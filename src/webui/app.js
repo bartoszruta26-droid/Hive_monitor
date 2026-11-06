@@ -532,46 +532,9 @@ function updateHiveSelects() {
 // ============================================================================
 function renderEffectorsTable() {
     const tbody = document.getElementById('effectorsTable');
-    
-    // Przykładowe efektory
-    const effectors = [];
-    AppState.hives.forEach(hive => {
-        effectors.push({ id: `FAN-${hive.hive_id}`, type: 'fan', hive: hive.hive_id, status: 'active', state: 'off' });
-        effectors.push({ id: `HEAT-${hive.hive_id}`, type: 'heater', hive: hive.hive_id, status: 'active', state: 'off' });
-    });
-    
-    if (effectors.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">Brak efektorów</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = effectors.map(eff => `
-        <tr>
-            <td><strong>${escapeHtml(eff.id)}</strong></td>
-            <td>${getEffectorName(eff.type)}</td>
-            <td>${escapeHtml(eff.hive)}</td>
-            <td>
-                <span class="card-status ${eff.status === 'active' ? 'status-online' : 'status-offline'}">
-                    ${eff.status === 'active' ? 'Aktywny' : 'Nieaktywny'}
-                </span>
-            </td>
-            <td>
-                <span class="card-status ${eff.state === 'on' ? 'status-online' : 'status-warning'}">
-                    ${eff.state === 'on' ? 'WŁ.' : 'WYŁ.'}
-                </span>
-            </td>
-            <td>
-                <button class="btn ${eff.state === 'on' ? 'btn-danger' : 'btn-success'}" 
-                        onclick="toggleEffectorState('${escapeHtml(eff.id)}')" 
-                        style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">
-                    ${eff.state === 'on' ? '🔴 WYŁ' : '🟢 WŁ'}
-                </button>
-                <button class="btn btn-secondary" onclick="editEffector('${escapeHtml(eff.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
-            </td>
-        </tr>
-    `).join('');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;">Rzeczywisty stan efektorów nie jest jeszcze udostępniany przez API. Panel działa w trybie tylko do odczytu.</td></tr>';
 }
-
 function getEffectorName(type) {
     const names = {
         fan: '🌀 Wentylator',
@@ -589,33 +552,49 @@ function showAddEffectorModal() {
     document.getElementById('addEffectorModal').classList.add('active');
 }
 
-function toggleEffectorState(effectorId) {
-    alert(`Przełączanie efektora ${effectorId} (symulacja)`);
-    // W produkcji: fetch POST do API
+function toggleEffectorState() {
+    alert('Sterowanie efektorami jest wyłączone: kolektor nie udostępnia bezpiecznego endpointu zapisu.');
 }
 
 // ============================================================================
 // DANE HISTORYCZNE
 // ============================================================================
-function loadHistoryData() {
-    const hiveSelect = document.getElementById('historyHiveSelect').value;
-    const metricSelect = document.getElementById('historyMetricSelect').value;
-    
-    // Generowanie przykładowych danych historycznych
-    const labels = [];
-    const data = [];
-    const now = new Date();
-    
-    for (let i = 24; i >= 0; i--) {
-        const time = new Date(now.getTime() - i * 3600000);
-        labels.push(time.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }));
-        // Symulacja danych
-        data.push(20 + Math.random() * 10 + Math.sin(i / 4) * 5);
+async function loadHistoryData() {
+    const canvas = document.getElementById('historyChart');
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    if (historyChart) {
+        historyChart.destroy();
+        historyChart = null;
     }
-    
-    renderHistoryChart(labels, data, metricSelect);
+    canvas.style.display = 'none';
+    let message = container.querySelector('.history-empty-state');
+    if (!message) {
+        message = document.createElement('p');
+        message.className = 'history-empty-state';
+        message.style.cssText = 'padding:2rem;text-align:center;color:#666;';
+        container.appendChild(message);
+    }
+    message.textContent = 'Ładowanie danych historycznych…';
+    try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.history}`, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (Array.isArray(payload.labels) && Array.isArray(payload.data) && payload.labels.length && payload.data.length) {
+            message.remove();
+            canvas.style.display = 'block';
+            renderHistoryChart(payload.labels, payload.data, document.getElementById('historyMetricSelect')?.value || 'Pomiar');
+        } else {
+            message.textContent = 'Kolektor nie udostępnia jeszcze rzeczywistych danych historycznych. Wykres pozostaje pusty zamiast generować dane symulowane.';
+        }
+    } catch (error) {
+        message.textContent = 'Nie udało się pobrać historii. Sprawdź połączenie z kolektorem.';
+        logMessage('warn', 'Błąd pobierania historii', error.message);
+    }
 }
-
 function renderHistoryChart(labels, data, label) {
     const canvas = document.getElementById('historyChart');
     if (!canvas) {
@@ -1004,45 +983,8 @@ function viewHiveDetails(hiveId) {
 }
 
 function toggleEffector(hiveId) {
-    const modal = document.getElementById('effectorPanelModal');
-    if (modal) {
-        const modalContent = modal.querySelector('.modal-content');
-        if (modalContent) {
-            const effectors = [
-                { id: `FAN-${hiveId}`, type: 'fan', name: 'Wentylator', state: false },
-                { id: `HEAT-${hiveId}`, type: 'heater', name: 'Grzałka', state: false },
-                { id: `LIGHT-${hiveId}`, type: 'light', name: 'Oświetlenie', state: false },
-                { id: `ALARM-${hiveId}`, type: 'alarm', name: 'Alarm', state: false }
-            ];
-            
-            modalContent.innerHTML = `
-                <div class="modal-header">
-                    <h2>⚙️ Efektory dla ula ${hiveId}</h2>
-                    <button class="modal-close" onclick="closeModal('effectorPanelModal')">&times;</button>
-                </div>
-                <div style="display: grid; gap: 1rem;">
-                    ${effectors.map(eff => `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: var(--bg-color); border-radius: 8px;">
-                            <div>
-                                <strong>${eff.name}</strong>
-                                <div style="font-size: 0.85rem; color: #666;">ID: ${eff.id}</div>
-                            </div>
-                            <button class="btn ${eff.state ? 'btn-danger' : 'btn-success'}" 
-                                    onclick="toggleEffectorState('${eff.id}', this)">
-                                ${eff.state ? '🔴 WYŁ' : '🟢 WŁ'}
-                            </button>
-                        </div>
-                    `).join('')}
-                </div>
-                <button class="btn btn-secondary" onclick="closeModal('effectorPanelModal')" style="width: 100%; margin-top: 1rem;">Zamknij</button>
-            `;
-        }
-        modal.classList.add('active');
-    } else {
-        alert(`Panel efektorów dla ${hiveId} - dostępny po dodaniu modala effectorPanelModal`);
-    }
+    alert(`Sterowanie efektorami ula ${hiveId} nie jest dostępne przez HTTP. Panel prezentuje wyłącznie dane odczytowe.`);
 }
-
 function editSensor(sensorId) {
     const sensor = AppState.sensors.find(s => s.id === sensorId) || 
                    AppState.hives.flatMap(h => [
