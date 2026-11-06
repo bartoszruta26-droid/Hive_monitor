@@ -74,7 +74,7 @@ static float currentFlowRate = 0.0f;                        ///< Current flow ra
 static float totalVolume = 0.0f;                            ///< Accumulated volume in liters
 static unsigned long lastFlowUpdate = 0;                    ///< Last calculation timestamp
 static bool flowSensorInitialized = false;                  ///< Interrupt attached flag
-static bool flowSensorDetected = false;                     ///< Hardware detection flag
+static bool flowSensorInterruptReady = false;                     ///< Hardware detection flag
 
 // ----------------------------------------------------------------------------
 // Safe Mode State
@@ -512,7 +512,7 @@ void initFlowSensor() {
     attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
 
     flowSensorInitialized = true;
-    flowSensorDetected = true;  // Interrupt setup succeeded; physical sensor presence is not verified.
+    flowSensorInterruptReady = true;  // Interrupt setup succeeded; physical sensor presence is not verified.
     
     DBG_FLOW("[FLOW] Initialized on GPIO %d (interrupt-enabled)\n", FLOW_SENSOR_PIN);
     DBG_FLOW("[FLOW] Pulses per liter: %d\n", FLOW_SENSOR_PULSES_PER_LITER);
@@ -524,7 +524,7 @@ void initFlowSensor() {
  * @brief Update flow sensor calculations
  */
 void updateFlowSensor() {
-    if (!flowSensorDetected || !flowSensorInitialized) return;
+    if (!flowSensorInterruptReady || !flowSensorInitialized) return;
 
     const unsigned long now = millis();
     const unsigned long elapsed = now - lastFlowUpdate;
@@ -631,9 +631,9 @@ void printFlowingHiveEffectorStatus() {
     
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
-    Serial.printf("    Detected: %s\n", flowSensorDetected ? "YES" : "NO");
+    Serial.printf("    Interrupt ready: %s\n", flowSensorInterruptReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
-    if (flowSensorDetected && flowSensorInitialized) {
+    if (flowSensorInterruptReady && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
         Serial.printf("    Total volume: %.3f L\n", totalVolume);
         Serial.printf("    Honey flowing: %s\n", isHoneyFlowing() ? "YES" : "NO");
