@@ -167,13 +167,6 @@ class ApiaryRepository(private val application: Application) {
         }
     }
     
-    /**
-     * Waliduje format adresu IPv4
-     */
-    private fun isValidIpAddress(ip: String): Boolean {
-        return ip.isValidIpAddress()
-    }
-
     suspend fun fetchApiaries(): Result<List<ApiaryData>> {
         return withContext(Dispatchers.IO) {
             val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))
