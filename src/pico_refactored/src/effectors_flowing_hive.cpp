@@ -110,7 +110,7 @@ static unsigned long flow_error_count = 0;                  ///< Flow calculatio
  * 
  * @note Attached to FLOW_SENSOR_PIN (GPIO 25) on RISING edge
  */
-void IRAM_ATTR flowSensorISR() {
+void flowSensorISR() {
     flowPulseCount++;
 }
 
