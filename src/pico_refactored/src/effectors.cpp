@@ -123,7 +123,7 @@ void deactivateSafeMode() {
     // Keep the independent Flowing Hive latch active. Releasing the main
     // interlock must never silently unlock a subsystem-specific actuator.
     safe_mode_active = false;
-    DBG_EFF("[EFFECTORS] Main safe mode released; setpoints cleared; Flowing Hive latch remains independent\\n");
+    DBG_EFF("[EFFECTORS] Main safe mode released; setpoints cleared; Flowing Hive latch remains independent\n");
 }
 
 /**
