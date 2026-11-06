@@ -244,14 +244,14 @@
 
 // Performance monitoring macros
 #ifdef DEBUG_PERF
-#define PERF_START(name) unsigned long perf_start_##name = micros()
-#define PERF_END(name) do { \
+#define APIARY_PERF_START(name) unsigned long perf_start_##name = micros()
+#define APIARY_PERF_END(name) do { \
     unsigned long perf_elapsed = micros() - perf_start_##name; \
     DBG_SENSOR("[PERF] %s took %lu us (%.3f ms)\n", #name, perf_elapsed, perf_elapsed/1000.0); \
 } while(0)
 #else
-#define PERF_START(name)
-#define PERF_END(name)
+#define APIARY_PERF_START(name)
+#define APIARY_PERF_END(name)
 #endif
 
 // Memory monitoring for embedded systems
