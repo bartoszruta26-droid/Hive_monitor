@@ -21,7 +21,7 @@ int main() {
     invalid["temp"] = "12.3garbage";
     assert(!apiary::validateHivePayloadFields(invalid, error));
     invalid = valid;
-    invalid["temp"] = std::string("1\\0junk", 6);
+    invalid["temp"] = std::string("1\0junk", 6);
     assert(!apiary::validateHivePayloadFields(invalid, error));
     invalid = valid;
     invalid["hum"] = "100.01";
