@@ -18,6 +18,8 @@ extern float temperature;
 extern float humidity;
 extern uint16_t co2_eq;
 extern uint16_t voc_idx;
+extern uint16_t nox_idx;
+extern bool co2_available;
 extern long hx711_value;
 extern SensorState sensors;
 
@@ -245,9 +247,14 @@ void handleClients() {
                     client.print(",\"hum\":");
                     client.print(humidity);
                     client.print(",\"co2\":");
-                    client.print(co2_eq);
+                    client.print(",\"co2_available\":");
+                    client.print(co2_available ? "true" : "false");
+                    client.print(",\"co2\":");
+                    if (co2_available) client.print(co2_eq); else client.print("null");
                     client.print(",\"voc\":");
                     client.print(voc_idx);
+                    client.print(",\"nox\":");
+                    client.print(nox_idx);
                     client.print(",\"weight\":");
                     client.print(hx711_value);
                     client.println("}");
@@ -316,10 +323,12 @@ void sendUDPData() {
     // Prepare UDP packet using snprintf (String::format doesn't exist in Arduino)
     char payload[128];
     int payload_len = snprintf(payload, sizeof(payload),
-        "{\"t\":%.1f,\"h\":%.1f,\"c\":%d,\"v\":%d,\"w\":%ld}",
-        temperature, humidity, co2_eq, voc_idx, hx711_value
+        "{\"t\":%.1f,\"h\":%.1f,\"ca\":%d,\"c\":%d,\"v\":%u,\"n\":%u,\"w\":%ld}",
+        temperature, humidity, co2_available ? 1 : 0,
+        co2_available ? static_cast<int>(co2_eq) : 0,
+        static_cast<unsigned int>(voc_idx), static_cast<unsigned int>(nox_idx), hx711_value
     );
-    
+
     if (payload_len < 0 || payload_len >= sizeof(payload)) {
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] ERROR: UDP payload formatting failed");
