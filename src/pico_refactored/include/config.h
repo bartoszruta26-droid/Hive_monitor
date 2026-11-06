@@ -396,6 +396,8 @@
 #define SERVO_PULSE_WIDTH_MIN       500   // Min pulse width in microseconds
 #define SERVO_PULSE_WIDTH_MAX       2500  // Max pulse width in microseconds
 #define SERVO_UPDATE_INTERVAL_MS    20    // 50Hz servo update rate
+#define SERVO_AUTO_EMPTY_MIN_MS     1000UL
+#define SERVO_AUTO_EMPTY_MAX_MS     1800000UL // 30-minute hard upper bound
 
 // ============================================================================
 // AIR QUALITY CONSTANTS (SGP41)
