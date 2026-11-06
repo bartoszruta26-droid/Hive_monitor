@@ -53,7 +53,7 @@ $(HTTP_TEST_TARGET): tests/test_http_protocol.cpp http_protocol.h
 test-http: $(HTTP_TEST_TARGET)
 	./$(HTTP_TEST_TARGET)
 
-$(DATABASE_TEST_TARGET): tests/test_database.cpp apiary_database.cpp apiary_database.h apiary_collector_types.h apiary_logger.cpp apiary_logger.h
+$(DATABASE_TEST_TARGET): tests/test_database.cpp apiary_database.cpp apiary_database.h apiary_collector_types.h csv_utils.h apiary_logger.cpp apiary_logger.h
 	$(CXX) $(CXXFLAGS) -I. tests/test_database.cpp apiary_database.cpp apiary_logger.cpp -o $@ $(LDFLAGS)
 
 test-database: $(DATABASE_TEST_TARGET)
