@@ -634,6 +634,7 @@ void printFlowingHiveEffectorStatus() {
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
     Serial.printf("    Interrupt configured: %s\n", flowSensorInterruptConfigured ? "YES" : "NO");
+    Serial.println("    Physical sensor presence: NOT VERIFIED (pulse activity is diagnostic evidence only)");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
     if (flowSensorInterruptConfigured && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
