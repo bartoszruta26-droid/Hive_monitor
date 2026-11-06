@@ -15,7 +15,7 @@ csv_body = source[start:end]
 header_fragments = re.findall(r'csv\s*<<\s*"([^"]*)"\s*;', csv_body)
 if not header_fragments:
     raise SystemExit("FAIL: collector CSV header was not found")
-headers = "".join(header_fragments).split(",")
+headers = [name.strip() for name in "".join(header_fragments).split(",")]
 
 expected = {
     "id": "ID",
