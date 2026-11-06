@@ -6,12 +6,12 @@
 ## Naprawy
 
 ### FU-005 — zakresy domenowe wejścia telemetrycznego
-- Dodano `measurement_validation.h` z jawnie zdefiniowanymi zakresami dla wszystkich pól liczbowych aktualnie odczytywanych przez `parseJSON`.
+- Dodano `measurement_validation.h` z jawnym schematem zakresów dla wszystkich 333 liczbowych pól `HiveData` oraz walidacją obu pól logicznych. Schemat obejmuje również pola obecnie niewykorzystywane przez mapowanie rekordu: jeżeli wystąpią w wejściowym JSON, są walidowane przed dalszym przetwarzaniem.
 - Walidacja wymaga identyfikatora ula o ograniczonej długości i dozwolonych znakach, dozwolonego `data_source`, skończonych wartości, właściwych zakresów i całkowitości pól dyskretnych.
 - Odrzucenie następuje przed konwersją i zapisaniem rekordu.
 - Testy: wartości graniczne, NaN, niepełny token liczbowy, zakres wilgotności, bateria, ruch, ciśnienie, częstotliwość, identyfikator i źródło.
 
-**Granica zakresu:** schemat obejmuje pola faktycznie mapowane przez obecny parser kolektora. Nie deklaruje pełnej walidacji wszystkich 338+ pól struktury `HiveData`, których bieżący parser nie mapuje do rekordu. Zakresy dla pól indeksowych o niejednoznacznej jednostce są celowo szerokie i wymagają potwierdzenia na podstawie kontraktu firmware.
+**Granica zakresu:** wszystkie pola liczbowe struktury `HiveData` mają regułę, a pola logiczne są sprawdzane jako wartości logiczne. Dla niektórych pochodnych wskaźników, których jednostka nie jest jednoznacznie określona w komentarzu struktury, przyjęto konserwatywne zakresy techniczne. Wartości graniczne należy potwierdzić z kontraktem firmware i rzeczywistymi zakresami czujników przed wdrożeniem produkcyjnym.
 
 ### FU-006 — legacy PHP API
 - Zastąpiono osadzony w instalatorze skrypt endpointem `src/webui/legacy_api.php`.
