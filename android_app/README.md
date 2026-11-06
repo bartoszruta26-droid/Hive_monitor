@@ -46,7 +46,7 @@ Aplikacja oczekuje API REST na Raspberry Pi z następującymi endpointami:
 
 ### Health Check
 ```
-GET http://{IP}:{PORT}/api/health
+GET http://{IP}:{PORT}/health
 Response: 200 OK (puste body lub JSON)
 ```
 
@@ -69,11 +69,9 @@ Response: {
 }
 ```
 
-### Historia ula (opcjonalne)
-```
-GET http://{IP}:{PORT}/api/apiaries/{id}/history?since={timestamp}
-Response: [ ... ] // Lista obiektów jak wyżej
-```
+### Historia
+
+Bieżący kolektor nie udostępnia zdalnego endpointu historii. Aplikacja zapisuje poprawne, aktualne odczyty w Room; prezentacja i przegląd historii lokalnej są odrębnym zakresem rozwoju.
 
 ## Technologia
 
@@ -102,7 +100,7 @@ Response: [ ... ] // Lista obiektów jak wyżej
 
 3. **Kolejne uruchomienia**:
    - Aplikacja automatycznie łączy się z zapisanym adresem IP
-   - Wyświetla dane z API oraz dane historyczne z cache
+   - Pobiera aktualne dane z API; przy błędzie usuwa poprzednie pomiary z widoku, aby nie przedstawiać ich jako bieżących
 
 4. **Zmiana adresu IP**:
    - Kliknij przycisk FAB (ikona ustawień) w prawym dolnym rogu
@@ -116,7 +114,7 @@ Otwórz projekt w Android Studio i:
 
 Lub z linii poleceń:
 ```bash
-./gradlew assembleDebug
+gradle -p android_app testDebugUnitTest assembleDebug
 ```
 
 APK zostanie utworzony w `app/build/outputs/apk/debug/`
@@ -125,3 +123,8 @@ APK zostanie utworzony w `app/build/outputs/apk/debug/`
 ## Zgodność z kolektorem Raspberry Pi
 
 Aplikacja korzysta z rzeczywistych tras kolektora: `GET /health` i `GET /api/hives` na porcie `8080`. Odpowiedź `/api/hives` zawiera obiekt `hives` indeksowany identyfikatorem ula; pola `temp`, `hum`, `weight`, `bat`, `online` i `last_seen` są mapowane na model aplikacji. Czas kolektora jest podawany w sekundach i konwertowany na milisekundy dla Androida. Rekordy niekompletne lub nieaktualne nie są zapisywane do lokalnego cache. Historia zdalna pozostaje nieobsługiwana przez bieżący kolektor; dostępne są lokalnie zapisane odczyty.
+
+
+### Polityka HTTP/HTTPS
+
+Wariant `debug` dopuszcza HTTP dla lokalnego Raspberry Pi (port 8080). Wariant `release` wymaga HTTPS; do wdrożenia produkcyjnego należy wystawić kolektor przez zaufany serwer pośredniczący TLS. Klient nie zapisuje treści żądań ani odpowiedzi w dzienniku produkcyjnym.
