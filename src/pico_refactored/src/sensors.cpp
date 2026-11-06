@@ -75,7 +75,12 @@ void initUART() {
     Serial.println(", Baud=115200");
     #endif
     
-    radarSerial.begin(115200, SERIAL_8N1, RADAR_RX, RADAR_TX);
+    // Arduino-Pico exposes UART1 as Serial2. Configure TX/RX before begin().
+    if (!radarSerial.setPinout(RADAR_TX, RADAR_RX)) {
+        LOG_ERROR("SENSORS", "Radar UART pin configuration failed");
+        return;
+    }
+    radarSerial.begin(115200, SERIAL_8N1);
     
     #ifdef DEBUG_SENSORS
     Serial.println(">> UART1 initialized successfully for radar");
