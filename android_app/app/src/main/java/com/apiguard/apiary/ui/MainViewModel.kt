@@ -96,6 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }.onFailure { error ->
                     // Nie pokazuj poprzednich pomiarów jako bieżących po utracie łączności.
                     _apiaryData.value = emptyList()
+                    _connectionState.value = false
                     _errorMessage.value = "Błąd pobierania danych: ${error.message}"
                 }
             } finally {
