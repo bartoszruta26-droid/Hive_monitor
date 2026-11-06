@@ -37,6 +37,7 @@
  */
 
 #include "effectors_flowing_hive.h"
+#include "effectors.h"
 #include <Arduino.h>
 #include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
@@ -687,6 +688,14 @@ void activateFlowingHiveSafeMode(const char* reason) {
  * @brief Deactivate safe mode
  */
 void deactivateFlowingHiveSafeMode() {
+    // The subsystem latch may be released only after the main interlock has
+    // been cleared deliberately. This prevents one subsystem from bypassing
+    // a still-active system-wide emergency stop.
+    if (isSafeModeActive()) {
+        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected while main safe mode is active");
+        return;
+    }
+
     flowingHiveSafeMode = false;
-    DBG_SERVO("[SERVO] Safe mode deactivated\n");
+    DBG_SERVO("[SERVO] Safe mode deactivated\\n");
 }
