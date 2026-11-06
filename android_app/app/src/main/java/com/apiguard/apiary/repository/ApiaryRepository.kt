@@ -129,9 +129,9 @@ class ApiaryRepository(private val application: Application) {
             return ConnectionResult.Error("Nieprawidłowy numer portu: musi być w zakresie $MIN_PORT-$MAX_PORT")
         }
         
-        // Walidacja formatu adresu IP
-        if (!isValidIpAddress(ipAddress)) {
-            return ConnectionResult.Error("Nieprawidłowy format adresu IP")
+        // Walidacja hosta DNS lub adresu IPv4.
+        if (!ipAddress.isValidApiHost()) {
+            return ConnectionResult.Error("Nieprawidłowy host lub adres IP")
         }
         
         return withContext(Dispatchers.IO) {
