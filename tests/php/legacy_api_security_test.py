@@ -72,6 +72,7 @@ with tempfile.TemporaryDirectory(prefix="apiary-legacy-test-") as tmp:
         assert request(base + "?hive_id=%25", KEY)[0] == 400
         assert request(base + "?limit=100000", KEY)[0] == 400
         assert request(base + "?limit=0", KEY)[0] == 400
+        assert request(base + "?limit%5B%5D=10", KEY)[0] == 400
         assert request(base + "?action=unknown", KEY)[0] == 400
         assert request(base, KEY, "POST")[0] == 405
         status, body = request(base + "?action=stats", KEY)
