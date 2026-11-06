@@ -33,8 +33,10 @@ Przykład szkieletu (uzupełnij ścieżki certyfikatu i domenę):
     SSLProtocol -all +TLSv1.2 +TLSv1.3
     ProxyRequests Off
     ProxyPreserveHost On
-    ProxyPass        / http://127.0.0.1:8080/
-    ProxyPassReverse / http://127.0.0.1:8080/
+    ProxyPass        /health http://127.0.0.1:8080/health
+    ProxyPassReverse /health http://127.0.0.1:8080/health
+    ProxyPass        /api/ http://127.0.0.1:8080/api/
+    ProxyPassReverse /api/ http://127.0.0.1:8080/api/
 
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "no-referrer"
