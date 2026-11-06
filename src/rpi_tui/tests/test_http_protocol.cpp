@@ -52,6 +52,7 @@ int main() {
 
     result = resolveHttpRequestLine("GET /api/logs HTTP/1.1");
     assert(result.route == HttpRoute::Logs && result.statusCode == 501);
+    assert(std::string(apiary::httpReasonPhrase(501)) == "Not Implemented");
 
     std::cout << "HTTP request-line routing tests passed\n";
     return 0;
