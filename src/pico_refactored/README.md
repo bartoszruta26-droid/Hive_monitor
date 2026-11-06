@@ -75,6 +75,7 @@ Wymagane biblioteki Arduino:
 - Ethernet (W6100)
 - DHT sensor library
 - Adafruit SGP41 Library
+- Sensirion Gas Index Algorithm (VOC/NOx index calculation)
 
 ## Użycie
 
@@ -92,3 +93,7 @@ Odkomentuj definicje w config.h:
 #define DEBUG_AIR
 #define DEBUG_RADAR
 ```
+
+## SGP41 data semantics
+
+The SGP41 supplies raw VOC and NOx signals; the firmware converts them to VOC and NOx indices using Sensirion Gas Index Algorithm. The SGP41 does **not** measure CO2 or eCO2. The API therefore exposes `co2_available=false` and `co2=null` rather than reporting a fabricated CO2 value. A separate CO2-capable sensor is required if CO2 data is needed.
