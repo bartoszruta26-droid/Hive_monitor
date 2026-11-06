@@ -15,6 +15,8 @@ collector = (ROOT / "src/rpi_tui/apiary_collector.cpp").read_text(encoding="utf-
 network = (ROOT / "src/rpi_tui/network_security.h").read_text(encoding="utf-8")
 protocol = (ROOT / "src/rpi_tui/http_protocol.h").read_text(encoding="utf-8")
 database = (ROOT / "src/rpi_tui/apiary_database.cpp").read_text(encoding="utf-8")
+database_header = (ROOT / "src/rpi_tui/apiary_database.h").read_text(encoding="utf-8")
+measurement_validation = (ROOT / "src/rpi_tui/measurement_validation.h").read_text(encoding="utf-8")
 firmware_sensors = (ROOT / "src/pico_refactored/src/sensors.cpp").read_text(encoding="utf-8")
 firmware_flow = (ROOT / "src/pico_refactored/src/effectors_flowing_hive.cpp").read_text(encoding="utf-8")
 php_api = (ROOT / "src/webui/api.php").read_text(encoding="utf-8")
@@ -57,5 +59,16 @@ require("raw_records_ += batch_size" in database and
 require("CURLOPT_CONNECTTIMEOUT" in php_api and
         "callCollector('/health', 'GET', null, 3)" in php_api,
         "PHP collector health checks must use a bounded connection and total timeout")
+
+require("validateHivePayloadFields" in collector and "json_validation_errors" in collector,
+        "collector must validate measurement payloads before conversion and persistence")
+require("measurementRanges()" in measurement_validation and "std::isfinite(value)" in measurement_validation,
+        "measurement schema must enforce finite, field-specific numeric bounds")
+require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
+        "SQLite lifecycle must serialize initialization, producers and shutdown")
+require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
+        "sqlite3_busy_timeout" in database,
+        "SQLite shutdown must preserve failed batches and use bounded busy waits")
+
 
 print("Software security contract checks passed")
