@@ -96,7 +96,7 @@ inline bool validateHivePayloadFields(
         const auto rule = measurementRanges().find(item.first);
         if (rule == measurementRanges().end()) continue;
         if (item.second.empty() || item.second.size() > 64 ||
-            item.second.find('\\0') != std::string::npos) {
+            item.second.find('\0') != std::string::npos) {
             error = item.first + " must be a bounded numeric scalar without embedded NUL";
             return false;
         }
