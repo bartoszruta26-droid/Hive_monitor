@@ -524,11 +524,7 @@ function loadConfig() {
 // Funkcja do zapisywania konfiguracji
 function saveConfig($configData) {
     global $configDir;
-    
-    if (!is_dir($configDir)) {
-        mkdir($configDir, 0755, true);
-    }
-    
+
     $sectionMap = [
         'api' => 'api_endpoints.conf',
         'database' => 'database_settings.conf',
@@ -539,27 +535,92 @@ function saveConfig($configData) {
         'preferences' => 'user_preferences.conf',
         'advanced' => 'advanced_options.conf'
     ];
-    
-    $results = [];
+
+    // Waliduj całe żądanie przed wykonaniem jakiegokolwiek zapisu.
+    if (!is_array($configData) || $configData === []) {
+        return ['ok' => false, 'status' => 400, 'error' => 'invalid_config'];
+    }
+
+    $prepared = [];
     foreach ($configData as $section => $values) {
-        if (!isset($sectionMap[$section])) continue;
-        
-        $filePath = $configDir . '/' . $sectionMap[$section];
+        if (!is_string($section) || !isset($sectionMap[$section]) || !is_array($values)) {
+            return ['ok' => false, 'status' => 400, 'error' => 'invalid_config'];
+        }
+
         $content = "# Hive Monitor Configuration - {$section}\n";
         $content .= "# Generated: " . date('Y-m-d H:i:s') . "\n\n";
-        
+
         foreach ($values as $key => $value) {
-            if (is_bool($value)) {
-                $value = $value ? 'true' : 'false';
+            if (!is_string($key) || !preg_match('/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/', $key)) {
+                return ['ok' => false, 'status' => 400, 'error' => 'invalid_config'];
             }
-            $content .= "{$key}={$value}\n";
+
+            if (is_bool($value)) {
+                $serializedValue = $value ? 'true' : 'false';
+            } elseif (is_int($value)) {
+                $serializedValue = (string)$value;
+            } elseif (is_float($value) && is_finite($value)) {
+                $serializedValue = (string)$value;
+            } elseif (is_string($value) && strlen($value) <= 4096) {
+                $serializedValue = $value;
+            } else {
+                return ['ok' => false, 'status' => 400, 'error' => 'invalid_config'];
+            }
+
+            // Format pliku jest liniowy: odrzuć znaki umożliwiające wstrzyknięcie wpisów.
+            if (strpbrk($serializedValue, "\r\n\0") !== false) {
+                return ['ok' => false, 'status' => 400, 'error' => 'invalid_config'];
+            }
+
+            $content .= $key . '=' . $serializedValue . "\n";
         }
-        
-        $success = file_put_contents($filePath, $content);
-        $results[$section] = ($success !== false);
+
+        if (strlen($content) > 65536) {
+            return ['ok' => false, 'status' => 400, 'error' => 'config_section_too_large'];
+        }
+
+        $prepared[$section] = $content;
     }
-    
-    return $results;
+
+    if (is_link($configDir)) {
+        logMessage('ERROR', 'Configuration directory must not be a symbolic link', 'Security');
+        return ['ok' => false, 'status' => 500, 'error' => 'config_write_failed'];
+    }
+
+    if (!is_dir($configDir) && !@mkdir($configDir, 0700, true) && !is_dir($configDir)) {
+        logMessage('ERROR', 'Cannot create configuration directory', 'Filesystem');
+        return ['ok' => false, 'status' => 500, 'error' => 'config_write_failed'];
+    }
+
+    if (!@chmod($configDir, 0700)) {
+        logMessage('ERROR', 'Cannot restrict configuration directory permissions', 'Filesystem');
+        return ['ok' => false, 'status' => 500, 'error' => 'config_write_failed'];
+    }
+
+    $results = [];
+    foreach ($prepared as $section => $content) {
+        $targetPath = $configDir . '/' . $sectionMap[$section];
+        $temporaryPath = @tempnam($configDir, '.hive-config-');
+
+        if ($temporaryPath === false) {
+            logMessage('ERROR', "Cannot create temporary configuration file for {$section}", 'Filesystem');
+            return ['ok' => false, 'status' => 500, 'error' => 'config_write_failed'];
+        }
+
+        $written = @file_put_contents($temporaryPath, $content, LOCK_EX);
+        $permissionsSet = @chmod($temporaryPath, 0600);
+        $replaced = ($written === strlen($content)) && $permissionsSet && @rename($temporaryPath, $targetPath);
+
+        if (!$replaced) {
+            @unlink($temporaryPath);
+            logMessage('ERROR', "Atomic configuration write failed for {$section}", 'Filesystem');
+            return ['ok' => false, 'status' => 500, 'error' => 'config_write_failed'];
+        }
+
+        $results[$section] = true;
+    }
+
+    return ['ok' => true, 'saved' => $results];
 }
 
 // Funkcja do komunikacji z kolektorem
@@ -700,8 +761,13 @@ try {
                 // Zapisz konfigurację
                 $input = json_decode(file_get_contents('php://input'), true);
                 if ($input && isset($input['config'])) {
-                    $results = saveConfig($input['config']);
-                    $response = ['success' => true, 'saved' => $results, 'message' => 'Konfiguracja zapisana'];
+                    $result = saveConfig($input['config']);
+                    if (!$result['ok']) {
+                        http_response_code($result['status']);
+                        $response = ['error' => $result['error']];
+                    } else {
+                        $response = ['success' => true, 'saved' => $result['saved'], 'message' => 'Konfiguracja zapisana'];
+                    }
                 } else {
                     http_response_code(400);
                     $response = ['error' => 'Invalid config data'];
@@ -710,8 +776,13 @@ try {
                 // Aktualizuj wybraną sekcję konfiguracji
                 $input = json_decode(file_get_contents('php://input'), true);
                 if ($input) {
-                    $results = saveConfig($input);
-                    $response = ['success' => true, 'saved' => $results, 'message' => 'Konfiguracja zaktualizowana'];
+                    $result = saveConfig($input);
+                    if (!$result['ok']) {
+                        http_response_code($result['status']);
+                        $response = ['error' => $result['error']];
+                    } else {
+                        $response = ['success' => true, 'saved' => $result['saved'], 'message' => 'Konfiguracja zaktualizowana'];
+                    }
                 } else {
                     http_response_code(400);
                     $response = ['error' => 'Invalid config data'];
