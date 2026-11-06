@@ -21,6 +21,7 @@ assert 'return "http://' not in retrofit
 assert "legacy_api.php" in installer and "apiary_api_key" in installer
 assert "User=www-data" in installer and "ProtectSystem=strict" in installer
 assert "ReadWritePaths=/var/lib/apiaryguard /var/log/apiaryguard" in installer
+assert "EnvironmentFile=/etc/apiaryguard/apiary.env" not in installer
 assert "chmod 777" not in installer and "User=root" not in installer
 assert 'chmod 0600 "$BACKUP_FILE"' in root_installer
 assert 'install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"' in root_installer
