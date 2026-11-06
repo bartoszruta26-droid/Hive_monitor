@@ -438,6 +438,8 @@
 #define MAX_SENSOR_ERRORS           10
 #define ERROR_RESET_WINDOW_MS       60000  // Reset error count after 1 minute
 #define CRITICAL_ERROR_THRESHOLD    50     // Trigger safe mode after this many errors
+#define HEATER_SENSOR_MAX_ERRORS     3      // Consecutive invalid temperature samples
+#define HEATER_SENSOR_MAX_AGE_MS     6000   // Temperature sample must be refreshed within 6 seconds
 
 // Safe mode configuration
 #define SAFE_MODE_HEATER_DUTY       0
