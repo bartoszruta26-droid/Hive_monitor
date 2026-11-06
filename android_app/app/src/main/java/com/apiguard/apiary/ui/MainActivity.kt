@@ -15,7 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
 import com.apiguard.apiary.model.ApiaryData
-import com.apiguard.apiary.util.isValidIpAddress
+import com.apiguard.apiary.util.isValidApiHost
 import com.apiguard.apiary.util.isValidPort
 
 class MainActivity : AppCompatActivity() {
@@ -173,7 +173,7 @@ class MainActivity : AppCompatActivity() {
 
                 when {
                     ipAddress.isEmpty() -> ipTextInputLayout.error = getString(R.string.error_ip_empty)
-                    !ipAddress.isValidIpAddress() -> ipTextInputLayout.error = getString(R.string.error_ip_invalid_format)
+                    !ipAddress.isValidApiHost() -> ipTextInputLayout.error = getString(R.string.error_ip_invalid_format)
                     port == null || !port.isValidPort() -> portTextInputLayout.error = getString(R.string.error_port_invalid_range)
                     else -> {
                         isIpDialogShowing = false
