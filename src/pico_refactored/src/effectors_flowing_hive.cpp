@@ -345,7 +345,7 @@ void updateServoLoop() {
  */
 long readHX711_2() {
     TRACE_ENTER(HX711_2);
-    PERF_START(readHX711_2);
+    APIARY_PERF_START(readHX711_2);
     
     long count = 0;
     unsigned long read_start = millis();
@@ -367,7 +367,7 @@ long readHX711_2() {
             Serial.printf("[HX711_2] Timeout after %lums\n", millis() - start_time);
             #endif
             
-            PERF_END(readHX711_2);
+            APIARY_PERF_END(readHX711_2);
             TRACE_EXIT(HX711_2);
             return 0;
         }
@@ -401,14 +401,14 @@ long readHX711_2() {
     if (count < HX711_2_MIN_VALID_VALUE || count > HX711_2_MAX_VALID_VALUE) {
         hx711_2_error_count++;
         DBG_HX711("[HX711_2] Invalid reading: %ld\n", count);
-        PERF_END(readHX711_2);
+        APIARY_PERF_END(readHX711_2);
         TRACE_EXIT(HX711_2);
         return 0;
     }
     
     hx711_2_value = count;
     
-    PERF_END(readHX711_2);
+    APIARY_PERF_END(readHX711_2);
     TRACE_EXIT(HX711_2);
     return count;
 }
