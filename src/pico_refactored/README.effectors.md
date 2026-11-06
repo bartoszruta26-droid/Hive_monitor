@@ -31,7 +31,7 @@ System efektorów Flowing Hive to zaawansowany moduł automatyzacji procesu zbie
 - **Pomiar przepływu miodu**: Dokładny pomiar objętości zebranego miodu
 - **Tryb bezpieczny**: Automatyczne wyłączenie w przypadku wykryciu anomalii
 - **Kompleksowe logowanie**: Szczegółowe informacje diagnostyczne
-- **Hardware Detection**: Automatyczne wykrywanie podłączonych urządzeń
+- **Hardware Detection**: Weryfikacja dostępności sterownika; nie jest to fizyczne wykrywanie serwa
 - **Gentle Code**: Brak crashów - graceful degradation przy błędach
 
 ---
@@ -338,7 +338,7 @@ Inicjalizuje sterowanie serwem:
 - Ustawia częstotliwość 50Hz (okres 20ms)
 - Inicjalizuje pozycję spoczynkową
 
-#### `void setServoAngle(uint16_t angle)`
+#### `bool setServoAngle(uint16_t angle)`
 Ustawia kąt serwa:
 - **Parametr**: `angle` - kąt w stopniach (0-180)
 - Walidacja zakresu
@@ -351,7 +351,7 @@ Ustawia kąt serwa:
 
 **Uwaga sprzętowa:** biblioteka `Servo` w rdzeniu Arduino-Pico wykorzystuje PIO i generuje przebieg w tle, niezależnie od obciążenia pętli głównej. Nie potwierdza to jednak prawidłowości mechanicznego zakresu ruchu. Pierwsze uruchomienie należy wykonać bez obciążenia mechanizmu, z ograniczonym zakresem impulsów i kontrolą poboru prądu.
 
-#### `void executeAutoEmptySequence(unsigned long duration_ms)`
+#### `bool executeAutoEmptySequence(unsigned long duration_ms)`
 Uruchamia sekwencję automatycznego opróżniania:
 1. Sprawdza tryb bezpieczny i dozwolony czas pracy.
 2. Przechodzi do pozycji EMPTY (160°).
