@@ -33,6 +33,12 @@ jobs:
       - name: Check WebUI JavaScript syntax
         run: node --check src/webui/app.js
 
+      - name: Check PHP API syntax
+        run: php -l src/webui/api.php
+
+      - name: Run PHP API authentication and configuration regressions
+        run: php tests/php/api_security_config_test.php
+
       - name: Check TUI Bash syntax
         run: bash -n src/rpi_tui/apiary_tui.sh
 
