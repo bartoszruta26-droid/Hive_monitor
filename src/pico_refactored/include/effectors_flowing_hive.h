@@ -112,7 +112,7 @@ void setServoEmptyPosition();
  * 
  * @param duration_ms Duration to hold emptying position
  *                    Default: 1800000ms (30 minutes)
- *                    Range: 1000ms - unlimited
+ *                    Range: 1000ms - 1800000ms (30 minutes maximum)
  * 
  * @note Call from main loop, then periodically call updateServoLoop()
  */
