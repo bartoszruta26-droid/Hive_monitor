@@ -333,6 +333,7 @@ inline const std::map<std::string, NumericRange>& measurementRanges() {
         {"pv_swarm_prep", {0, 1, false}},
         {"pv_cluster_size", {0, 100000, true}},
         {"pv_cluster_activity", {0, 100, false}},
+        {"pv_fanning行为", {0, 100, false}},
         {"pv_buzz_piping", {0, 1, false}},
         {"pv_tremble_dance", {0, 1, false}},
         {"pv_waggle_dance", {0, 1, false}},
