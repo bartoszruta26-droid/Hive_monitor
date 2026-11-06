@@ -96,6 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val result = repository.fetchApiaries()
                 
                 result.onSuccess { data ->
+                    _connectionState.value = true
                     _apiaryData.value = data
                     _errorMessage.value = null
                 }.onFailure { error ->
