@@ -171,6 +171,40 @@ int main() {
     assert(committed_stats.at("total_records") == 201);
     assert(committed_stats.at("initialized") == 0);
 
+    // Reinitialize and race a producer against shutdown. Calls linearized
+    // before shutdown are flushed; calls after shutdown are rejected.
+    database.initialize(config);
+    std::atomic<bool> race_writer_started{false};
+    std::atomic<size_t> race_writer_accepted{0};
+    std::thread race_writer([&] {
+        race_writer_started = true;
+        for (int i = 0; i < 5000; ++i) {
+            HiveData item;
+            item.hive_id = "UL-SHUTDOWN-RACE";
+            item.timestamp = 5000 + i;
+            item.temperature = 30.0f;
+            item.humidity = 50.0f;
+            try {
+                database.storeRawData(item);
+                ++race_writer_accepted;
+            } catch (const apiary::DatabaseWriteException&) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+    });
+    while (!race_writer_started.load()) std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    database.shutdown();
+    race_writer.join();
+
+    const auto race_stats = database.getStats();
+    const size_t expected_after_race = 201 + race_writer_accepted.load();
+    assert(race_stats.at("accepted_records") == expected_after_race);
+    assert(race_stats.at("buffered_records") == 0);
+    assert(race_stats.at("raw_records") == expected_after_race);
+    assert(race_stats.at("initialized") == 0);
+
     sqlite3* verify_db = nullptr;
     assert(sqlite3_open(path.c_str(), &verify_db) == SQLITE_OK);
     sqlite3_stmt* stmt = nullptr;
