@@ -32,6 +32,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Set up PHP with SQLite and cURL
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: curl, sqlite3
+          coverage: none
+
       - name: Check WebUI JavaScript syntax
         run: node --check src/webui/app.js
 
