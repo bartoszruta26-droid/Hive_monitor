@@ -8,6 +8,7 @@
  */
 
 #include "sensors.h"
+#include "hx711.h"
 #include <Adafruit_SGP41.h>
 #include <HardwareSerial.h>
 #include <Arduino.h>
