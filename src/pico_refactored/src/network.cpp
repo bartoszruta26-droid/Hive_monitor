@@ -125,12 +125,12 @@ void initW6100() {
         Serial.println(Ethernet.hardwareStatus() == 0 ? "No chip" : "Chip detected but DHCP timeout");
         #endif
         
-        Ethernet.begin(macAddress, staticIP, gateway, subnet);
+        Ethernet.begin(macAddress, staticIP, gateway, gateway, subnet);
         Serial.printf("  Static IP: %s\n", staticIP.toString().c_str());
     }
 #else
     // Static IP only
-    Ethernet.begin(macAddress, staticIP, gateway, subnet);
+    Ethernet.begin(macAddress, staticIP, gateway, gateway, subnet);
     Serial.printf("  Static IP: %s\n", staticIP.toString().c_str());
 #endif
     
