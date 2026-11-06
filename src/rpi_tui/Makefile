@@ -19,6 +19,7 @@ HTTP_TEST_TARGET = http_protocol_test
 DATABASE_TEST_TARGET = database_regression_test
 NETWORK_TEST_TARGET = network_security_test
 JSON_TEST_TARGET = json_object_parser_test
+VALIDATION_TEST_TARGET = measurement_validation_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -73,9 +74,16 @@ $(JSON_TEST_TARGET): tests/test_json_object_parser.cpp json_object_parser.h
 test-json: $(JSON_TEST_TARGET)
 	./$(JSON_TEST_TARGET)
 
+# Testy zakresów domenowych parametrów pomiarowych.
+$(VALIDATION_TEST_TARGET): tests/test_measurement_validation.cpp measurement_validation.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_measurement_validation.cpp -o $@
+
+test-validation: $(VALIDATION_TEST_TARGET)
+	./$(VALIDATION_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) $(VALIDATION_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
@@ -137,4 +145,4 @@ help:
 	@echo "  make test-collector # Testuj kolektor (symulacja)"
 	@echo "  sudo make install # Instaluj"
 
-.PHONY: all clean install uninstall test test-http test-database test-network test-json test-collector debug help
+.PHONY: all clean install uninstall test test-http test-database test-network test-json test-validation test-collector debug help
