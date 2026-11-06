@@ -9,7 +9,7 @@ namespace apiary {
 
 inline bool datagramWasTruncated(int messageFlags, ssize_t receivedBytes, size_t payloadCapacity) {
     return (messageFlags & MSG_TRUNC) != 0 ||
-           receivedBytes >= static_cast<ssize_t>(payloadCapacity);
+           receivedBytes > static_cast<ssize_t>(payloadCapacity);
 }
 
 inline bool parseIPv4BindAddress(const char* configured, const char* fallback, in_addr& address) {
