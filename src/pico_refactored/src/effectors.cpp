@@ -98,7 +98,7 @@ void deactivateSafeMode() {
     // Do not clear the independent Flowing Hive latch here. A main-system
     // reset must never silently release a subsystem-specific actuator lock.
     safe_mode_active = false;
-    DBG_EFF("[EFFECTORS] Main safe mode deactivated; Flowing Hive latch remains independent\\n");
+    DBG_EFF("[EFFECTORS] Main safe mode deactivated; Flowing Hive latch remains independent\n");
 }
 
 /**
