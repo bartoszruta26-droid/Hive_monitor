@@ -75,7 +75,7 @@ static float currentFlowRate = 0.0f;                        ///< Current flow ra
 static float totalVolume = 0.0f;                            ///< Accumulated volume in liters
 static unsigned long lastFlowUpdate = 0;                    ///< Last calculation timestamp
 static bool flowSensorInitialized = false;                  ///< Interrupt attached flag
-static bool flowSensorInterruptReady = false;                     ///< Hardware detection flag
+static bool flowSensorInterruptConfigured = false; ///< Interrupt setup state; not physical sensor detection
 
 // ----------------------------------------------------------------------------
 // Safe Mode State
@@ -514,7 +514,7 @@ void initFlowSensor() {
     attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
 
     flowSensorInitialized = true;
-    flowSensorInterruptReady = true;  // Interrupt setup succeeded; physical sensor presence is not verified.
+    flowSensorInterruptConfigured = true;  // GPIO interrupt configured; physical sensor presence is unverified.
     
     DBG_FLOW("[FLOW] Initialized on GPIO %d (interrupt-enabled)\n", FLOW_SENSOR_PIN);
     DBG_FLOW("[FLOW] Pulses per liter: %d\n", FLOW_SENSOR_PULSES_PER_LITER);
@@ -526,7 +526,7 @@ void initFlowSensor() {
  * @brief Update flow sensor calculations
  */
 void updateFlowSensor() {
-    if (!flowSensorInterruptReady || !flowSensorInitialized) return;
+    if (!flowSensorInterruptConfigured || !flowSensorInitialized) return;
 
     const unsigned long now = millis();
     const unsigned long elapsed = now - lastFlowUpdate;
@@ -627,15 +627,15 @@ void printFlowingHiveEffectorStatus() {
     if (hx711_2_detected && hx711_2_initialized) {
         Serial.printf("    Weight: %.1f g\n", getSuperstructureWeightGrams());
     } else {
-        Serial.println("    (Sensor not detected - skipping readings)");
+        Serial.println("    (Interrupt not configured - readings unavailable)");
     }
     Serial.printf("    Reads: %lu, Errors: %lu\n", hx711_2_read_count, hx711_2_error_count);
     
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
-    Serial.printf("    Interrupt ready: %s\n", flowSensorInterruptReady ? "YES" : "NO");
+    Serial.printf("    Interrupt ready: %s\n", flowSensorInterruptConfigured ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
-    if (flowSensorInterruptReady && flowSensorInitialized) {
+    if (flowSensorInterruptConfigured && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
         Serial.printf("    Total volume: %.3f L\n", totalVolume);
         Serial.printf("    Honey flowing: %s\n", isHoneyFlowing() ? "YES" : "NO");
