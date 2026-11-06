@@ -155,7 +155,7 @@ void setHeaterPWM(int duty) {
     ++effector_op_count;
 
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
         return;
     }
     if (duty < 0 || duty > 255) {
@@ -187,7 +187,7 @@ void setFanPWM(int duty) {
     ++effector_op_count;
 
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\n");
         return;
     }
     if (duty < 0 || duty > 255) {
@@ -221,6 +221,7 @@ void setPump(bool state) {
         return;
     }
     relay_switches++;
+    pumpDuty = state ? 255 : 0;
     
     #ifdef DEBUG_EFFECTORS
     Serial.printf("[EFFECTORS] Pump relay: %s\n", state ? "ON" : "OFF");
