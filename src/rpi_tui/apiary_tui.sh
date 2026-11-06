@@ -249,6 +249,13 @@ fetch_hive_data() {
                     wag_rate="${columns[121]}"
                     wag_trend="${columns[132]}"
                     air_iaq="${columns[271]}"
+                    if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+                        current_epoch=$(date +%s)
+                        age_seconds=$((current_epoch - timestamp))
+                        if (( age_seconds < 0 || age_seconds > 60 )); then status="STALE"; fi
+                    else
+                        status="UNKNOWN"
+                    fi
                     
                     # Ignoruj puste linie
                     [ -z "$id" ] && continue
@@ -342,6 +349,13 @@ fetch_hive_data() {
                 wag_rate="${columns[121]}"
                 wag_trend="${columns[132]}"
                 air_iaq="${columns[271]}"
+                if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+                    current_epoch=$(date +%s)
+                    age_seconds=$((current_epoch - timestamp))
+                    if (( age_seconds < 0 || age_seconds > 60 )); then status="STALE"; fi
+                else
+                    status="UNKNOWN"
+                fi
                 
                 [ -z "$id" ] && continue
                 
