@@ -85,6 +85,11 @@ require(not unvalidated_struct_fields,
         "every numeric HiveData field must have an explicit domain rule: " +
         ", ".join(sorted(unvalidated_struct_fields)))
 
+boolean_struct_fields = {name for kind, name, _, _ in struct_fields if kind == "bool"}
+require(boolean_struct_fields == {"is_precomputed", "is_online"} and
+        all(field in measurement_validation for field in boolean_struct_fields),
+        "every boolean HiveData field must have an explicit boolean validator")
+
 require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
         "SQLite lifecycle must serialize initialization, producers and shutdown")
 require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
