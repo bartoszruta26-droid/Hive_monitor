@@ -233,10 +233,11 @@ private:
     
     // Buforowanie danych do wsadowego zapisu
     std::vector<HiveData> data_buffer_;
-    std::mutex buffer_mutex_;
+    mutable std::mutex buffer_mutex_;
     static const size_t BUFFER_SIZE = 100;
     
     // Statystyki
+    std::atomic<size_t> accepted_records_{0};
     std::atomic<size_t> total_records_{0};
     std::atomic<size_t> raw_records_{0};
     std::atomic<size_t> aggregated_records_{0};
