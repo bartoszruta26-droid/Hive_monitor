@@ -391,9 +391,10 @@ void loop() {
     // Read sensors conditionally (only if detected)
     readSensors(now);
 
-    // Evaluate heater safety after refreshing sensor measurements.
-    checkActuatorSafety(now);
-    
+    // Sensor measurements are refreshed before control commands are processed.
+    // The heater interlock is evaluated immediately before outputs are applied,
+    // so a command received later in this loop cannot bypass the check.
+
     // Process audio analysis periodically
     processAudioPeriodically(now);
     
@@ -436,6 +437,10 @@ void loop() {
         }
     }
     
+    // Final actuator interlock: evaluate after all command paths in this loop
+    // and immediately before applying physical outputs.
+    checkActuatorSafety(millis());
+
     // Update outputs
     updateOutputs();
 }
