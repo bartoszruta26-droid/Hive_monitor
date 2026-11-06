@@ -57,8 +57,8 @@ if [[ ! -f "Makefile" ]]; then
     exit 1
 fi
 
-make clean 2>/dev/null || true
-make all -j$(nproc) || {
+make clean
+make all -j"$(nproc)" || {
     echo -e "${RED}❌ Kompilacja nieudana${NC}"
     exit 1
 }
@@ -68,23 +68,44 @@ echo ""
 
 # 3. Instalacja binarek w systemie
 echo "⚙️ Instalowanie binarek w systemie..."
-sudo make install || {
-    echo -e "${YELLOW}⚠️ Instalacja binarek miała problemy, ale kompilacja succeeded${NC}"
-}
+sudo make install
 
 echo -e "${GREEN}✅ Binarki zainstalowane${NC}"
 echo ""
 
+# Klucz API: jeden losowy sekret współdzielony przez Apache i usługę kolektora.
+# Plik jest czytelny wyłącznie dla roota i grupy serwera WWW.
+sudo install -d -o root -g www-data -m 0750 /etc/apiaryguard
+if ! sudo test -s /etc/apiaryguard/apiary_api_key; then
+    umask 077
+    openssl rand -hex 32 | sudo tee /etc/apiaryguard/apiary_api_key >/dev/null
+fi
+sudo chown root:www-data /etc/apiaryguard/apiary_api_key
+sudo chmod 0640 /etc/apiaryguard/apiary_api_key
+API_KEY="$(sudo cat /etc/apiaryguard/apiary_api_key)"
+printf 'APIARY_API_KEY=%s\n' "$API_KEY" | sudo tee /etc/apiaryguard/apiary.env >/dev/null
+sudo chown root:www-data /etc/apiaryguard/apiary.env
+sudo chmod 0640 /etc/apiaryguard/apiary.env
+
+# Apache udostępnia ten sam sekret do PHP przez lokalną konfigurację serwera.
+sudo tee /etc/apache2/conf-available/apiaryguard-env.conf >/dev/null <<EOF
+SetEnv APIARY_API_KEY "$API_KEY"
+EOF
+sudo chown root:www-data /etc/apache2/conf-available/apiaryguard-env.conf
+sudo chmod 0640 /etc/apache2/conf-available/apiaryguard-env.conf
+sudo a2enconf apiaryguard-env
+
 # 4. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
-sudo mkdir -p /var/lib/apiaryguard
-sudo touch $DB_PATH
-sudo chown www-data:www-data $DB_PATH
-sudo chmod 664 $DB_PATH
+sudo install -d -o www-data -g www-data -m 0750 /var/lib/apiaryguard
+sudo touch "$DB_PATH"
+sudo chown www-data:www-data "$DB_PATH"
+sudo chmod 0660 "$DB_PATH"
+sudo install -d -o www-data -g www-data -m 0750 /var/log/apiaryguard
 
 # Inicjalizacja schematu bazy danych z pełną obsługą agregacji
-sudo -u www-data sqlite3 $DB_PATH <<EOF
+sudo -u www-data sqlite3 "$DB_PATH" <<EOF
 -- Tabela dla danych surowych (sekundowych)
 CREATE TABLE IF NOT EXISTS raw_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -281,8 +302,12 @@ else
     echo "   Pliki WebUI nie zostaną skopiowane"
 fi
 
-# Zaawansowany plik index.php z obsługą wszystkich poziomów agregacji
-sudo tee /var/www/html/apiary/index.php > /dev/null <<'PHP_EOF'
+# Legacy endpoint: read-only, authenticated and bounded API.
+sudo install -o root -g www-data -m 0640 "$WEBUI_SOURCE/legacy_api.php" "$WEB_DIR/index.php"
+sudo chown www-data:www-data "$WEB_DIR"
+sudo chmod 0750 "$WEB_DIR"
+
+'
 <?php
 header('Content-Type: application/json');
 
@@ -451,20 +476,41 @@ COLLECTOR_BIN=$(which apiary-collector 2>/dev/null || echo "/usr/local/bin/apiar
 sudo tee /etc/systemd/system/apiary-collector.service > /dev/null <<EOF
 [Unit]
 Description=Apiary Data Collector Service
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=www-data
+Group=www-data
+EnvironmentFile=/etc/apiaryguard/apiary.env
 ExecStart=${COLLECTOR_BIN}
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/apiaryguard /var/log/apiaryguard
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+sudo apache2ctl configtest
+sudo systemctl restart apache2
 sudo systemctl enable apiary-collector
 
 echo "✅ Instalacja zakończona pomyślnie!"
