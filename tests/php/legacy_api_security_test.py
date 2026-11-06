@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory(prefix="apiary-legacy-test-") as tmp:
             hive_id TEXT, agg_type INTEGER, temperature_avg REAL
         );
         INSERT INTO aggregated_data VALUES (1, 100, 160, 'UL-1', 1, 34.5);
-        INSERT INTO aggregated_data VALUES (2, 100, 160, 'UL-2', 1, 31.5);
+        INSERT INTO aggregated_data VALUES (2, 101, 161, 'UL-2', 1, 31.5);
         INSERT INTO raw_data VALUES (1, 100, 'UL-1');
     """)
     connection.commit()
