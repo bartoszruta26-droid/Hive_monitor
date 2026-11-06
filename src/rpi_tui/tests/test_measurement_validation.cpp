@@ -12,7 +12,16 @@ int main() {
         {"bat", "97"}, {"co2", "450"}, {"voc", "35"}, {"motion", "1"},
         {"audio_freq", "250"}, {"pressure", "1013.25"}, {"lux", "2500"}
     };
-    valid["temperature"] = "85";\n    valid["humidity"] = "100";\n    valid["audio_spectral_flatness"] = "0.5";\n    valid["hx711_food_reserve_days"] = "200";\n    valid["baro_sealevel_press"] = "1013.25";\n    valid["light_lux"] = "200000";\n    valid["is_online"] = "true";\n    valid["is_precomputed"] = "false";\n    assert(apiary::measurementRanges().size() >= 390);\n    assert(apiary::validateHivePayloadFields(valid, error));
+    valid["temperature"] = "85";
+    valid["humidity"] = "100";
+    valid["audio_spectral_flatness"] = "0.5";
+    valid["hx711_food_reserve_days"] = "200";
+    valid["baro_sealevel_press"] = "1013.25";
+    valid["light_lux"] = "200000";
+    valid["is_online"] = "true";
+    valid["is_precomputed"] = "false";
+    assert(apiary::measurementRanges().size() >= 390);
+    assert(apiary::validateHivePayloadFields(valid, error));
 
     auto invalid = valid;
     invalid["temp"] = "NaN";
