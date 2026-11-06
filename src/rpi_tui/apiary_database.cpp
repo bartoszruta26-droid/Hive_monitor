@@ -484,6 +484,19 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
     const std::string radar_activity_column = source_is_raw ? "src.radar_activity" : "src.radar_activity_avg";
     const std::string hx711_current_column = source_is_raw ? "src.hx711_current" : "src.hx711_current_avg";
     const std::string hx711_slope_column = source_is_raw ? "src.hx711_slope_24h" : "src.hx711_slope_24h_avg";
+    int minimum_source_interval = 60;
+    switch (source_type) {
+        case AggregationType::MINUTE: minimum_source_interval = 60; break;
+        case AggregationType::HOUR: minimum_source_interval = 3600; break;
+        case AggregationType::DAY: minimum_source_interval = 86400; break;
+        case AggregationType::WEEK: minimum_source_interval = 604800; break;
+        case AggregationType::MONTH: minimum_source_interval = 2592000; break;
+        case AggregationType::QUARTER: minimum_source_interval = 7776000; break;
+        default: break;
+    }
+    const int minimum_records = source_is_raw
+        ? 6
+        : std::max(1, (interval_sec / minimum_source_interval + 1) / 2);
     const long long target_type_value = static_cast<int>(target_type);
     const long long source_type_value = static_cast<int>(source_type);
 
@@ -526,7 +539,7 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
         << "AND existing.timestamp_start = ("
         << source_time << " / " << interval_sec << " * " << interval_sec << ")) "
         << "GROUP BY " << source_time << " / " << interval_sec << ", src.hive_id "
-        << "HAVING COUNT(*) >= " << (interval_sec / 10);
+        << "HAVING COUNT(*) >= " << minimum_records;
 
     char* error_message = nullptr;
     const int rc = sqlite3_exec(db_, sql.str().c_str(), nullptr, nullptr, &error_message);
