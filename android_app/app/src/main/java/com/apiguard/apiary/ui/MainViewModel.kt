@@ -118,8 +118,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isLoading.value == true) return
         viewModelScope.launch {
             val ipAddress = repository.getSavedIpAddress() ?: run {
-                _connectionState.value = false
-                _apiaryData.value = emptyList()
+                // Nie wywołuj ponownie obserwatora LiveData po anulowaniu okna konfiguracji.
+                if (_connectionState.value != false) _connectionState.value = false
+                if (!_apiaryData.value.isNullOrEmpty()) _apiaryData.value = emptyList()
                 return@launch
             }
             _isLoading.value = true
