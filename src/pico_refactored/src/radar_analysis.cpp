@@ -32,7 +32,7 @@ static unsigned long no_data_cycles = 0;
 
 // Global variables (defined in main)
 extern RadarMetrics currentRadarMetrics;
-extern HardwareSerial& radarSerial;
+extern SerialUART& radarSerial;
 
 // Historical data for trend analysis
 static float distanceHistory[RADAR_BUFFER_SIZE];
