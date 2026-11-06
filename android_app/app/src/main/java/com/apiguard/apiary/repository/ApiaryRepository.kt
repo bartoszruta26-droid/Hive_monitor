@@ -217,32 +217,6 @@ class ApiaryRepository(private val application: Application) {
         }
     }
     
-    suspend fun fetchApiaryHistory(apiaryId: String): Result<List<ApiaryData>> {
-        return withContext(Dispatchers.IO) {
-            val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))
-            val lastTimestamp = dao.getLastTimestampForApiary(apiaryId)
-            
-            try {
-                val response = kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
-                    service.getApiaryHistory(apiaryId, lastTimestamp)
-                }
-                
-                if (response.isSuccessful) {
-                    response.body()?.let { history ->
-                        cacheReadings(history)
-                        return@withContext Result.success(history)
-                    } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
-                } else {
-                    Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-        }
-    }
-    
     private suspend fun cacheReadings(apiaries: List<ApiaryData>) {
         withContext(Dispatchers.IO) {
             val readings = apiaries.filter { it.available && it.online }.map { apiary ->
