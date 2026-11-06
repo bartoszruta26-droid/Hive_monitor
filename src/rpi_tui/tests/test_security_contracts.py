@@ -17,7 +17,7 @@ network = (ROOT / "src/rpi_tui/network_security.h").read_text(encoding="utf-8")
 protocol = (ROOT / "src/rpi_tui/http_protocol.h").read_text(encoding="utf-8")
 database = (ROOT / "src/rpi_tui/apiary_database.cpp").read_text(encoding="utf-8")
 database_header = (ROOT / "src/rpi_tui/apiary_database.h").read_text(encoding="utf-8")
-measurement_validation = (ROOT / "src/rpi_tui/measurement_validation.h").read_text(encoding="utf-8")
+measurement_validation = (ROOT / "src/rpi_tui/measurement_validation.h").read_text(encoding="utf-8")\ncollector_types = (ROOT / "src/rpi_tui/apiary_collector_types.h").read_text(encoding="utf-8")
 firmware_sensors = (ROOT / "src/pico_refactored/src/sensors.cpp").read_text(encoding="utf-8")
 firmware_flow = (ROOT / "src/pico_refactored/src/effectors_flowing_hive.cpp").read_text(encoding="utf-8")
 php_api = (ROOT / "src/webui/api.php").read_text(encoding="utf-8")
@@ -73,6 +73,26 @@ range_keys = set(re.findall(r'\{"([^"]+)",\s*\{', measurement_validation))
 unvalidated_keys = parser_keys - {"hive_id", "data_source"} - range_keys
 require(not unvalidated_keys,
         "every numeric key consumed by parseJSON must have a domain rule: " + ", ".join(sorted(unvalidated_keys)))
+
+struct_fields = re.findall(
+    r'^\s*(std::string|bool|int|long long|unsigned(?:\s+\w+)?|float|double|size_t)\s+(\w+)\s*(?:=\s*([^;]+))?;\s*(?://\s*(.*))?
+require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
+        "SQLite lifecycle must serialize initialization, producers and shutdown")
+require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
+        "sqlite3_busy_timeout" in database,
+        "SQLite shutdown must preserve failed batches and use bounded busy waits")
+
+
+print("Software security contract checks passed")
+,
+    collector_types, re.MULTILINE
+)
+numeric_struct_fields = {name for kind, name, _, _ in struct_fields if kind not in {"std::string", "bool"}}
+unvalidated_struct_fields = numeric_struct_fields - range_keys
+require(not unvalidated_struct_fields,
+        "every numeric HiveData field must have an explicit domain rule: " +
+        ", ".join(sorted(unvalidated_struct_fields)))
+
 require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
         "SQLite lifecycle must serialize initialization, producers and shutdown")
 require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
