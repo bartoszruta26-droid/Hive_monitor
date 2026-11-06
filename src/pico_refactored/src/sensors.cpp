@@ -509,7 +509,7 @@ void readSensors(unsigned long now) {
                 sensors.tempHum.critical_error_count++;
             }
             #ifdef DEBUG_SENSORS
-            Serial.printf("[SENSORS] Invalid temperature sample (consecutive: %u)\\n",
+            Serial.printf("[SENSORS] Invalid temperature sample (consecutive: %u)\n",
                           sensors.tempHum.critical_error_count);
             #endif
         }
