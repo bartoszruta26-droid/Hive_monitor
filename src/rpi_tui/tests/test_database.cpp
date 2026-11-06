@@ -92,7 +92,18 @@ int main() {
     reading.weight = 40.0f;
     reading.battery_level = 90;
     database.storeRawData(reading);
+    const auto pending_stats = database.getStats();
+    assert(pending_stats.at("accepted_records") == 1);
+    assert(pending_stats.at("buffered_records") == 1);
+    assert(pending_stats.at("raw_records") == 0);
+    assert(pending_stats.at("total_records") == 0);
+
     database.shutdown();
+    const auto committed_stats = database.getStats();
+    assert(committed_stats.at("accepted_records") == 1);
+    assert(committed_stats.at("buffered_records") == 0);
+    assert(committed_stats.at("raw_records") == 1);
+    assert(committed_stats.at("total_records") == 1);
 
     sqlite3* verify_db = nullptr;
     assert(sqlite3_open(path.c_str(), &verify_db) == SQLITE_OK);
