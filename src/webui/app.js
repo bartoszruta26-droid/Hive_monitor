@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTabs();
     initSettings();
     initModals(); // Inicjalizacja modali i formularzy
-    loadDemoData(); // Demo dane na początek
+    loadDemoData(); // Czyści widok; dane demonstracyjne nie są ładowane automatycznie
     startAutoRefresh();
     checkCollectorConnection();
 });
@@ -254,11 +254,11 @@ async function checkCollectorConnection() {
             return true;
         }
     } catch (error) {
-        logMessage("info", 'Brak połączenia z APIARY_COLLECTOR, używam danych demo:', error.message);
+        logMessage("warn", 'Brak połączenia z APIARY_COLLECTOR:', error.message);
     }
     
     // Fallback do demo danych
-    statusEl.textContent = '⚠️ Tryb demo (brak kolektora)';
+    statusEl.textContent = '⚠️ Brak połączenia z kolektorem';
     statusEl.style.color = '#fd7e14';
     AppState.isConnected = false;
     progressEl.style.width = '30%';
@@ -277,7 +277,7 @@ function updateConnectionStatus(connected) {
         statusText.textContent = 'Połączono z APIARY_COLLECTOR';
     } else {
         indicator.style.backgroundColor = '#fd7e14';
-        statusText.textContent = 'Tryb demo';
+        statusText.textContent = 'Brak połączenia — dane niedostępne';
     }
 }
 
@@ -289,26 +289,51 @@ async function fetchHiveData() {
         const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.hives}`, {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
-            timeout: 5000 // 5 sekund timeout
+            signal: AbortSignal.timeout(5000)
         });
-        
-        if (response.ok) {
-            const data = await response.json();
-            AppState.hives = data.hives || data;
-            return AppState.hives;
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+        const payload = await response.json();
+        // Kolektor zwraca { timestamp, hive_count, hives: { "UL-1": { temp, hum, ... } } }.
+        const source = payload && payload.hives ? payload.hives : payload;
+        if (Array.isArray(source)) {
+            AppState.hives = source;
+        } else if (source && typeof source === 'object') {
+            AppState.hives = Object.entries(source).map(([id, hive]) => {
+                const lastSeen = Number(hive.last_seen || payload.timestamp || 0);
+                const online = hive.online === true && lastSeen > 0 &&
+                    (Date.now() / 1000 - lastSeen) <= 60;
+                return {
+                    hive_id: id,
+                    temperature: Number.isFinite(Number(hive.temp)) ? Number(hive.temp) : null,
+                    humidity: Number.isFinite(Number(hive.hum)) ? Number(hive.hum) : null,
+                    weight: Number.isFinite(Number(hive.weight)) ? Number(hive.weight) : null,
+                    battery_level: Number.isFinite(Number(hive.bat)) ? Number(hive.bat) : null,
+                    // SGP41 nie mierzy CO2/eCO2; nie prezentuj tej wartości jako pomiaru.
+                    co2_eq: null,
+                    co2_available: false,
+                    voc_idx: hive.voc ?? null,
+                    motion_detected: hive.motion ?? null,
+                    is_online: online,
+                    audio_dominant_freq: hive.audio?.freq ?? null,
+                    swarm_probability: hive.audio?.swarm_prob ?? null,
+                    timestamp: lastSeen
+                };
+            });
         } else {
-            logMessage("warn", `HTTP error ${response.status}: ${response.statusText}`);
+            throw new Error('Nieprawidłowy format odpowiedzi /api/hives');
         }
+        AppState.isConnected = true;
+        AppState.lastRefresh = new Date();
+        updateConnectionStatus(true);
+        return AppState.hives;
     } catch (error) {
         logMessage("error", 'Błąd pobierania danych:', error.message);
-        // Zwróć puste dane zamiast null - zapobiega błędom w renderowaniu
+        AppState.isConnected = false;
         AppState.hives = [];
+        updateConnectionStatus(false);
         return AppState.hives;
     }
-    
-    // Fallback - zwróć puste dane
-    AppState.hives = [];
-    return AppState.hives;
 }
 
 // ============================================================================
@@ -830,48 +855,10 @@ function refreshAllData() {
 // DEMO DANE (gdy brak połączenia z kolektorem)
 // ============================================================================
 function loadDemoData() {
-    AppState.hives = [
-        {
-            hive_id: 'UL-001',
-            temperature: 24.5,
-            humidity: 55.2,
-            weight: 45.300,
-            battery_level: 98,
-            co2_eq: 450,
-            voc_idx: 35,
-            motion_detected: 1,
-            is_online: true,
-            audio_dominant_freq: 250,
-            swarm_probability: 0.15
-        },
-        {
-            hive_id: 'UL-002',
-            temperature: 26.1,
-            humidity: 58.7,
-            weight: 48.750,
-            battery_level: 95,
-            co2_eq: 480,
-            voc_idx: 42,
-            motion_detected: 0,
-            is_online: true,
-            audio_dominant_freq: 280,
-            swarm_probability: 0.22
-        },
-        {
-            hive_id: 'UL-003',
-            temperature: 23.8,
-            humidity: 52.1,
-            weight: 42.100,
-            battery_level: 87,
-            co2_eq: 520,
-            voc_idx: 38,
-            motion_detected: 1,
-            is_online: false,
-            audio_dominant_freq: 220,
-            swarm_probability: 0.08
-        }
-    ];
-    
+    // Brak danych rzeczywistych oznacza pusty stan, nigdy fikcyjne pomiary.
+    AppState.hives = [];
+    AppState.sensors = [];
+    AppState.effectors = [];
     renderDashboard();
     renderSensorsTable();
     renderEffectorsTable();
