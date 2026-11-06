@@ -14,7 +14,9 @@ data class ApiaryData(
     @SerializedName("humidity") val humidity: Double = 0.0,
     @SerializedName("weight") val weight: Double = 0.0,
     @SerializedName("battery") val battery: Int = 0,
-    @SerializedName("timestamp") val timestamp: Long = 0L
+    @SerializedName("timestamp") val timestamp: Long = 0L,
+    val available: Boolean = true,
+    val online: Boolean = true
 ) {
     /**
      * Waliduje czy dane są kompletne i poprawne
