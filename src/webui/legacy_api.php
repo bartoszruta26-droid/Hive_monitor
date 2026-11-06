@@ -52,6 +52,9 @@ if (!is_string($hiveId) || ($hiveId !== '' &&
 }
 
 $limitRaw = $_GET['limit'] ?? '100';
+if (!is_string($limitRaw) && !is_int($limitRaw)) {
+    legacyApiRespond(400, ['error' => 'invalid_limit', 'min' => 1, 'max' => 1000]);
+}
 $limit = filter_var($limitRaw, FILTER_VALIDATE_INT);
 if ($limit === false || $limit < 1 || $limit > 1000) {
     legacyApiRespond(400, ['error' => 'invalid_limit', 'min' => 1, 'max' => 1000]);
