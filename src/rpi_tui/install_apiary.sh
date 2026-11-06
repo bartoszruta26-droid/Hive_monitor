@@ -85,11 +85,8 @@ fi
 sudo chown root:www-data /etc/apiaryguard/apiary_api_key
 sudo chmod 0640 /etc/apiaryguard/apiary_api_key
 API_KEY="$(sudo cat /etc/apiaryguard/apiary_api_key)"
-printf 'APIARY_API_KEY=%s\n' "$API_KEY" | sudo tee /etc/apiaryguard/apiary.env >/dev/null
-sudo chown root:www-data /etc/apiaryguard/apiary.env
-sudo chmod 0640 /etc/apiaryguard/apiary.env
 
-# Apache udostępnia ten sam sekret do PHP przez lokalną konfigurację serwera.
+# Apache udostępnia sekret wyłącznie procesom PHP przez lokalną konfigurację serwera.
 sudo tee /etc/apache2/conf-available/apiaryguard-env.conf >/dev/null <<EOF
 SetEnv APIARY_API_KEY "$API_KEY"
 EOF
@@ -335,7 +332,6 @@ Wants=network-online.target
 Type=simple
 User=www-data
 Group=www-data
-EnvironmentFile=/etc/apiaryguard/apiary.env
 ExecStart=${COLLECTOR_BIN}
 Restart=on-failure
 RestartSec=5
