@@ -61,6 +61,17 @@ class ApiaryPayloadMapperTest {
         assertEquals(0, result.battery)
     }
 
+    @Test
+    fun responseTimestampDoesNotReplaceMissingPerHiveTimestamp() {
+        val result = ApiaryPayloadMapper.map(
+            payload(""""temp":34.5,"hum":61.2,"weight":42.75,"bat":92,"online":true"""),
+            nowEpochSeconds = 2_000L
+        ).single()
+
+        assertFalse(result.available)
+        assertFalse(result.online)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsPayloadWithoutHiveMap() {
         ApiaryPayloadMapper.map(JsonParser.parseString("""{"timestamp":2000}""").asJsonObject)
