@@ -74,6 +74,7 @@ ApiaryDatabase::~ApiaryDatabase() {
 }
 
 void ApiaryDatabase::initialize(const DatabaseConfig& config) {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
     if (!config.validate()) throw DatabaseInitException("Invalid database configuration");
     if (initialized_) {
         LOG_WARNING("Baza danych już zainicjalizowana");
@@ -101,7 +102,9 @@ void ApiaryDatabase::initialize(const DatabaseConfig& config) {
     
     LOG_INFO("Otwarto bazę danych SQLite: " + config_.db_path);
     
-    // Włączenie optymalizacji
+    // Włączenie optymalizacji. Nie pozostawiaj otwartego, częściowo skonfigurowanego
+    // uchwytu SQLite po błędzie inicjalizacji.
+    try {
     const auto executePragma = [this](const char* sql, const char* label) {
         char* error_message = nullptr;
         const int pragma_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &error_message);
@@ -121,10 +124,24 @@ void ApiaryDatabase::initialize(const DatabaseConfig& config) {
     createTables();
     createIndexes();
     
-    // Opublikuj gotowy stan przed uruchomieniem wątków tła.
+    // Wątki muszą wystartować zanim przyjmiemy rekordy od producentów.
     initialized_ = true;
     startBackgroundThreads();
+    accepting_ = true;
     LOG_INFO("Baza danych zainicjalizowana pomyślnie");
+    } catch (...) {
+        accepting_ = false;
+        running_ = false;
+        wake_cv_.notify_all();
+        if (aggregation_thread_.joinable()) aggregation_thread_.join();
+        if (cleanup_thread_.joinable()) cleanup_thread_.join();
+        if (db_) {
+            sqlite3_close_v2(db_);
+            db_ = nullptr;
+        }
+        initialized_ = false;
+        throw;
+    }
 }
 
 void ApiaryDatabase::createTables() {
@@ -271,14 +288,22 @@ void ApiaryDatabase::createIndexes() {
 
 void ApiaryDatabase::startBackgroundThreads() {
     running_ = true;
-    aggregation_thread_ = std::thread(&ApiaryDatabase::aggregationLoop, this);
-    cleanup_thread_ = std::thread(&ApiaryDatabase::cleanupLoop, this);
-    
+    try {
+        aggregation_thread_ = std::thread(&ApiaryDatabase::aggregationLoop, this);
+        cleanup_thread_ = std::thread(&ApiaryDatabase::cleanupLoop, this);
+    } catch (...) {
+        running_ = false;
+        wake_cv_.notify_all();
+        if (aggregation_thread_.joinable()) aggregation_thread_.join();
+        if (cleanup_thread_.joinable()) cleanup_thread_.join();
+        throw;
+    }
     LOG_INFO("Wątki tła bazy danych uruchomione");
 }
 
 void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
-    if (!initialized_ || !db_) {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+    if (!accepting_ || !initialized_ || !db_) {
         ++write_errors_;
         throw DatabaseWriteException("Database is not initialized; record was not accepted");
     }
@@ -291,14 +316,17 @@ void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
         flush_required = data_buffer_.size() >= BUFFER_SIZE;
     }
 
-    if (flush_required) flushBuffer();
+    if (flush_required && !flushBuffer()) {
+        LOG_WARNING("Bufor SQLite zachowany po nieudanym zapisie; ponowna próba nastąpi w kolejnym cyklu");
+    }
 }
 
-void ApiaryDatabase::flushBuffer() {
+bool ApiaryDatabase::flushBuffer() {
     std::lock_guard<std::mutex> buffer_lock(buffer_mutex_);
-    if (data_buffer_.empty() || !db_) return;
+    if (data_buffer_.empty()) return true;
 
     std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!db_) return false;
     const char* sql = R"(
         INSERT INTO raw_data (
             timestamp, hive_id,
@@ -315,7 +343,7 @@ void ApiaryDatabase::flushBuffer() {
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         ++write_errors_;
         LOG_ERROR(std::string("Nie można przygotować zapisu SQLite: ") + sqlite3_errmsg(db_));
-        return; // Zachowaj bufor do kolejnej próby.
+        return false; // Zachowaj bufor do kolejnej próby.
     }
 
     char* error_message = nullptr;
@@ -325,7 +353,7 @@ void ApiaryDatabase::flushBuffer() {
                   (error_message ? error_message : sqlite3_errmsg(db_)));
         sqlite3_free(error_message);
         sqlite3_finalize(stmt);
-        return;
+        return false;
     }
 
     const size_t batch_size = data_buffer_.size();
@@ -389,6 +417,7 @@ void ApiaryDatabase::flushBuffer() {
     }
 
     sqlite3_finalize(stmt);
+    return batch_ok;
 }
 
 void ApiaryDatabase::aggregationLoop() {
@@ -577,9 +606,8 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
 }
 
 int ApiaryDatabase::cleanupOldData() {
-    if (!db_) return 0;
-    
     std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!db_) return 0;
     
     int total_deleted = 0;
     
@@ -805,15 +833,22 @@ std::map<std::string, size_t> ApiaryDatabase::getStats() const {
 }
 
 void ApiaryDatabase::shutdown() noexcept {
+    std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+    accepting_ = false;
     running_ = false;
     wake_cv_.notify_all();
 
-    // Zatrzymaj wszystkie zadania korzystające z połączenia przed jego zamknięciem.
+    // Najpierw zatrzymaj wszystkie wątki korzystające z połączenia.
     if (aggregation_thread_.joinable()) aggregation_thread_.join();
     if (cleanup_thread_.joinable()) cleanup_thread_.join();
 
-    // Po zakończeniu wątków można bezpiecznie opróżnić bufor i zamknąć SQLite.
-    flushBuffer();
+    // Nie zamykaj SQLite, jeśli wsad nie został zatwierdzony. Bufor i uchwyt
+    // pozostają dostępne do ponownego shutdown() po usunięciu przyczyny awarii.
+    if (!flushBuffer()) {
+        LOG_ERROR("Shutdown przerwany: nie udało się utrwalić bufora SQLite; dane pozostają w pamięci procesu");
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(db_mutex_);
         if (db_) {
@@ -822,6 +857,7 @@ void ApiaryDatabase::shutdown() noexcept {
                 db_ = nullptr;
             } else {
                 LOG_ERROR(std::string("Nie można zamknąć bazy SQLite: ") + sqlite3_errmsg(db_));
+                return;
             }
         }
     }
