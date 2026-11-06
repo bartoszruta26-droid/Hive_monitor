@@ -151,35 +151,22 @@ bool isSafeModeActive() {
  * - Pin not configured as OUTPUT
  * - Safe mode override
  */
-void setHeaterPWM(uint8_t duty) {
-    TRACE_ENTER(EFFECTORS);
-    effector_op_count++;
-    
-    // Check if safe mode is active
+void setHeaterPWM(int duty) {
+    ++effector_op_count;
+
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
-        TRACE_EXIT(EFFECTORS);
+        DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\\n");
         return;
     }
-    
-    // Validate duty cycle using gentle assert
-    GENTLE_ASSERT(duty <= 255, "EFFECTORS", "Heater duty cycle exceeds maximum");
-    
-    if (duty > 255) {
-        #ifdef DEBUG_EFFECTORS
-        Serial.printf("[EFFECTORS] WARNING: Invalid heater duty cycle: %d (clamping to 255)\n", duty);
-        #endif
-        effector_error_count++;
-        duty = 255;
+    if (duty < 0 || duty > 255) {
+        ++effector_error_count;
+        LOG_WARN("EFFECTORS", "Rejected heater PWM outside 0-255 range");
+        return;
     }
-    
-    #ifdef DEBUG_EFFECTORS
-    Serial.printf("[EFFECTORS] Setting heater PWM to %d (%.1f%%)\n", duty, (float)duty/255.0*100.0);
-    #endif
-    
+
+    heaterDuty = duty;
     analogWrite(HEATER_PWM, duty);
-    pwm_writes++;
-    TRACE_EXIT(EFFECTORS);
+    ++pwm_writes;
 }
 
 /**
@@ -196,29 +183,22 @@ void setHeaterPWM(uint8_t duty) {
  * - Invalid duty cycle (>255)
  * - Safe mode override (only allows safe duty cycle)
  */
-void setFanPWM(uint8_t duty) {
-    effector_op_count++;
+void setFanPWM(int duty) {
+    ++effector_op_count;
 
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\n");
+        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\\n");
+        return;
+    }
+    if (duty < 0 || duty > 255) {
+        ++effector_error_count;
+        LOG_WARN("EFFECTORS", "Rejected fan PWM outside 0-255 range");
         return;
     }
 
-    // Validate duty cycle
-    if (duty > 255) {
-        #ifdef DEBUG_EFFECTORS
-        Serial.printf("[EFFECTORS] WARNING: Invalid fan duty cycle: %d (clamping to 255)\n", duty);
-        #endif
-        effector_error_count++;
-        duty = 255;
-    }
-    
-    #ifdef DEBUG_EFFECTORS
-    Serial.printf("[EFFECTORS] Setting fan PWM to %d (%.1f%%)\n", duty, (float)duty/255.0*100.0);
-    #endif
-    
+    fanDuty = duty;
     analogWrite(FAN_PWM, duty);
-    pwm_writes++;
+    ++pwm_writes;
 }
 
 /**
@@ -330,6 +310,8 @@ void setRelay(uint8_t channel, bool state) {
     }
     
     relay_switches++;
+    if (channel == 1) relay1State = state;
+    if (channel == 2) relay2State = state;
     
     #ifdef DEBUG_EFFECTORS
     Serial.printf("[EFFECTORS] Relay CH%d: %s\n", channel, state ? "ON" : "OFF");
