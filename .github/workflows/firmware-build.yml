@@ -38,6 +38,7 @@ jobs:
           arduino-cli lib install "Ethernet"
           arduino-cli lib install "DHT sensor library"
           arduino-cli lib install "Adafruit SGP41"
+          arduino-cli lib install "Sensirion Gas Index Algorithm"
 
       - name: Prepare Arduino sketch directory
         run: |
