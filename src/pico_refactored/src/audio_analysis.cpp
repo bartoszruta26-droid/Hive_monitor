@@ -94,7 +94,7 @@ void performFFT(int16_t* input, float* output, int size) {
     }
     
     // Simplified DFT for demonstration (replace with proper FFT in production)
-    PERF_START(fft_compute);
+    APIARY_PERF_START(fft_compute);
     for (int k = 0; k < size / 2; k++) {
         float real = 0.0f;
         float imag = 0.0f;
@@ -119,7 +119,7 @@ void performFFT(int16_t* input, float* output, int size) {
         
         output[k] = magnitude;
     }
-    PERF_END(fft_compute);
+    APIARY_PERF_END(fft_compute);
     
     // Increment process counter for throttled debug logs
     audio_process_count++;
@@ -149,7 +149,7 @@ void performFFT(int16_t* input, float* output, int size) {
  */
 static void readAudioSignal() {
     TRACE_ENTER(DEBUG_AUDIO);
-    PERF_START(adc_read);
+    APIARY_PERF_START(adc_read);
     
     int validSamples = 0;
     int outOfRangeCount = 0;
@@ -197,7 +197,7 @@ static void readAudioSignal() {
         }
     }
     
-    PERF_END(adc_read);
+    APIARY_PERF_END(adc_read);
     
     #ifdef DEBUG_AUDIO
     if (outOfRangeCount > 0) {
@@ -238,7 +238,7 @@ static void readAudioSignal() {
  */
 void calculateAudioMetrics(AudioMetrics& metrics) {
     TRACE_ENTER(DEBUG_AUDIO);
-    PERF_START(metrics_calc);
+    APIARY_PERF_START(metrics_calc);
     
     // Validate buffer state before processing
     if (audioBuffer == nullptr || audioFFT == nullptr) {
@@ -402,7 +402,7 @@ void calculateAudioMetrics(AudioMetrics& metrics) {
     }
     #endif
     
-    PERF_END(metrics_calc);
+    APIARY_PERF_END(metrics_calc);
     TRACE_EXIT(DEBUG_AUDIO);
 }
 
@@ -487,7 +487,7 @@ void classifyAudioEvent(AudioEvent& event, const AudioMetrics& metrics) {
  */
 void processAudioPeriodically(unsigned long now) {
     TRACE_ENTER(DEBUG_AUDIO);
-    PERF_START(audio_process);
+    APIARY_PERF_START(audio_process);
     
     static unsigned long lastProcess = 0;
     static unsigned long process_count = 0;
@@ -501,7 +501,8 @@ void processAudioPeriodically(unsigned long now) {
     Serial.println("[AUDIO] Processing audio data...");
     #endif
     
-    TRY_CATCH_RECOVER("AUDIO", audio_error_count++)
+    // RP2040 Arduino builds with exceptions disabled; routines report errors through status/counters.
+    {
         // Read audio signal
         readAudioSignal();
         
@@ -520,8 +521,6 @@ void processAudioPeriodically(unsigned long now) {
                       event.type == AudioEventType::NORMAL_ACTIVITY ? "NORMAL" : "ALERT",
                       event.description);
         #endif
-    CATCH_RECOVER("AUDIO", audio_error_count++)
-        LOG_ERROR("AUDIO", "Exception during audio processing");
     }
     
     // Log stats summary every 30 minutes (360 cycles)
@@ -538,6 +537,6 @@ void processAudioPeriodically(unsigned long now) {
     }
     #endif
     
-    PERF_END(audio_process);
+    APIARY_PERF_END(audio_process);
     TRACE_EXIT(DEBUG_AUDIO);
 }

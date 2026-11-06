@@ -47,7 +47,12 @@
                 android:gravity="center"
                 android:text="Brak danych uli\nPołącz z Raspberry Pi aby zobaczyć dane"
                 android:textSize="16sp"
-                android:visibility="gone" />
+                android:textColor="@color/text_secondary"
+                android:padding="32dp"
+                android:lineSpacingExtra="6dp"
+                android:background="@color/primary_light"
+                android:visibility="gone"
+                android:importantForAccessibility="yes" />
 
         </FrameLayout>
 
@@ -59,7 +64,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
-        android:contentDescription="Zmień IP"
+        android:contentDescription="@string/connect_ip"
         android:src="@android:drawable/ic_menu_preferences"
         app:tint="@android:color/white" />
 

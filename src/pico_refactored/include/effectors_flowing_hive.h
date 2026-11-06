@@ -61,20 +61,20 @@ void initServoControl();
  * @brief Set servo to specific angle
  * 
  * GENTLE CODE FEATURES:
- * - Validates angle range (0-180 degrees)
+ * - Rejects angles outside the configured range (0-180 degrees)
  * - Checks if servo is detected before operation
  * - Respects safe mode - ignores command if active
  * - Logs warnings for invalid inputs without crashing
  * 
  * @param angle Angle in degrees (0-180)
- *              Constrained automatically to valid range
+ *              Rejected if outside the valid range
  * 
- * @return void - operation is fire-and-forget
+ * @return true if the command was accepted and queued; false if blocked
  * 
  * @note Controls the servo motor that tilts the Flowing Hive frames
  *       for automatic honey extraction
  */
-void setServoAngle(uint16_t angle);
+bool setServoAngle(uint16_t angle);
 
 /**
  * @brief Move servo to rest position
@@ -84,7 +84,7 @@ void setServoAngle(uint16_t angle);
  * 
  * @note Positions frames in normal bee-accessible configuration
  */
-void setServoRestPosition();
+bool setServoRestPosition();
 
 /**
  * @brief Move servo to emptying position
@@ -94,7 +94,7 @@ void setServoRestPosition();
  * 
  * @note Tilts frames to drain honey through the collection system
  */
-void setServoEmptyPosition();
+bool setServoEmptyPosition();
 
 /**
  * @brief Execute automatic frame emptying sequence
@@ -112,11 +112,13 @@ void setServoEmptyPosition();
  * 
  * @param duration_ms Duration to hold emptying position
  *                    Default: 1800000ms (30 minutes)
- *                    Range: 1000ms - unlimited
+ *                    Range: 1000ms - 1800000ms (30 minutes maximum)
+ * @return true when the sequence starts; false if the servo is unavailable,
+ *         safe mode is active, or the requested duration is invalid
  * 
  * @note Call from main loop, then periodically call updateServoLoop()
  */
-void executeAutoEmptySequence(unsigned long duration_ms = 1800000);
+bool executeAutoEmptySequence(unsigned long duration_ms = 1800000);
 
 /**
  * @brief Update servo control loop (call periodically)

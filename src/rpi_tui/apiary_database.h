@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -227,6 +228,8 @@ private:
     std::atomic<bool> initialized_;
     std::thread aggregation_thread_;
     std::thread cleanup_thread_;
+    std::mutex wake_mutex_;
+    std::condition_variable wake_cv_;
     
     // Buforowanie danych do wsadowego zapisu
     std::vector<HiveData> data_buffer_;

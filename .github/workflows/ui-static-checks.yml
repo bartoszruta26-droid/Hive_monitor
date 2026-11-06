@@ -1,0 +1,55 @@
+name: UI static checks
+
+on:
+  pull_request:
+    paths:
+      - "src/webui/**"
+      - "src/rpi_tui/**"
+      - ".github/workflows/ui-static-checks.yml"
+  push:
+    branches:
+      - main
+      - "fix/**"
+    paths:
+      - "src/webui/**"
+      - "src/rpi_tui/**"
+      - ".github/workflows/ui-static-checks.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check WebUI JavaScript syntax
+        run: node --check src/webui/app.js
+
+      - name: Check TUI Bash syntax
+        run: bash -n src/rpi_tui/apiary_tui.sh
+
+      - name: Verify collector CSV and TUI column contract
+        run: python3 src/rpi_tui/tests/test_csv_contract.py
+
+      - name: Build TUI collector and logger tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libsqlite3-dev
+          make -C src/rpi_tui clean all
+
+      - name: Run logger tests
+        run: make -C src/rpi_tui test
+
+      - name: Run HTTP protocol regression tests
+        run: make -C src/rpi_tui test-http
+
+      - name: Run SQLite safety and persistence regression tests
+        run: make -C src/rpi_tui test-database

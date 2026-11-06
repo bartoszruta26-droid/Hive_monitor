@@ -27,11 +27,11 @@ class ApiaryAdapter(
 ) : RecyclerView.Adapter<ApiaryAdapter.ApiaryViewHolder>() {
 
     // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
-    private const val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
-    private const val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
-    private const val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
-    private const val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
-    private const val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
+    private val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
+    private val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
+    private val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
+    private val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
+    private val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
 
     private var apiaryList = emptyList<ApiaryData>()
 
@@ -47,10 +47,10 @@ class ApiaryAdapter(
 
         fun bind(apiaryData: ApiaryData) {
             cardName.text = apiaryData.name
-            cardTemperature.text = "${apiaryData.temperature}°C"
-            cardHumidity.text = "${apiaryData.humidity}%"
-            cardWeight.text = "${apiaryData.weight} kg"
-            cardBattery.text = "${apiaryData.battery}%"
+            cardTemperature.text = if (apiaryData.available) String.format(Locale.getDefault(), "%.1f°C", apiaryData.temperature) else "-- °C"
+            cardHumidity.text = if (apiaryData.available) String.format(Locale.getDefault(), "%.1f%%", apiaryData.humidity) else "-- %"
+            cardWeight.text = if (apiaryData.available) String.format(Locale.getDefault(), "%.2f kg", apiaryData.weight) else "-- kg"
+            cardBattery.text = if (apiaryData.available) "${apiaryData.battery}%" else "--%"
             
             // Bezpieczne formatowanie timestamp z walidacją
             cardTimestamp.text = "Ostatnia aktualizacja: ${formatTimestamp(apiaryData.timestamp)}"
@@ -84,6 +84,10 @@ class ApiaryAdapter(
 
         private fun determineStatus(data: ApiaryData): Pair<String, Int> {
             return when {
+                !data.online ->
+                    "OFFLINE" to ContextCompat.getColor(itemView.context, R.color.status_alert)
+                !data.available ->
+                    "BRAK DANYCH" to ContextCompat.getColor(itemView.context, R.color.status_warning)
                 data.temperature < TEMP_MIN_THRESHOLD || data.temperature > TEMP_MAX_THRESHOLD -> 
                     "ALERT" to ContextCompat.getColor(itemView.context, R.color.status_alert)
                 data.humidity < HUMIDITY_MIN_THRESHOLD || data.humidity > HUMIDITY_MAX_THRESHOLD -> 

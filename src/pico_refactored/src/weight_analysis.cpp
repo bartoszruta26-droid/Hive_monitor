@@ -264,7 +264,7 @@ HX711EventType detectHX711Events() {
  */
 void processWeightPeriodically(unsigned long now) {
     TRACE_ENTER(DEBUG_WEIGHT);
-    PERF_START(weight_process);
+    APIARY_PERF_START(weight_process);
     
     static unsigned long lastProcess = 0;
     static unsigned long process_count = 0;
@@ -292,7 +292,8 @@ void processWeightPeriodically(unsigned long now) {
         point.is_valid = (hx711_value != 0);
     }
     
-    TRY_CATCH_RECOVER("WEIGHT", weight_error_count++)
+    // RP2040 Arduino builds with exceptions disabled; routines report errors through status/counters.
+    {
         // Update buffer
         updateHX711Buffer(point);
         
@@ -308,8 +309,6 @@ void processWeightPeriodically(unsigned long now) {
                       currentHX711Metrics.current_rate,
                       currentHX711Metrics.hive_health_weight);
         #endif
-    CATCH_RECOVER("WEIGHT", weight_error_count++)
-        LOG_ERROR("WEIGHT", "Exception during weight processing");
     }
     
     // Log stats summary every 30 minutes (300 cycles at 6s interval)
@@ -327,6 +326,6 @@ void processWeightPeriodically(unsigned long now) {
     }
     #endif
     
-    PERF_END(weight_process);
+    APIARY_PERF_END(weight_process);
     TRACE_EXIT(DEBUG_WEIGHT);
 }

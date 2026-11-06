@@ -18,7 +18,11 @@ DEBUG_FILE="/var/log/apiaryguard/debug.log"
 CONFIG_DIR="/etc/apiaryguard"
 DATA_DIR="/var/lib/apiaryguard"
 LOCK_FILE="/tmp/apiary_tui.lock"
-COLLECTOR_BIN="/workspace/src/rpi_tui/apiary_collector"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+COLLECTOR_BIN="${APIARY_COLLECTOR_BIN:-${SCRIPT_DIR}/apiary_collector}"
+if [ ! -x "$COLLECTOR_BIN" ] && [ -x "/usr/local/bin/apiary-collector" ]; then
+    COLLECTOR_BIN="/usr/local/bin/apiary-collector"
+fi
 COLLECTOR_FIFO="/tmp/apiary_collector_fifo"
 COLLECTOR_DATA_FILE="/tmp/apiary_data.csv"
 
@@ -122,17 +126,23 @@ init_system() {
 
 # Start kolektora danych w tle
 start_collector() {
-    if [ ! -f "$COLLECTOR_BIN" ]; then
-        echo -e "${COLOR_RED}Błąd: Nie znaleziono binarki apiary_collector: $COLLECTOR_BIN${COLOR_RESET}"
-        echo "Skompiluj najpierw: cd /workspace/src/rpi_tui && make all"
+    # Najpierw sprawdź usługę systemową — TUI może działać bez lokalnej kopii binarki.
+    if command -v curl >/dev/null 2>&1 && curl -fsS --connect-timeout 1 --max-time 2 http://localhost:8080/health >/dev/null 2>&1; then
+        echo -e "${COLOR_GREEN}Wykryto działający kolektor HTTP na porcie 8080.${COLOR_RESET}"
+        return 0
+    fi
+
+    if [ ! -x "$COLLECTOR_BIN" ]; then
+        echo -e "${COLOR_RED}Błąd: Nie znaleziono wykonywalnej binarki apiary_collector: $COLLECTOR_BIN${COLOR_RESET}"
+        echo "Skompiluj najpierw: cd src/rpi_tui && make all"
         return 1
     fi
-    
-    # Sprawdź czy już działa
+
+    # Sprawdź czy ta instancja TUI już uruchomiła kolektor.
     if [ -n "$COLLECTOR_PID" ] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
         return 0
     fi
-    
+
     # Uruchom kolektor w tle
     "$COLLECTOR_BIN" &
     COLLECTOR_PID=$!
@@ -200,18 +210,51 @@ fetch_hive_data() {
     # Spróbuj pobrać dane z kolektora przez HTTP API
     if command -v curl &> /dev/null; then
         # Sprawdź czy kolektor jest dostępny
-        if curl -s --connect-timeout 2 http://localhost:8080/health > /dev/null 2>&1; then
+        if curl -fsS --connect-timeout 2 --max-time 4 http://localhost:8080/health > /dev/null 2>&1; then
             # Pobierz dane CSV z kolektora
             local csv_data
-            csv_data=$(curl -s --connect-timeout 2 http://localhost:8080/api/csv 2>/dev/null)
+            csv_data=$(curl -fsS --connect-timeout 2 --max-time 4 http://localhost:8080/api/csv 2>/dev/null)
             
             if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
                 # Parsuj CSV (pomijaj nagłówek)
                 local first_line=true
-                while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+                while IFS= read -r csv_line; do
                     if $first_line; then
                         first_line=false
                         continue
+                    fi
+
+                    # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
+                    IFS=',' read -r -a columns <<< "$csv_line"
+                    if (( ${#columns[@]} < 272 )); then
+                        continue
+                    fi
+                    id="${columns[0]}"
+                    status="${columns[1]}"
+                    timestamp="${columns[2]}"
+                    temp="${columns[3]}"
+                    hum="${columns[4]}"
+                    weight="${columns[5]}"
+                    bat="${columns[6]}"
+                    co2="${columns[7]}"
+                    voc="${columns[8]}"
+                    motion="${columns[9]}"
+                    online="${columns[10]}"
+                    audio_rms="${columns[11]}"
+                    audio_freq="${columns[21]}"
+                    swarm_prob="${columns[78]}"
+                    radar_dist="${columns[83]}"
+                    radar_energy="${columns[84]}"
+                    radar_act="${columns[96]}"
+                    wag_rate="${columns[121]}"
+                    wag_trend="${columns[132]}"
+                    air_iaq="${columns[271]}"
+                    if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+                        current_epoch=$(date +%s)
+                        age_seconds=$((current_epoch - timestamp))
+                        if (( age_seconds < 0 || age_seconds > 60 )); then status="STALE"; fi
+                    else
+                        status="UNKNOWN"
                     fi
                     
                     # Ignoruj puste linie
@@ -275,10 +318,43 @@ fetch_hive_data() {
         
         if [ -n "$csv_data" ]; then
             local first_line=true
-            while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+            while IFS= read -r csv_line; do
                 if $first_line; then
                     first_line=false
                     continue
+                fi
+
+                # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
+                IFS=',' read -r -a columns <<< "$csv_line"
+                if (( ${#columns[@]} < 272 )); then
+                    continue
+                fi
+                id="${columns[0]}"
+                status="${columns[1]}"
+                timestamp="${columns[2]}"
+                temp="${columns[3]}"
+                hum="${columns[4]}"
+                weight="${columns[5]}"
+                bat="${columns[6]}"
+                co2="${columns[7]}"
+                voc="${columns[8]}"
+                motion="${columns[9]}"
+                online="${columns[10]}"
+                audio_rms="${columns[11]}"
+                audio_freq="${columns[21]}"
+                swarm_prob="${columns[78]}"
+                radar_dist="${columns[83]}"
+                radar_energy="${columns[84]}"
+                radar_act="${columns[96]}"
+                wag_rate="${columns[121]}"
+                wag_trend="${columns[132]}"
+                air_iaq="${columns[271]}"
+                if [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+                    current_epoch=$(date +%s)
+                    age_seconds=$((current_epoch - timestamp))
+                    if (( age_seconds < 0 || age_seconds > 60 )); then status="STALE"; fi
+                else
+                    status="UNKNOWN"
                 fi
                 
                 [ -z "$id" ] && continue
@@ -330,8 +406,8 @@ fetch_hive_data() {
     fi
     
     # Jeśli nadal brak danych, użyj przykładowych (fallback/demo mode)
-    if ! $data_fetched; then
-        # Symulacja danych - tryb demo gdy kolektor nie działa
+    if ! $data_fetched && [[ "${APIARY_TUI_DEMO:-0}" == "1" ]]; then
+        # Symulacja danych wyłącznie po jawnym włączeniu APIARY_TUI_DEMO=1
         HIVES=("UL-001" "UL-002" "UL-003")
         HIVE_STATUS=("ONLINE" "ONLINE" "STALE")
         HIVE_TEMP=("24.5" "26.1" "23.8")

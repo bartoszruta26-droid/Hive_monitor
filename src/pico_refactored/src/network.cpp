@@ -8,24 +8,28 @@
  */
 
 #include "network.h"
+#include "sensors.h"
 #include "config.h"
 #include <SPI.h>
 #include <Arduino.h>
+#include <string.h>
 
 // External global sensor variables (defined in main .ino file)
 extern float temperature;
 extern float humidity;
 extern uint16_t co2_eq;
 extern uint16_t voc_idx;
+extern uint16_t nox_idx;
+extern bool co2_available;
 extern long hx711_value;
 extern SensorState sensors;
 
 // MAC address as byte array
 byte macAddress[] = MAC_ADDRESS;
-IPAddress staticIP STATIC_IP;
-IPAddress gateway GATEWAY;
-IPAddress subnet SUBNET;
-IPAddress rpiIP RPI_IP;
+IPAddress staticIP(STATIC_IP);
+IPAddress gateway(GATEWAY);
+IPAddress subnet(SUBNET);
+IPAddress rpiIP(RPI_IP);
 
 // Debug counters for network health monitoring
 static unsigned long network_init_count = 0;
@@ -60,7 +64,7 @@ static unsigned long link_losses = 0;
  */
 void initW6100() {
     TRACE_ENTER(NETWORK);
-    PERF_START(initW6100);
+    APIARY_PERF_START(initW6100);
     
     network_init_count++;
     
@@ -125,12 +129,12 @@ void initW6100() {
         Serial.println(Ethernet.hardwareStatus() == 0 ? "No chip" : "Chip detected but DHCP timeout");
         #endif
         
-        Ethernet.begin(macAddress, staticIP, gateway, subnet);
+        Ethernet.begin(macAddress, staticIP, gateway, gateway, subnet);
         Serial.printf("  Static IP: %s\n", staticIP.toString().c_str());
     }
 #else
     // Static IP only
-    Ethernet.begin(macAddress, staticIP, gateway, subnet);
+    Ethernet.begin(macAddress, staticIP, gateway, gateway, subnet);
     Serial.printf("  Static IP: %s\n", staticIP.toString().c_str());
 #endif
     
@@ -138,8 +142,8 @@ void initW6100() {
     delay(1000);
     
     // Check link status
-    t_link_status linkStatus = Ethernet.linkStatus();
-    if (linkStatus == LNK) {
+    EthernetLinkStatus linkStatus = Ethernet.linkStatus();
+    if (linkStatus == LinkON) {
         Serial.println("  [✓] Ethernet link established");
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] Link speed: 10/100 Mbps (auto-negotiated)");
@@ -170,7 +174,7 @@ void initW6100() {
                   network_init_count, network_error_count, dhcp_failures);
     #endif
     
-    PERF_END(initW6100);
+    APIARY_PERF_END(initW6100);
     TRACE_EXIT(NETWORK);
 }
 
@@ -191,93 +195,139 @@ void initW6100() {
  * - Invalid HTTP request format
  * - Socket errors
  */
+// HTML dashboard is implemented in the main sketch; it is read-only.
+extern void sendHtmlDashboard(EthernetClient& client);
+
 void handleClients() {
     EthernetClient client = server.available();
-    
-    if (client) {
-        client_connections++;
-        
-        #ifdef DEBUG_NETWORK
-        Serial.print("[NETWORK] Client connected from ");
-        Serial.println(client.remoteIP().toString().c_str());
-        #endif
-        
-        bool currentLineIsBlank = true;
-        String httpRequest = "";
-        unsigned long startTime = millis();
-        const unsigned long timeout = 5000; // 5 second timeout
-        
-        while (client.connected()) {
-            // Timeout protection
-            if (millis() - startTime > timeout) {
-                #ifdef DEBUG_NETWORK
-                Serial.println("[NETWORK] WARNING: Client request timeout");
-                #endif
-                network_error_count++;
+    if (!client) return;
+
+    ++client_connections;
+
+#ifdef DEBUG_NETWORK
+    Serial.print("[NETWORK] Client connected from ");
+    Serial.println(client.remoteIP().toString().c_str());
+#endif
+
+    // The endpoint is read-only. Bound both the request line and total headers
+    // and reject non-GET methods rather than buffering arbitrary client input.
+    char requestLine[96] = {0};
+    size_t requestLineLength = 0;
+    size_t totalRequestBytes = 0;
+    bool requestLineComplete = false;
+    bool currentLineIsBlank = true;
+    bool responseSent = false;
+    bool wantsDashboard = false;
+    const unsigned long startTime = millis();
+    const unsigned long timeout = 5000;
+    const size_t maxHeaderBytes = 512;
+
+    while (client.connected() && !responseSent) {
+        if (millis() - startTime > timeout) {
+#ifdef DEBUG_NETWORK
+            Serial.println("[NETWORK] Request timeout");
+#endif
+            ++network_error_count;
+            break;
+        }
+
+        while (client.available() && !responseSent) {
+            const char ch = static_cast<char>(client.read());
+            if (++totalRequestBytes > maxHeaderBytes) {
+                client.println("HTTP/1.1 431 Request Header Fields Too Large");
+                client.println("Connection: close");
+                client.println("Content-Length: 0");
+                client.println();
+                responseSent = true;
+                ++network_error_count;
                 break;
             }
-            
-            if (client.available()) {
-                char c = client.read();
-                httpRequest += c;
-                
-                #ifdef DEBUG_NETWORK
-                if (httpRequest.length() <= 50) {
-                    Serial.print(c);
+
+            if (!requestLineComplete) {
+                if (ch == '\n') {
+                    requestLine[requestLineLength] = '\0';
+                    requestLineComplete = true;
+                    currentLineIsBlank = true;
+
+                    if (strncmp(requestLine, "GET ", 4) != 0) {
+                        client.println("HTTP/1.1 405 Method Not Allowed");
+                        client.println("Allow: GET");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
+                        ++network_error_count;
+                    } else if (strncmp(requestLine, "GET / ", 6) == 0 ||
+                               strncmp(requestLine, "GET /index.html ", 16) == 0) {
+                        wantsDashboard = true;
+                    } else if (strncmp(requestLine, "GET /status ", 12) != 0 &&
+                               strncmp(requestLine, "GET /api/status ", 16) != 0) {
+                        client.println("HTTP/1.1 404 Not Found");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
+                    }
+                } else if (ch != '\r') {
+                    if (requestLineLength >= sizeof(requestLine) - 1) {
+                        client.println("HTTP/1.1 414 URI Too Long");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
+                        ++network_error_count;
+                    } else {
+                        requestLine[requestLineLength++] = ch;
+                    }
                 }
-                #endif
-                
-                if (c == '\n' && currentLineIsBlank) {
-                    // Send HTTP response header
-                    #ifdef DEBUG_NETWORK
-                    Serial.println("\n[NETWORK] Sending HTTP response...");
-                    #endif
-                    
+                continue;
+            }
+
+            if (ch == '\n' && currentLineIsBlank) {
+                if (wantsDashboard) {
+                    sendHtmlDashboard(client);
+                } else {
                     client.println("HTTP/1.1 200 OK");
                     client.println("Content-Type: application/json");
                     client.println("Connection: close");
                     client.println();
-                    
-                    // Send JSON response with sensor data
+
                     client.print("{\"temp\":");
                     client.print(temperature);
                     client.print(",\"hum\":");
                     client.print(humidity);
+                    client.print(",\"co2_available\":");
+                    client.print(co2_available ? "true" : "false");
                     client.print(",\"co2\":");
-                    client.print(co2_eq);
+                    if (co2_available) client.print(co2_eq); else client.print("null");
                     client.print(",\"voc\":");
                     client.print(voc_idx);
+                    client.print(",\"nox\":");
+                    client.print(nox_idx);
                     client.print(",\"weight\":");
                     client.print(hx711_value);
                     client.println("}");
-                    
-                    #ifdef DEBUG_NETWORK
-                    Serial.println("[NETWORK] Response sent successfully");
-                    Serial.printf("[DEBUG] Total client connections: %lu\n", client_connections);
-                    #endif
-                    
-                    break;
                 }
-                
-                if (c == '\n') {
-                    currentLineIsBlank = true;
-                } else if (c != '\r') {
-                    currentLineIsBlank = false;
-                }
+
+                responseSent = true;
+                break;
             }
-            
-            // Small delay to prevent CPU hogging
-            delay(1);
+
+            if (ch == '\n') {
+                currentLineIsBlank = true;
+            } else if (ch != '\r') {
+                currentLineIsBlank = false;
+            }
         }
-        
-        // Cleanup
-        delay(1);
-        client.stop();
-        
-        #ifdef DEBUG_NETWORK
-        Serial.println("[NETWORK] Client connection closed");
-        #endif
+
+        if (!responseSent) delay(1);
     }
+
+    client.stop();
+
+#ifdef DEBUG_NETWORK
+    Serial.println("[NETWORK] Client connection closed");
+#endif
 }
 
 /**
@@ -303,7 +353,7 @@ void sendUDPData() {
     if (millis() - lastUdpSend < 10000) return;
     
     // Check if network is ready
-    if (Ethernet.linkStatus() != LNK) {
+    if (Ethernet.linkStatus() != LinkON) {
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] WARNING: Cannot send UDP - no link");
         #endif
@@ -315,10 +365,12 @@ void sendUDPData() {
     // Prepare UDP packet using snprintf (String::format doesn't exist in Arduino)
     char payload[128];
     int payload_len = snprintf(payload, sizeof(payload),
-        "{\"t\":%.1f,\"h\":%.1f,\"c\":%d,\"v\":%d,\"w\":%ld}",
-        temperature, humidity, co2_eq, voc_idx, hx711_value
+        "{\"t\":%.1f,\"h\":%.1f,\"ca\":%d,\"c\":%d,\"v\":%u,\"n\":%u,\"w\":%ld}",
+        temperature, humidity, co2_available ? 1 : 0,
+        co2_available ? static_cast<int>(co2_eq) : 0,
+        static_cast<unsigned int>(voc_idx), static_cast<unsigned int>(nox_idx), hx711_value
     );
-    
+
     if (payload_len < 0 || payload_len >= sizeof(payload)) {
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] ERROR: UDP payload formatting failed");

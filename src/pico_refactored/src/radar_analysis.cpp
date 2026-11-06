@@ -32,7 +32,7 @@ static unsigned long no_data_cycles = 0;
 
 // Global variables (defined in main)
 extern RadarMetrics currentRadarMetrics;
-extern HardwareSerial radarSerial;
+extern SerialUART& radarSerial;
 
 // Historical data for trend analysis
 static float distanceHistory[RADAR_BUFFER_SIZE];
@@ -384,7 +384,7 @@ void calculateRadarMetrics(RadarMetrics& metrics) {
  */
 void processRadarPeriodically(unsigned long now) {
     TRACE_ENTER(DEBUG_RADAR);
-    PERF_START(radar_process);
+    APIARY_PERF_START(radar_process);
     
     static unsigned long lastProcess = 0;
     static unsigned long process_count = 0;
@@ -397,7 +397,8 @@ void processRadarPeriodically(unsigned long now) {
     // Try to read new data from radar
     bool newData = false;
     
-    TRY_CATCH_RECOVER("RADAR", radar_error_count++)
+    // RP2040 Arduino builds with exceptions disabled; routines report errors through status/counters.
+    {
         newData = readRadarData();
         
         if (newData) {
@@ -423,8 +424,6 @@ void processRadarPeriodically(unsigned long now) {
                 noDataCount = 0;
             }
         }
-    CATCH_RECOVER("RADAR", radar_error_count++)
-        LOG_ERROR("RADAR", "Exception during radar processing");
     }
     
     // Log stats summary every 30 minutes (900 cycles at 2s interval)
@@ -442,6 +441,6 @@ void processRadarPeriodically(unsigned long now) {
     }
     #endif
     
-    PERF_END(radar_process);
+    APIARY_PERF_END(radar_process);
     TRACE_EXIT(DEBUG_RADAR);
 }

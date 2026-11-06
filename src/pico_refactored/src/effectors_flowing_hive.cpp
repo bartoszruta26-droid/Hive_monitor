@@ -37,9 +37,10 @@
  */
 
 #include "effectors_flowing_hive.h"
+#include "effectors.h"
 #include <Arduino.h>
+#include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
-#include <RP2040Watchdog.h>
 #endif
 
 // ============================================================================
@@ -49,10 +50,10 @@
 // ----------------------------------------------------------------------------
 // Servo State Variables
 // ----------------------------------------------------------------------------
+static Servo flowingHiveServo;                         ///< RP2040 PIO-backed servo controller
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
-static unsigned long lastServoUpdate = 0;                   ///< Last update timestamp (millis)
-static bool servoInitialized = false;                       ///< PWM initialized flag
-static bool servoDetected = false;                          ///< Hardware detection flag
+static bool servoInitialized = false;                       ///< Servo PIO attachment succeeded
+static bool servoControllerReady = false;                  ///< Controller attached; no physical feedback
 static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
 static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
 static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
@@ -74,7 +75,7 @@ static float currentFlowRate = 0.0f;                        ///< Current flow ra
 static float totalVolume = 0.0f;                            ///< Accumulated volume in liters
 static unsigned long lastFlowUpdate = 0;                    ///< Last calculation timestamp
 static bool flowSensorInitialized = false;                  ///< Interrupt attached flag
-static bool flowSensorDetected = false;                     ///< Hardware detection flag
+static bool flowSensorInterruptReady = false;                     ///< Hardware detection flag
 
 // ----------------------------------------------------------------------------
 // Safe Mode State
@@ -110,7 +111,7 @@ static unsigned long flow_error_count = 0;                  ///< Flow calculatio
  * 
  * @note Attached to FLOW_SENSOR_PIN (GPIO 25) on RISING edge
  */
-void IRAM_ATTR flowSensorISR() {
+void flowSensorISR() {
     flowPulseCount++;
 }
 
@@ -139,28 +140,43 @@ void IRAM_ATTR flowSensorISR() {
  */
 void initServoControl() {
     TRACE_ENTER(SERVO);
-    
-    // Configure PWM output pin
+
     pinMode(SERVO_EMPTY_PIN, OUTPUT);
-    
-    // Initialize PWM for servo control
-    // Standard RC servos use 50Hz (20ms period)
-    // Pulse width: 500us (0°) to 2500us (180°)
-    // NOTE: analogWriteFrequency is not available on RP2040 Arduino core
-    // PWM frequency is set automatically (default ~1kHz)
-    analogWrite(SERVO_EMPTY_PIN, 0);  // Start at 0% duty cycle
-    
-    // Update state
-    servoInitialized = true;
-    servoDetected = true;  // Assume present - no feedback from servo
+    digitalWrite(SERVO_EMPTY_PIN, LOW);
+
+    // The Arduino-Pico core includes a PIO-backed Servo implementation.
+    // It generates the 20ms servo frame independently of the main loop.
+    const int servoAttachResult = flowingHiveServo.attach(
+        SERVO_EMPTY_PIN,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+
+    servoInitialized = (servoAttachResult >= 0);
+    servoControllerReady = servoInitialized; // Physical servo presence is not sensed.
     currentServoAngle = SERVO_REST_ANGLE;
-    
-    // Log initialization
-    DBG_SERVO("[SERVO] Initialized on GPIO %d\n", SERVO_EMPTY_PIN);
-    DBG_SERVO("[SERVO] Rest position: %d degrees\n", SERVO_REST_ANGLE);
-    DBG_SERVO("[SERVO] PWM: 50Hz, pulse width %d-%d us\n", 
+    autoEmptyActive = false;
+
+    if (!servoInitialized) {
+        LOG_ERROR("SERVO", "Servo PIO attachment failed; movement commands disabled");
+        TRACE_EXIT(SERVO);
+        return;
+    }
+
+    const uint32_t restPulse = map(
+        SERVO_REST_ANGLE,
+        SERVO_MIN_ANGLE,
+        SERVO_MAX_ANGLE,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+    flowingHiveServo.writeMicroseconds(static_cast<int>(restPulse));
+
+    DBG_SERVO("[SERVO] Initialized on GPIO %d using RP2040 PIO servo driver\n",
+              SERVO_EMPTY_PIN);
+    DBG_SERVO("[SERVO] Pulse range: %d-%d us; refresh interval: 20 ms\n",
               SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
-    
+
     TRACE_EXIT(SERVO);
 }
 
@@ -181,22 +197,6 @@ void initServoControl() {
  * 
  * @note Internal helper function - not exposed in API
  */
-static uint8_t angleToDuty(uint16_t angle) {
-    // Gentle code: Constrain input to prevent hardware damage
-    angle = constrain(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
-    
-    // Map angle to pulse width using linear interpolation
-    uint32_t pulseWidth = map(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE, 
-                              SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
-    
-    // Convert pulse width to duty cycle (8-bit resolution)
-    // For 50Hz: period = 20ms = 20000μs
-    // duty = (pulseWidth / 20000) * 255
-    uint8_t duty = (pulseWidth * 255) / 20000;
-    
-    return duty;
-}
-
 /**
  * @brief Set servo to specific angle
  * 
@@ -219,81 +219,108 @@ static uint8_t angleToDuty(uint16_t angle) {
  * 
  * @note Non-blocking operation - returns immediately
  */
-void setServoAngle(uint16_t angle) {
+bool setServoAngle(uint16_t angle) {
     TRACE_ENTER(SERVO);
     servo_op_count++;
     
     // GENTLE CODE: Check hardware presence before operation
-    if (!servoDetected || !servoInitialized) {
+    if (!servoControllerReady || !servoInitialized) {
         DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
         TRACE_EXIT(SERVO);
-        return;  // Graceful exit - no error thrown
+        return false;  // Graceful exit - no error thrown
     }
     
     // GENTLE CODE: Respect safe mode
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Command ignored - safe mode active\n");
         TRACE_EXIT(SERVO);
-        return;  // Blocked for safety
+        return false;  // Blocked for safety
     }
     
-    // Validate angle with graceful degradation
-    if (angle > SERVO_MAX_ANGLE) {
-        DBG_SERVO("[SERVO] WARNING: Invalid angle %d (max %d), constraining\n", 
-                  angle, SERVO_MAX_ANGLE);
-        servo_error_count++;
-        angle = SERVO_MAX_ANGLE;  // Auto-correct instead of failing
+    // Reject out-of-range angles rather than silently driving to a limit.
+    if (angle < SERVO_MIN_ANGLE || angle > SERVO_MAX_ANGLE) {
+        DBG_SERVO("[SERVO] ERROR: Invalid angle %d (allowed %d-%d)\n",
+                  angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
+        ++servo_error_count;
+        TRACE_EXIT(SERVO);
+        return false;
     }
     
-    // Update state and apply new position
+    // Convert the requested angle to a pulse width in microseconds.
+    // Servo library keeps generating stable 50Hz pulses in the RP2040 PIO.
+    const uint32_t pulseWidth = map(
+        angle,
+        SERVO_MIN_ANGLE,
+        SERVO_MAX_ANGLE,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+
     currentServoAngle = angle;
-    uint8_t duty = angleToDuty(angle);
-    
-    analogWrite(SERVO_EMPTY_PIN, duty);
-    
-    DBG_SERVO("[SERVO] Angle set to %d degrees (duty=%d/255)\n", angle, duty);
-    
+    flowingHiveServo.writeMicroseconds(static_cast<int>(pulseWidth));
+
+    DBG_SERVO("[SERVO] Angle set to %d degrees (pulse=%lu us)\n",
+              angle, static_cast<unsigned long>(pulseWidth));
+
     TRACE_EXIT(SERVO);
+    return true;
 }
 
 /**
  * @brief Move servo to rest position
  */
-void setServoRestPosition() {
+bool setServoRestPosition() {
     DBG_SERVO("[SERVO] Moving to rest position (%d degrees)\n", SERVO_REST_ANGLE);
-    setServoAngle(SERVO_REST_ANGLE);
+    return setServoAngle(SERVO_REST_ANGLE);
 }
 
 /**
  * @brief Move servo to emptying position
  */
-void setServoEmptyPosition() {
+bool setServoEmptyPosition() {
     DBG_SERVO("[SERVO] Moving to emptying position (%d degrees)\n", SERVO_EMPTY_ANGLE);
-    setServoAngle(SERVO_EMPTY_ANGLE);
+    return setServoAngle(SERVO_EMPTY_ANGLE);
 }
 
 /**
  * @brief Execute automatic frame emptying sequence
  */
-void executeAutoEmptySequence(unsigned long duration_ms) {
+bool executeAutoEmptySequence(unsigned long duration_ms) {
     TRACE_ENTER(SERVO);
-    
+
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\n");
         TRACE_EXIT(SERVO);
-        return;
+        return false;
     }
-    
+
+    if (!servoInitialized || !servoControllerReady) {
+        ++servo_error_count;
+        LOG_WARN("SERVO", "Auto-empty request rejected: servo controller is unavailable");
+        TRACE_EXIT(SERVO);
+        return false;
+    }
+
+    if (duration_ms < SERVO_AUTO_EMPTY_MIN_MS ||
+        duration_ms > SERVO_AUTO_EMPTY_MAX_MS) {
+        ++servo_error_count;
+        LOG_WARN("SERVO", "Auto-empty duration outside permitted 1-1800 second range");
+        TRACE_EXIT(SERVO);
+        return false;
+    }
+
     DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\n", duration_ms);
-    
-    // Move to emptying position
-    setServoEmptyPosition();
-    
+    if (!setServoEmptyPosition()) {
+        TRACE_EXIT(SERVO);
+        return false;
+    }
+
     autoEmptyActive = true;
     autoEmptyStartTime = millis();
     autoEmptyDuration = duration_ms;
-    
+
     TRACE_EXIT(SERVO);
+    return true;
 }
 
 /**
@@ -320,7 +347,7 @@ void updateServoLoop() {
  */
 long readHX711_2() {
     TRACE_ENTER(HX711_2);
-    PERF_START(readHX711_2);
+    APIARY_PERF_START(readHX711_2);
     
     long count = 0;
     unsigned long read_start = millis();
@@ -342,13 +369,13 @@ long readHX711_2() {
             Serial.printf("[HX711_2] Timeout after %lums\n", millis() - start_time);
             #endif
             
-            PERF_END(readHX711_2);
+            APIARY_PERF_END(readHX711_2);
             TRACE_EXIT(HX711_2);
             return 0;
         }
         
         #ifdef ARDUINO_ARCH_RP2040
-        rp2040.wdtReset();
+        rp2040.wdt_reset();
         #endif
         
         delayMicroseconds(10);
@@ -376,14 +403,14 @@ long readHX711_2() {
     if (count < HX711_2_MIN_VALID_VALUE || count > HX711_2_MAX_VALID_VALUE) {
         hx711_2_error_count++;
         DBG_HX711("[HX711_2] Invalid reading: %ld\n", count);
-        PERF_END(readHX711_2);
+        APIARY_PERF_END(readHX711_2);
         TRACE_EXIT(HX711_2);
         return 0;
     }
     
     hx711_2_value = count;
     
-    PERF_END(readHX711_2);
+    APIARY_PERF_END(readHX711_2);
     TRACE_EXIT(HX711_2);
     return count;
 }
@@ -474,16 +501,20 @@ void initFlowSensor() {
     TRACE_ENTER(FLOW);
     
     pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-    
-    // Attach interrupt on rising edge
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
-    
-    flowSensorInitialized = true;
-    flowSensorDetected = true;  // Assume present if interrupt attaches successfully
+
+    // Initialize all ISR-shared state before enabling the interrupt.
+    noInterrupts();
     flowPulseCount = 0;
+    interrupts();
     currentFlowRate = 0.0f;
     totalVolume = 0.0f;
     lastFlowUpdate = millis();
+
+    // Attach interrupt only after the pulse counter and timestamps are ready.
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowSensorISR, RISING);
+
+    flowSensorInitialized = true;
+    flowSensorInterruptReady = true;  // Interrupt setup succeeded; physical sensor presence is not verified.
     
     DBG_FLOW("[FLOW] Initialized on GPIO %d (interrupt-enabled)\n", FLOW_SENSOR_PIN);
     DBG_FLOW("[FLOW] Pulses per liter: %d\n", FLOW_SENSOR_PULSES_PER_LITER);
@@ -495,44 +526,44 @@ void initFlowSensor() {
  * @brief Update flow sensor calculations
  */
 void updateFlowSensor() {
-    // Check if flow sensor is detected/initialized
-    if (!flowSensorDetected || !flowSensorInitialized) return;
-    
-    unsigned long now = millis();
-    unsigned long elapsed = now - lastFlowUpdate;
-    
+    if (!flowSensorInterruptReady || !flowSensorInitialized) return;
+
+    const unsigned long now = millis();
+    const unsigned long elapsed = now - lastFlowUpdate;
     if (elapsed < FLOW_SAMPLE_INTERVAL_MS) return;
-    
-    flow_read_count++;
-    
-    // Calculate flow rate from pulse count
-    // Flow rate (L/min) = (pulses / pulses_per_liter) / (time_minutes)
-    float timeMinutes = elapsed / 60000.0f;
-    
-    if (timeMinutes > 0) {
-        float liters = (float)flowPulseCount / FLOW_SENSOR_PULSES_PER_LITER;
-        currentFlowRate = liters / timeMinutes;
-        
-        // Validate flow rate
-        if (currentFlowRate < 0 || currentFlowRate > FLOW_MAX_RATE) {
-            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\n", currentFlowRate);
-            flow_error_count++;
-            currentFlowRate = 0.0f;
-        }
-        
-        // Add to total volume
-        totalVolume += liters;
-    }
-    
-    // Reset pulse counter for next interval
+
+    ++flow_read_count;
+
+    // Snapshot and clear the ISR-owned pulse counter atomically. Otherwise
+    // a pulse arriving between read and reset could be lost.
+    noInterrupts();
+    const unsigned long pulses = flowPulseCount;
     flowPulseCount = 0;
+    interrupts();
+
+    const float timeMinutes = elapsed / 60000.0f;
+    if (timeMinutes > 0.0f) {
+        const float liters = static_cast<float>(pulses) /
+                             static_cast<float>(FLOW_SENSOR_PULSES_PER_LITER);
+        const float measuredRate = liters / timeMinutes;
+
+        if (measuredRate < 0.0f || measuredRate > FLOW_MAX_RATE) {
+            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\n", measuredRate);
+            ++flow_error_count;
+            currentFlowRate = 0.0f;
+        } else {
+            currentFlowRate = measuredRate;
+            totalVolume += liters;
+        }
+    }
+
     lastFlowUpdate = now;
-    
-    #ifdef DEBUG_FLOW
+
+#ifdef DEBUG_FLOW
     if (flow_read_count % 10 == 0) {
         DBG_FLOW("[FLOW] Rate: %.3f L/min, Total: %.3f L\n", currentFlowRate, totalVolume);
     }
-    #endif
+#endif
 }
 
 /**
@@ -554,7 +585,11 @@ float getTotalVolumeLiters() {
  */
 void resetFlowCounter() {
     totalVolume = 0.0f;
+    noInterrupts();
     flowPulseCount = 0;
+    interrupts();
+    currentFlowRate = 0.0f;
+    lastFlowUpdate = millis();
     DBG_FLOW("[FLOW] Volume counter reset\n");
 }
 
@@ -577,9 +612,9 @@ void printFlowingHiveEffectorStatus() {
     
     // Servo status
     Serial.printf("  Servo:\n");
-    Serial.printf("    Detected: %s\n", servoDetected ? "YES" : "NO");
+    Serial.printf("    Controller ready: %s\n", servoControllerReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", servoInitialized ? "YES" : "NO");
-    if (servoDetected) {
+    if (servoControllerReady) {
         Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
         Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
     }
@@ -598,9 +633,9 @@ void printFlowingHiveEffectorStatus() {
     
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
-    Serial.printf("    Detected: %s\n", flowSensorDetected ? "YES" : "NO");
+    Serial.printf("    Interrupt ready: %s\n", flowSensorInterruptReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
-    if (flowSensorDetected && flowSensorInitialized) {
+    if (flowSensorInterruptReady && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
         Serial.printf("    Total volume: %.3f L\n", totalVolume);
         Serial.printf("    Honey flowing: %s\n", isHoneyFlowing() ? "YES" : "NO");
@@ -653,6 +688,14 @@ void activateFlowingHiveSafeMode(const char* reason) {
  * @brief Deactivate safe mode
  */
 void deactivateFlowingHiveSafeMode() {
+    // The subsystem latch may be released only after the main interlock has
+    // been cleared deliberately. This prevents one subsystem from bypassing
+    // a still-active system-wide emergency stop.
+    if (isSafeModeActive()) {
+        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected while main safe mode is active");
+        return;
+    }
+
     flowingHiveSafeMode = false;
     DBG_SERVO("[SERVO] Safe mode deactivated\n");
 }

@@ -8,17 +8,21 @@
  */
 
 #include "sensors.h"
+#include "hx711.h"
 #include <Adafruit_SGP41.h>
+#include <SensirionGasIndexAlgorithm.h>
 #include <HardwareSerial.h>
 #include <Arduino.h>
 
 // External globals (defined in main .ino file)
 extern Adafruit_SGP41 sgp;
-extern HardwareSerial radarSerial;
+extern SerialUART& radarSerial;
 extern float temperature;
 extern float humidity;
 extern uint16_t co2_eq;
 extern uint16_t voc_idx;
+extern uint16_t nox_idx;
+extern bool co2_available;
 extern long hx711_value;
 // Note: sensors is declared extern in sensors.h, no need to redeclare here
 
@@ -27,6 +31,13 @@ static unsigned long sensor_init_count = 0;
 static unsigned long sensor_error_count = 0;
 static unsigned long dht_read_errors = 0;
 static unsigned long sgp_read_errors = 0;
+static uint8_t sgp_conditioning_remaining = 10;
+// readSensors() samples every 2 seconds; configure both algorithms accordingly.
+static SensirionGasIndexAlgorithm vocIndexAlgorithm(
+    SensirionGasIndexAlgorithm::ALGORITHM_TYPE_VOC, 2.0f);
+static SensirionGasIndexAlgorithm noxIndexAlgorithm(
+    SensirionGasIndexAlgorithm::ALGORITHM_TYPE_NOX, 2.0f);
+
 static unsigned long hx711_read_errors = 0;
 
 /**
@@ -75,7 +86,12 @@ void initUART() {
     Serial.println(", Baud=115200");
     #endif
     
-    radarSerial.begin(115200, SERIAL_8N1, RADAR_RX, RADAR_TX);
+    // Arduino-Pico exposes UART1 as Serial2. Configure TX/RX before begin().
+    if (!radarSerial.setPinout(RADAR_TX, RADAR_RX)) {
+        LOG_ERROR("SENSORS", "Radar UART pin configuration failed");
+        return;
+    }
+    radarSerial.begin(115200, SERIAL_8N1);
     
     #ifdef DEBUG_SENSORS
     Serial.println(">> UART1 initialized successfully for radar");
@@ -105,6 +121,12 @@ void initPWM() {
     
     pinMode(HEATER_PWM, OUTPUT);
     pinMode(FAN_PWM, OUTPUT);
+
+    // Deterministic power-up state: heater and fan start disabled.
+    // Safe-mode fan ventilation is applied only after an explicit fault.
+    analogWrite(HEATER_PWM, 0);
+    analogWrite(FAN_PWM, 0);
+
     // analogWriteFrequency is not available on RP2040 Arduino core
     // PWM frequency is set automatically (default ~1kHz)
     
@@ -427,20 +449,26 @@ void initSensors() {
     }
     
     if (sensors.airQual.active) {
-        if (sgp.begin_I2C(0x59, &Wire)) {
-            sgp.measureBaseline();
+        if (sgp.begin(SGP41_DEFAULT_ADDR, &Wire)) {
+            sgp_conditioning_remaining = 10;
+            vocIndexAlgorithm.reset();
+            noxIndexAlgorithm.reset();
+            co2_available = false; // SGP41 measures VOC/NOx, not CO2.
+            co2_eq = 0;
+            voc_idx = 0;
+            nox_idx = 0;
             #ifdef DEBUG_SENSORS
-            Serial.println(">> SGP41 initialized successfully with baseline measurement");
+            Serial.println(">> SGP41 initialized; starting 10-sample conditioning");
             #else
             Serial.println(">> SGP41 initialized");
             #endif
         } else {
             sensors.airQual.active = false;
-            sgp_read_errors++;
-            sensor_error_count++;
+            ++sgp_read_errors;
+            ++sensor_error_count;
             Serial.println(">> SGP41 initialization failed");
             #ifdef DEBUG_SENSORS
-            Serial.println("[ERROR] SGP41 begin_I2C returned false");
+            Serial.println("[ERROR] SGP41 begin() returned false");
             #endif
         }
     } else {
@@ -472,7 +500,7 @@ void initSensors() {
  */
 void readSensors(unsigned long now) {
     TRACE_ENTER(SENSORS);
-    PERF_START(readSensors);
+    APIARY_PERF_START(readSensors);
     
     static unsigned long lastRead = 0;
     
@@ -488,39 +516,42 @@ void readSensors(unsigned long now) {
     }
     #endif
     
-    // Read temperature/humidity with exception handling
+    // Read temperature/humidity. Temperature validity is tracked separately
+    // because it is a safety prerequisite whenever the heater is requested.
     if (sensors.tempHum.active) {
         float h = dht.readHumidity();
         float t = dht.readTemperature();
-        
-        if (!isnan(h)) {
-            humidity = h;
-            sensors.tempHum.error_count = 0; // Reset error counter on success
+
+        if (!isnan(t) && t >= -40.0f && t <= 80.0f) {
+            temperature = t;
+            sensors.tempHum.critical_error_count = 0;
+            sensors.tempHum.last_read_time = now;
         } else {
-            sensors.tempHum.error_count++;
+            if (sensors.tempHum.critical_error_count < 255) {
+                sensors.tempHum.critical_error_count++;
+            }
+            #ifdef DEBUG_SENSORS
+            Serial.printf("[SENSORS] Invalid temperature sample (consecutive: %u)\n",
+                          sensors.tempHum.critical_error_count);
+            #endif
+        }
+
+        if (!isnan(h) && h >= 0.0f && h <= 100.0f) {
+            humidity = h;
+            sensors.tempHum.error_count = 0;
+        } else {
+            if (sensors.tempHum.error_count < 255) {
+                sensors.tempHum.error_count++;
+            }
             dht_read_errors++;
             #ifdef DEBUG_SENSORS
             if (sensors.tempHum.error_count % 5 == 0) {
                 LOG_WARN("DHT", "Humidity read error");
-                Serial.printf("[SENSORS] WARNING: DHT humidity read error (consecutive: %lu)\n", 
-                             sensors.tempHum.error_count);
             }
             #endif
         }
-        
-        if (!isnan(t)) {
-            temperature = t;
-        } else {
-            #ifdef DEBUG_SENSORS
-            Serial.println("[SENSORS] WARNING: DHT temperature read returned NaN");
-            #endif
-        }
-        
-        // Validate temperature and humidity ranges
-        GENTLE_ASSERT(humidity >= 0.0f && humidity <= 100.0f, "SENSORS", "Humidity out of valid range");
-        GENTLE_ASSERT(temperature >= -40.0f && temperature <= 80.0f, "SENSORS", "Temperature out of valid range");
     }
-    
+
     // Read HX711 weight sensor with error tracking
     if (sensors.hx711.active) {
         long raw = readHX711();
@@ -550,35 +581,50 @@ void readSensors(unsigned long now) {
         }
     }
     
-    // Read SGP41 air quality sensor with validation
+    // SGP41 provides raw VOC/NOx signals. Apply Sensirion's gas-index
+    // algorithms; do not fabricate CO2-equivalent values from this sensor.
     if (sensors.airQual.active) {
-        sgp.measureGas();
-        co2_eq = sgp.CO2eq;
-        voc_idx = sgp.VOCindex;
-        
-        // Validate readings against configured limits from config.h
-        if (co2_eq < CO2_MIN_VALID || co2_eq > CO2_MAX_VALID) {
+        uint16_t rawVoc = 0;
+        uint16_t rawNox = 0;
+        const float compensationHumidity =
+            (sensors.tempHum.active && isfinite(humidity) && humidity >= 0.0f && humidity <= 100.0f)
+                ? humidity : 50.0f;
+        const float compensationTemperature =
+            (sensors.tempHum.active && isfinite(temperature) && temperature >= -40.0f && temperature <= 80.0f)
+                ? temperature : 25.0f;
+
+        bool measurementOk = false;
+        if (sgp_conditioning_remaining > 0) {
+            measurementOk = sgp.executeConditioning(
+                &rawVoc, compensationHumidity, compensationTemperature);
+            if (measurementOk) {
+                --sgp_conditioning_remaining;
+            }
+        } else {
+            measurementOk = sgp.measureRawSignals(
+                &rawVoc, &rawNox, compensationHumidity, compensationTemperature);
+        }
+
+        if (measurementOk) {
+            const int32_t vocIndex = vocIndexAlgorithm.process(rawVoc);
+            const int32_t noxIndex = noxIndexAlgorithm.process(rawNox);
+            voc_idx = static_cast<uint16_t>(constrain(vocIndex, 0, 500));
+            nox_idx = static_cast<uint16_t>(constrain(noxIndex, 0, 500));
+            co2_available = false;
+            co2_eq = 0;
             #ifdef DEBUG_SENSORS
-            LOG_WARN("SGP41", "CO2 reading out of valid range");
-            DBG_SENSOR("[SENSORS] Invalid CO2: %d ppm (valid: %d-%d)\n", 
-                      co2_eq, CO2_MIN_VALID, CO2_MAX_VALID);
+            if (read_cycle % 30 == 0) {
+                DBG_SENSOR("[SENSORS] SGP41 - VOC index: %u, NOx index: %u, conditioning left: %u\n",
+                           voc_idx, nox_idx, sgp_conditioning_remaining);
+            }
             #endif
+        } else {
+            ++sgp_read_errors;
+            ++sensor_error_count;
+            LOG_WARN("SGP41", "Raw signal measurement failed");
         }
-        if (voc_idx < VOC_MIN_VALID || voc_idx > VOC_MAX_VALID) {
-            #ifdef DEBUG_SENSORS
-            LOG_WARN("SGP41", "VOC reading out of valid range");
-            DBG_SENSOR("[SENSORS] Invalid VOC: %d (valid: %d-%d)\n", 
-                      voc_idx, VOC_MIN_VALID, VOC_MAX_VALID);
-            #endif
-        }
-        
-        #ifdef DEBUG_SENSORS
-        if (read_cycle % 30 == 0) {
-            DBG_SENSOR("[SENSORS] SGP41 - CO2: %d ppm, VOC: %d\n", co2_eq, voc_idx);
-        }
-        #endif
     }
-    
-    PERF_END(readSensors);
+
+    APIARY_PERF_END(readSensors);
     TRACE_EXIT(SENSORS);
 }

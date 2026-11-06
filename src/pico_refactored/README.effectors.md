@@ -31,7 +31,7 @@ System efektorów Flowing Hive to zaawansowany moduł automatyzacji procesu zbie
 - **Pomiar przepływu miodu**: Dokładny pomiar objętości zebranego miodu
 - **Tryb bezpieczny**: Automatyczne wyłączenie w przypadku wykryciu anomalii
 - **Kompleksowe logowanie**: Szczegółowe informacje diagnostyczne
-- **Hardware Detection**: Automatyczne wykrywanie podłączonych urządzeń
+- **Hardware Detection**: Weryfikacja dostępności sterownika; nie jest to fizyczne wykrywanie serwa
 - **Gentle Code**: Brak crashów - graceful degradation przy błędach
 
 ---
@@ -338,18 +338,27 @@ Inicjalizuje sterowanie serwem:
 - Ustawia częstotliwość 50Hz (okres 20ms)
 - Inicjalizuje pozycję spoczynkową
 
-#### `void setServoAngle(uint16_t angle)`
+#### `bool setServoAngle(uint16_t angle)`
 Ustawia kąt serwa:
 - **Parametr**: `angle` - kąt w stopniach (0-180)
 - Walidacja zakresu
-- Konwersja na sygnał PWM (500-2500µs)
+- Sterowanie przez wbudowaną w rdzeń Arduino-Pico bibliotekę `Servo`, wykorzystującą PIO do generowania impulsów z okresem 20 ms (50 Hz).
+- Zakres impulsów jest ustawiany przez `SERVO_PULSE_WIDTH_MIN/MAX` (obecnie 500-2500 µs); wymaga kalibracji dla konkretnego modelu serwa i mechanizmu.
 - Blokada w trybie safe mode
+- Błąd przydzielenia kanału PIO powoduje odrzucenie poleceń ruchu. Flaga oznacza gotowość sterownika, a nie fizyczne wykrycie serwa.
 
-#### `void executeAutoEmptySequence(unsigned long duration_ms)`
+
+
+**Uwaga sprzętowa:** biblioteka `Servo` w rdzeniu Arduino-Pico wykorzystuje PIO i generuje przebieg w tle, niezależnie od obciążenia pętli głównej. Nie potwierdza to jednak prawidłowości mechanicznego zakresu ruchu. Pierwsze uruchomienie należy wykonać bez obciążenia mechanizmu, z ograniczonym zakresem impulsów i kontrolą poboru prądu.
+
+#### `bool executeAutoEmptySequence(unsigned long duration_ms)`
 Uruchamia sekwencję automatycznego opróżniania:
-1. Przejście do pozycji EMPTY (160°)
-2. Oczekiwanie przez określony czas
-3. Powrót do pozycji REST (10°)
+1. Sprawdza tryb bezpieczny i dozwolony czas pracy.
+2. Przechodzi do pozycji EMPTY (160°).
+3. Oczekuje przez określony czas.
+4. Wraca do pozycji REST (10°).
+
+**Ograniczenie czasu:** od 1 do 1800 sekund (maksymalnie 30 minut). Wartości spoza zakresu są odrzucane bez uruchomienia serwa.
 
 **Przykład użycia:**
 ```cpp

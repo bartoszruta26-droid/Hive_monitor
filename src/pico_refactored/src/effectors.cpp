@@ -14,6 +14,7 @@
  */
 
 #include "effectors.h"
+#include "effectors_flowing_hive.h"
 #include <Arduino.h>
 
 // External actuator settings (defined in main .ino)
@@ -39,13 +40,29 @@ static bool safe_mode_active = false;
  * Called periodically in loop() to apply actuator settings
  * Includes safe mode override capability
  */
+static void applySafeOutputState() {
+    // LOW is the existing firmware's documented inactive relay level.
+    // Verify relay-board polarity against the actual hardware before deployment.
+    analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
+    analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
+    digitalWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? HIGH : LOW);
+    digitalWrite(VALVE_1, LOW);
+    digitalWrite(VALVE_2, LOW);
+    digitalWrite(RELAY_CH1, LOW);
+    digitalWrite(RELAY_CH2, LOW);
+    digitalWrite(RELAY_CH3, LOW);
+    digitalWrite(RELAY_CH4, LOW);
+    digitalWrite(RELAY_CH5, LOW);
+    digitalWrite(RELAY_CH6, LOW);
+    digitalWrite(RELAY_CH7, LOW);
+    digitalWrite(RELAY_CH8, LOW);
+}
+
 void updateOutputs() {
-    // Safe mode override - disable heater and pump, run fan at safe level
+    // Safe mode is an output interlock, not merely a change to three outputs.
     if (safe_mode_active) {
-        analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
-        analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
-        digitalWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? HIGH : LOW);
-        DBG_EFF("[EFFECTORS] Safe mode active - outputs overridden\n");
+        applySafeOutputState();
+        DBG_EFF("[EFFECTORS] Safe mode active - all relay outputs inhibited\n");
         return;
     }
     
@@ -63,22 +80,50 @@ void updateOutputs() {
  * @param reason Description of why safe mode was activated
  */
 void activateSafeMode(const char* reason) {
+    // Synchronize the Flowing Hive servo interlock with the main safe mode.
+    // This cancels any active auto-empty sequence before outputs are applied.
+    activateFlowingHiveSafeMode(reason);
     safe_mode_active = true;
     LOG_ERROR("EFFECTORS", reason);
     DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason);
     
-    // Set safe defaults immediately
-    analogWrite(HEATER_PWM, SAFE_MODE_HEATER_DUTY);
-    analogWrite(FAN_PWM, SAFE_MODE_FAN_DUTY);
-    digitalWrite(PUMP_RELAY, SAFE_MODE_PUMP_STATE ? HIGH : LOW);
+    // Apply the complete safe output state immediately, not on the next loop.
+    applySafeOutputState();
 }
 
 /**
  * @brief Deactivate safe mode and restore normal operation
  */
 void deactivateSafeMode() {
+    // Releasing the interlock must never resume stale actuator commands.
+    // Clear remembered setpoints; the operator must issue fresh commands
+    // after investigating and resolving the condition that caused safe mode.
+    heaterDuty = 0;
+    fanDuty = 0;
+    pumpDuty = 0;
+    relay1State = false;
+    relay2State = false;
+
+    // Force every output inactive immediately. Do not restore prior fan,
+    // heater, pump, valve, or relay states on safe-mode release.
+    analogWrite(HEATER_PWM, 0);
+    analogWrite(FAN_PWM, 0);
+    digitalWrite(PUMP_RELAY, LOW);
+    digitalWrite(VALVE_1, LOW);
+    digitalWrite(VALVE_2, LOW);
+    digitalWrite(RELAY_CH1, LOW);
+    digitalWrite(RELAY_CH2, LOW);
+    digitalWrite(RELAY_CH3, LOW);
+    digitalWrite(RELAY_CH4, LOW);
+    digitalWrite(RELAY_CH5, LOW);
+    digitalWrite(RELAY_CH6, LOW);
+    digitalWrite(RELAY_CH7, LOW);
+    digitalWrite(RELAY_CH8, LOW);
+
+    // Keep the independent Flowing Hive latch active. Releasing the main
+    // interlock must never silently unlock a subsystem-specific actuator.
     safe_mode_active = false;
-    DBG_EFF("[EFFECTORS] Safe mode deactivated - normal operation resumed\n");
+    DBG_EFF("[EFFECTORS] Main safe mode released; setpoints cleared; Flowing Hive latch remains independent\n");
 }
 
 /**
@@ -106,35 +151,22 @@ bool isSafeModeActive() {
  * - Pin not configured as OUTPUT
  * - Safe mode override
  */
-void setHeaterPWM(uint8_t duty) {
-    TRACE_ENTER(EFFECTORS);
-    effector_op_count++;
-    
-    // Check if safe mode is active
+void setHeaterPWM(int duty) {
+    ++effector_op_count;
+
     if (safe_mode_active) {
         DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
-        TRACE_EXIT(EFFECTORS);
         return;
     }
-    
-    // Validate duty cycle using gentle assert
-    GENTLE_ASSERT(duty <= 255, "EFFECTORS", "Heater duty cycle exceeds maximum");
-    
-    if (duty > 255) {
-        #ifdef DEBUG_EFFECTORS
-        Serial.printf("[EFFECTORS] WARNING: Invalid heater duty cycle: %d (clamping to 255)\n", duty);
-        #endif
-        effector_error_count++;
-        duty = 255;
+    if (duty < 0 || duty > 255) {
+        ++effector_error_count;
+        LOG_WARN("EFFECTORS", "Rejected heater PWM outside 0-255 range");
+        return;
     }
-    
-    #ifdef DEBUG_EFFECTORS
-    Serial.printf("[EFFECTORS] Setting heater PWM to %d (%.1f%%)\n", duty, (float)duty/255.0*100.0);
-    #endif
-    
+
+    heaterDuty = duty;
     analogWrite(HEATER_PWM, duty);
-    pwm_writes++;
-    TRACE_EXIT(EFFECTORS);
+    ++pwm_writes;
 }
 
 /**
@@ -151,24 +183,22 @@ void setHeaterPWM(uint8_t duty) {
  * - Invalid duty cycle (>255)
  * - Safe mode override (only allows safe duty cycle)
  */
-void setFanPWM(uint8_t duty) {
-    effector_op_count++;
-    
-    // Validate duty cycle
-    if (duty > 255) {
-        #ifdef DEBUG_EFFECTORS
-        Serial.printf("[EFFECTORS] WARNING: Invalid fan duty cycle: %d (clamping to 255)\n", duty);
-        #endif
-        effector_error_count++;
-        duty = 255;
+void setFanPWM(int duty) {
+    ++effector_op_count;
+
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\n");
+        return;
     }
-    
-    #ifdef DEBUG_EFFECTORS
-    Serial.printf("[EFFECTORS] Setting fan PWM to %d (%.1f%%)\n", duty, (float)duty/255.0*100.0);
-    #endif
-    
+    if (duty < 0 || duty > 255) {
+        ++effector_error_count;
+        LOG_WARN("EFFECTORS", "Rejected fan PWM outside 0-255 range");
+        return;
+    }
+
+    fanDuty = duty;
     analogWrite(FAN_PWM, duty);
-    pwm_writes++;
+    ++pwm_writes;
 }
 
 /**
@@ -186,7 +216,12 @@ void setFanPWM(uint8_t duty) {
  */
 void setPump(bool state) {
     effector_op_count++;
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Pump command ignored - safe mode active\n");
+        return;
+    }
     relay_switches++;
+    pumpDuty = state ? 255 : 0;
     
     #ifdef DEBUG_EFFECTORS
     Serial.printf("[EFFECTORS] Pump relay: %s\n", state ? "ON" : "OFF");
@@ -206,6 +241,10 @@ void setPump(bool state) {
  */
 void setValve1(bool state) {
     effector_op_count++;
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Valve 1 command ignored - safe mode active\n");
+        return;
+    }
     relay_switches++;
     
     #ifdef DEBUG_EFFECTORS
@@ -226,6 +265,10 @@ void setValve1(bool state) {
  */
 void setValve2(bool state) {
     effector_op_count++;
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Valve 2 command ignored - safe mode active\n");
+        return;
+    }
     relay_switches++;
     
     #ifdef DEBUG_EFFECTORS
@@ -252,7 +295,12 @@ void setValve2(bool state) {
  */
 void setRelay(uint8_t channel, bool state) {
     effector_op_count++;
-    
+
+    if (safe_mode_active) {
+        DBG_EFF("[EFFECTORS] Relay command ignored - safe mode active\n");
+        return;
+    }
+
     // Validate channel number
     if (channel < 1 || channel > 8) {
         #ifdef DEBUG_EFFECTORS
@@ -263,6 +311,8 @@ void setRelay(uint8_t channel, bool state) {
     }
     
     relay_switches++;
+    if (channel == 1) relay1State = state;
+    if (channel == 2) relay2State = state;
     
     #ifdef DEBUG_EFFECTORS
     Serial.printf("[EFFECTORS] Relay CH%d: %s\n", channel, state ? "ON" : "OFF");

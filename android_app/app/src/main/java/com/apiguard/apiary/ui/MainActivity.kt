@@ -5,7 +5,12 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
@@ -54,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         // Sprawdź czy mamy zapisany adres IP przy każdym uruchomieniu (również po odtworzeniu stanu)
         // Nowy MainViewModel zaczyna z nieustawionym stanem połączenia, więc musimy sprawdzić zapisane dane
         viewModel.checkSavedConnection()
+        startTelemetryRefresh()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -68,13 +74,24 @@ class MainActivity : AppCompatActivity() {
         outState.putBoolean(KEY_DIALOG_SHOWING, isIpDialogShowing)
     }
 
+    private fun startTelemetryRefresh() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(10_000L)
+                    viewModel.refreshConnectionAndData()
+                }
+            }
+        }
+    }
+
     private fun setupViewModel() {
         viewModel = ViewModelProvider(this, 
-            MainViewModelFactory(applicationContext)
+            MainViewModelFactory(application)
         )[MainViewModel::class.java]
 
         viewModel.connectionState.observe(this) { isConnected ->
-            if (!isConnected) {
+            if (!isConnected && viewModel.getSavedIpAddress() == null) {
                 showIpInputDialog()
             }
         }
@@ -119,61 +136,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showIpInputDialog() {
-        // Jeśli dialog już jest wyświetlany, nie pokazuj ponownie (zapobiega wyciekowi przy rotacji)
         if (isIpDialogShowing) return
-        
+
         val savedIp = viewModel.getSavedIpAddress() ?: ""
         val savedPort = viewModel.getSavedPort().toString()
-        
-        val view = layoutInflater.inflate(R.layout.dialog_ip_input, null)
-        val ipEditText = view.findViewById<android.widget.EditText>(R.id.edit_ip_address)
-        val portEditText = view.findViewById<android.widget.EditText>(R.id.edit_port)
-        val ipTextInputLayout = view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_ip)
-        val portTextInputLayout = view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_port)
-        
+        val dialogView = layoutInflater.inflate(R.layout.dialog_ip_input, null)
+        val ipEditText = dialogView.findViewById<android.widget.EditText>(R.id.edit_ip_address)
+        val portEditText = dialogView.findViewById<android.widget.EditText>(R.id.edit_port)
+        val ipTextInputLayout = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_ip)
+        val portTextInputLayout = dialogView.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.text_input_layout_port)
+
         ipEditText.setText(savedIp)
         portEditText.setText(savedPort)
-        
-        var dialog: AlertDialog? = null
-        
-        dialog = AlertDialog.Builder(this)
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.dialog_connection_title)
             .setMessage(R.string.dialog_connection_message)
-            .setView(view)
-            .setPositiveButton(R.string.dialog_connect_button) { _, _ ->
-                val ipAddress = ipEditText.text.toString().trim()
-                val portText = portEditText.text.toString()
-                
-                // Resetowanie błędów
-                ipTextInputLayout?.error = null
-                portTextInputLayout?.error = null
-                
-                // Walidacja adresu IP - użyj extension function z AppConstants
-                if (ipAddress.isEmpty()) {
-                    ipTextInputLayout?.error = getString(R.string.error_ip_empty)
-                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
-                    return@setPositiveButton
-                }
-                
-                // Walidacja formatu IP - użyj extension function z AppConstants
-                if (!ipAddress.isValidIpAddress()) {
-                    ipTextInputLayout?.error = getString(R.string.error_ip_invalid_format)
-                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
-                    return@setPositiveButton
-                }
-                
-                // Walidacja portu - użyj stałych z AppConstants
-                val port = portText.toIntOrNull()
-                if (port == null || !port.isValidPort()) {
-                    portTextInputLayout?.error = getString(R.string.error_port_invalid_range)
-                    // Nie zamykaj dialogu - pozwól użytkownikowi poprawić dane
-                    return@setPositiveButton
-                }
-                
-                // Tylko przy poprawnych danych zamknij dialog i zapisz połączenie
-                isIpDialogShowing = false
-                viewModel.verifyAndSaveConnection(ipAddress, port)
-            }
+            .setView(dialogView)
+            // Listener ustawiamy po show(), aby błędne dane nie zamykały okna.
+            .setPositiveButton(R.string.dialog_connect_button, null)
             .setNegativeButton(R.string.dialog_cancel_button) { _, _ ->
                 isIpDialogShowing = false
             }
@@ -181,21 +162,45 @@ class MainActivity : AppCompatActivity() {
                 isIpDialogShowing = false
             }
             .create()
-        
-        dialog.show()
-        
-        // Oznacz że dialog jest wyświetlany
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val ipAddress = ipEditText.text.toString().trim()
+                val port = portEditText.text.toString().trim().toIntOrNull()
+
+                ipTextInputLayout.error = null
+                portTextInputLayout.error = null
+
+                when {
+                    ipAddress.isEmpty() -> ipTextInputLayout.error = getString(R.string.error_ip_empty)
+                    !ipAddress.isValidIpAddress() -> ipTextInputLayout.error = getString(R.string.error_ip_invalid_format)
+                    port == null || !port.isValidPort() -> portTextInputLayout.error = getString(R.string.error_port_invalid_range)
+                    else -> {
+                        isIpDialogShowing = false
+                        dialog.dismiss()
+                        viewModel.verifyAndSaveConnection(ipAddress, port)
+                    }
+                }
+            }
+        }
+
         isIpDialogShowing = true
+        dialog.show()
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {
         AlertDialog.Builder(this)
             .setTitle(apiaryData.name)
             .setMessage(
-                "Temperatura: ${apiaryData.temperature}°C\n" +
-                "Wilgotność: ${apiaryData.humidity}%\n" +
-                "Waga: ${apiaryData.weight}kg\n" +
-                "Bateria: ${apiaryData.battery}%"
+                "Status: ${if (apiaryData.online) "ONLINE" else "OFFLINE"}\n" +
+                if (apiaryData.available) {
+                    "Temperatura: ${apiaryData.temperature}°C\n" +
+                    "Wilgotność: ${apiaryData.humidity}%\n" +
+                    "Waga: ${apiaryData.weight} kg\n" +
+                    "Bateria: ${apiaryData.battery}%"
+                } else {
+                    "Brak kompletnego zestawu aktualnych pomiarów."
+                }
             )
             .setPositiveButton("OK", null)
             .show()

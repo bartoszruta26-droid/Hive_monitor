@@ -193,23 +193,8 @@
 #define LOG_DEBUG_SERVO(msg)
 #endif
 
-// Exception handling macros for gentle code principles
-#define TRY_CATCH_LOG(module) try {
-#define CATCH_LOG(module) } catch(const std::exception& e) { \
-    LOG_ERROR(module, e.what()); \
-} catch(...) { \
-    LOG_ERROR(module, "Unknown exception occurred"); \
-}
-
-// Try-catch with recovery action
-#define TRY_CATCH_RECOVER(module, recovery_action) try {
-#define CATCH_RECOVER(module, recovery_action) } catch(const std::exception& e) { \
-    LOG_ERROR(module, e.what()); \
-    recovery_action; \
-} catch(...) { \
-    LOG_ERROR(module, "Unknown exception occurred"); \
-    recovery_action; \
-}
+// Arduino-Pico builds with C++ exceptions disabled. Use explicit return codes,
+// status flags and error counters instead of try/catch blocks.
 
 // Assert macro for development debugging with graceful failure
 #ifdef DEBUG_VERBOSE
@@ -244,14 +229,14 @@
 
 // Performance monitoring macros
 #ifdef DEBUG_PERF
-#define PERF_START(name) unsigned long perf_start_##name = micros()
-#define PERF_END(name) do { \
+#define APIARY_PERF_START(name) unsigned long perf_start_##name = micros()
+#define APIARY_PERF_END(name) do { \
     unsigned long perf_elapsed = micros() - perf_start_##name; \
     DBG_SENSOR("[PERF] %s took %lu us (%.3f ms)\n", #name, perf_elapsed, perf_elapsed/1000.0); \
 } while(0)
 #else
-#define PERF_START(name)
-#define PERF_END(name)
+#define APIARY_PERF_START(name)
+#define APIARY_PERF_END(name)
 #endif
 
 // Memory monitoring for embedded systems
@@ -396,6 +381,8 @@
 #define SERVO_PULSE_WIDTH_MIN       500   // Min pulse width in microseconds
 #define SERVO_PULSE_WIDTH_MAX       2500  // Max pulse width in microseconds
 #define SERVO_UPDATE_INTERVAL_MS    20    // 50Hz servo update rate
+#define SERVO_AUTO_EMPTY_MIN_MS     1000UL
+#define SERVO_AUTO_EMPTY_MAX_MS     1800000UL // 30-minute hard upper bound
 
 // ============================================================================
 // AIR QUALITY CONSTANTS (SGP41)
@@ -438,6 +425,8 @@
 #define MAX_SENSOR_ERRORS           10
 #define ERROR_RESET_WINDOW_MS       60000  // Reset error count after 1 minute
 #define CRITICAL_ERROR_THRESHOLD    50     // Trigger safe mode after this many errors
+#define HEATER_SENSOR_MAX_ERRORS     3      // Consecutive invalid temperature samples
+#define HEATER_SENSOR_MAX_AGE_MS     6000   // Temperature sample must be refreshed within 6 seconds
 
 // Safe mode configuration
 #define SAFE_MODE_HEATER_DUTY       0

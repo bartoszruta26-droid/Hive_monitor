@@ -1,5 +1,7 @@
 package com.apiguard.apiary.network
 
+import com.apiguard.apiary.data.remote.ApiaryApiService
+
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -8,10 +10,15 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
     private const val TIMEOUT_SECONDS = 10L
+
+    fun buildBaseUrl(host: String, port: Int): String {
+        val scheme = if (com.apiguard.apiary.BuildConfig.DEBUG) "http" else "https"
+        return "$scheme://$host:$port/"
+    }
     
     fun createApiService(baseUrl: String): ApiaryApiService {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (com.apiguard.apiary.BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
         }
         
         val okHttpClient = OkHttpClient.Builder()

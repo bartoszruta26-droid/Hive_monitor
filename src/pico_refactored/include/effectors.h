@@ -17,8 +17,8 @@
 #include "config.h"
 
 // Function declarations - PWM control
-void setHeaterPWM(uint8_t duty);
-void setFanPWM(uint8_t duty);
+void setHeaterPWM(int duty);
+void setFanPWM(int duty);
 
 // Function declarations - Relay control
 void setPump(bool state);

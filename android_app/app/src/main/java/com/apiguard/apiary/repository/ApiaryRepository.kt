@@ -7,14 +7,17 @@ import com.apiguard.apiary.data.local.ApiaryDao
 import com.apiguard.apiary.data.local.ApiaryDatabase
 import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.data.remote.ApiaryApiService
+import com.apiguard.apiary.data.remote.ApiaryPayloadMapper
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.network.RetrofitClient
 import com.apiguard.apiary.util.AppConstants
 import com.apiguard.apiary.util.isValidIpAddress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
+import com.google.gson.JsonObject
 
 class ApiaryRepository(private val application: Application) {
     companion object {
@@ -101,7 +104,7 @@ class ApiaryRepository(private val application: Application) {
     }
     
     private fun initializeApiService(ipAddress: String, port: Int) {
-        val baseUrl = "http://$ipAddress:$port/"
+        val baseUrl = RetrofitClient.buildBaseUrl(ipAddress, port)
         apiService = RetrofitClient.createApiService(baseUrl)
     }
     
@@ -130,7 +133,7 @@ class ApiaryRepository(private val application: Application) {
         
         return withContext(Dispatchers.IO) {
             try {
-                val baseUrl = "http://$ipAddress:$port/"
+                val baseUrl = RetrofitClient.buildBaseUrl(ipAddress, port)
                 
                 // Dodatkowa walidacja URL
                 try {
@@ -178,8 +181,9 @@ class ApiaryRepository(private val application: Application) {
                 }
                 
                 if (response.isSuccessful) {
-                    response.body()?.let { apiaries ->
-                        cacheReadings(apiaries)
+                    response.body()?.let { payload ->
+                        val apiaries = ApiaryPayloadMapper.map(payload)
+                        cacheReadings(apiaries.filter { it.available && it.online })
                         return@withContext Result.success(apiaries)
                     } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
                 } else {
@@ -193,35 +197,9 @@ class ApiaryRepository(private val application: Application) {
         }
     }
     
-    suspend fun fetchApiaryHistory(apiaryId: String): Result<List<ApiaryData>> {
-        return withContext(Dispatchers.IO) {
-            val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))
-            val lastTimestamp = dao.getLastTimestampForApiary(apiaryId)
-            
-            try {
-                val response = kotlinx.coroutines.withTimeout(AppConstants.NETWORK_TIMEOUT_SECONDS * 1000) {
-                    service.getApiaryHistory(apiaryId, lastTimestamp)
-                }
-                
-                if (response.isSuccessful) {
-                    response.body()?.let { history ->
-                        cacheReadings(history)
-                        return@withContext Result.success(history)
-                    } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
-                } else {
-                    Result.failure(Exception("Błąd pobierania historii: kod ${response.code()}"))
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                Result.failure(Exception("Upłynął czas oczekiwania na odpowiedź serwera"))
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-        }
-    }
-    
     private suspend fun cacheReadings(apiaries: List<ApiaryData>) {
         withContext(Dispatchers.IO) {
-            val readings = apiaries.map { apiary ->
+            val readings = apiaries.filter { it.available && it.online }.map { apiary ->
                 ApiaryReading(
                     apiaryId = apiary.id,
                     timestamp = apiary.timestamp,

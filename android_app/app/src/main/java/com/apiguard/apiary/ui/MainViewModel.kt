@@ -55,23 +55,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun verifyAndSaveConnection(ipAddress: String, port: Int) {
-        // Użyj stałych z AppConstants zamiast hardcoded values
         if (!port.isValidPort()) {
             _errorMessage.value = "Nieprawidłowy numer portu"
             return
         }
-        
+        if (_isLoading.value == true) return
+
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val result = repository.verifyConnection(ipAddress, port)
-                
-                when (result) {
+                when (val result = repository.verifyConnection(ipAddress, port)) {
                     is ConnectionResult.Success -> {
                         repository.saveIpAddress(ipAddress, port)
                         _connectionState.value = true
                         _errorMessage.value = null
-                        loadData()
+                        repository.fetchApiaries()
+                            .onSuccess { data -> _apiaryData.value = data }
+                            .onFailure { error ->
+                                _apiaryData.value = emptyList()
+                                _connectionState.value = false
+                                _errorMessage.value = "Połączono, ale nie udało się pobrać pomiarów: ${error.message}"
+                            }
                     }
                     is ConnectionResult.Error -> {
                         _connectionState.value = false
@@ -85,16 +89,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadData() {
+        if (_isLoading.value == true) return
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val result = repository.fetchApiaries()
                 
                 result.onSuccess { data ->
+                    _connectionState.value = true
                     _apiaryData.value = data
                     _errorMessage.value = null
                 }.onFailure { error ->
+                    // Nie pokazuj poprzednich pomiarów jako bieżących po utracie łączności.
+                    _apiaryData.value = emptyList()
+                    _connectionState.value = false
                     _errorMessage.value = "Błąd pobierania danych: ${error.message}"
+                }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Ciche sprawdzenie łączności dla cyklicznego odświeżania.
+     * Nie generuje powtarzających się komunikatów Toast podczas awarii sieci.
+     */
+    fun refreshConnectionAndData() {
+        if (_isLoading.value == true) return
+        viewModelScope.launch {
+            val ipAddress = repository.getSavedIpAddress() ?: run {
+                // Nie wywołuj ponownie obserwatora LiveData po anulowaniu okna konfiguracji.
+                if (_connectionState.value != false) _connectionState.value = false
+                if (!_apiaryData.value.isNullOrEmpty()) _apiaryData.value = emptyList()
+                return@launch
+            }
+            _isLoading.value = true
+            try {
+                when (repository.verifyConnection(ipAddress, repository.getSavedPort())) {
+                    is ConnectionResult.Success -> {
+                        val result = repository.fetchApiaries()
+                        result.onSuccess { data ->
+                            _connectionState.value = true
+                            _apiaryData.value = data
+                        }.onFailure {
+                            _connectionState.value = false
+                            _apiaryData.value = emptyList()
+                        }
+                    }
+                    is ConnectionResult.Error -> {
+                        _connectionState.value = false
+                        _apiaryData.value = emptyList()
+                    }
                 }
             } finally {
                 _isLoading.value = false

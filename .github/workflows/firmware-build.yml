@@ -1,0 +1,60 @@
+name: RP2040 firmware build
+
+on:
+  push:
+    branches: [main, "fix/**"]
+    paths:
+      - "src/pico_refactored/**"
+      - ".github/workflows/firmware-build.yml"
+  pull_request:
+    paths:
+      - "src/pico_refactored/**"
+      - ".github/workflows/firmware-build.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pico-firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Configure Raspberry Pi Pico core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040@6.3.2
+
+      - name: Install firmware libraries
+        run: |
+          arduino-cli lib update-index
+          arduino-cli lib install "Ethernet"
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli lib install "Adafruit SGP41"
+          arduino-cli lib install "Sensirion Gas Index Algorithm"
+
+      - name: Prepare Arduino sketch directory
+        run: |
+          mkdir -p .ci/pico-build
+          cp src/pico_refactored/apiaryguard_pico.ino .ci/pico-build/pico-build.ino
+          cp -R src/pico_refactored/include .ci/pico-build/include
+          cp -R src/pico_refactored/src .ci/pico-build/src
+
+      - name: Compile Raspberry Pi Pico firmware
+        run: |
+          arduino-cli compile \
+            --fqbn rp2040:rp2040:rpipico \
+            --warnings all \
+            --build-property compiler.cpp.extra_flags="-I${GITHUB_WORKSPACE}/.ci/pico-build/include" \
+            .ci/pico-build

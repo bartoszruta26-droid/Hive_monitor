@@ -16,7 +16,8 @@ struct SensorFlags {
     bool detected = false;
     bool active = false;
     uint8_t error_count = 0;
-    uint32_t last_read_time = 0;
+    uint8_t critical_error_count = 0; // Consecutive invalid readings of safety-relevant measurements
+    uint32_t last_read_time = 0; // Last valid reading timestamp (millis)
 };
 
 // Overall sensor state

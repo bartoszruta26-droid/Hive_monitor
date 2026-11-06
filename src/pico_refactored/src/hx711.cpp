@@ -18,7 +18,6 @@
 #include "hx711.h"
 #include <Arduino.h>
 #ifdef ARDUINO_ARCH_RP2040
-#include <RP2040Watchdog.h>
 #endif
 
 // Global calibration variables with debug support
@@ -58,7 +57,7 @@ static unsigned long last_error_log_time = 0;
  */
 long readHX711() {
     TRACE_ENTER(HX711);
-    PERF_START(readHX711);
+    APIARY_PERF_START(readHX711);
     
     long count = 0;
     unsigned long read_start = millis();
@@ -97,14 +96,14 @@ long readHX711() {
             Serial.println("[HX711] DEBUG: SCK pin state: " + String(digitalRead(HX711_SCK)));
             #endif
             
-            PERF_END(readHX711);
+            APIARY_PERF_END(readHX711);
             TRACE_EXIT(HX711);
             return 0; // Return error code
         }
         
         // Prevent watchdog trigger during wait (RP2040 specific)
         #ifdef ARDUINO_ARCH_RP2040
-        rp2040.wdtReset();
+        rp2040.wdt_reset();
         #endif
         
         // Small delay to prevent CPU hogging
@@ -148,7 +147,7 @@ long readHX711() {
             last_error_log_time = millis();
         }
         
-        PERF_END(readHX711);
+        APIARY_PERF_END(readHX711);
         TRACE_EXIT(HX711);
         return 0;
     }
@@ -175,7 +174,7 @@ long readHX711() {
     }
     #endif
     
-    PERF_END(readHX711);
+    APIARY_PERF_END(readHX711);
     TRACE_EXIT(HX711);
     return count;
 }
