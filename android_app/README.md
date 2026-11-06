@@ -5,7 +5,7 @@ Aplikacja mobilna na system Android służąca do monitorowania uli pszczelich p
 ## Funkcje
 
 - **Konfiguracja połączenia**: Przy pierwszym uruchomieniu aplikacja prosi o podanie statycznego adresu IP Raspberry Pi i portu API
-- **Weryfikacja połączenia**: Automatyczne sprawdzenie poprawności połączenia z endpointem `/api/health` przed zapisaniem konfiguracji
+- **Weryfikacja połączenia**: Automatyczne sprawdzenie poprawności połączenia z endpointem `/health` przed zapisaniem konfiguracji
 - **Zapisywanie konfiguracji**: Adres IP i port są zapamiętywane w SharedPreferences tylko po pomyślnej weryfikacji
 - **Pobieranie danych uli**: Temperatura, wilgotność, waga, poziom baterii z API Raspberry Pi
 - **Cache danych historycznych**: Wszystkie pobrane dane są zapisywane lokalnie w bazie Room dla szybkiego dostępu offline i analizy historycznej
@@ -52,18 +52,21 @@ Response: 200 OK (puste body lub JSON)
 
 ### Lista uli
 ```
-GET http://{IP}:{PORT}/api/apiaries
-Response: [
-  {
-    "id": "hive_1",
-    "name": "Ul 1",
-    "temperature": 35.5,
-    "humidity": 60.0,
-    "weight": 45.2,
-    "battery": 85,
-    "timestamp": 1704067200000
+GET http://{IP}:{PORT}/api/hives
+Response: {
+  "timestamp": 1704067200,
+  "hive_count": 1,
+  "hives": {
+    "hive_1": {
+      "temp": 35.5,
+      "hum": 60.0,
+      "weight": 45.2,
+      "bat": 85,
+      "online": true,
+      "last_seen": 1704067200
+    }
   }
-]
+}
 ```
 
 ### Historia ula (opcjonalne)
@@ -89,7 +92,7 @@ Response: [ ... ] // Lista obiektów jak wyżej
 
 1. **Pierwsze uruchomienie**:
    - Aplikacja wyświetli dialog z prośbą o adres IP Raspberry Pi
-   - Domyślny port to 5000 (można zmienić)
+   - Domyślny port to 8080 (można zmienić)
    - Kliknij "Połącz" aby zweryfikować połączenie
 
 2. **Połączenie zakończone sukcesem**:
@@ -117,3 +120,8 @@ Lub z linii poleceń:
 ```
 
 APK zostanie utworzony w `app/build/outputs/apk/debug/`
+
+
+## Zgodność z kolektorem Raspberry Pi
+
+Aplikacja korzysta z rzeczywistych tras kolektora: `GET /health` i `GET /api/hives` na porcie `8080`. Odpowiedź `/api/hives` zawiera obiekt `hives` indeksowany identyfikatorem ula; pola `temp`, `hum`, `weight`, `bat`, `online` i `last_seen` są mapowane na model aplikacji. Czas kolektora jest podawany w sekundach i konwertowany na milisekundy dla Androida. Rekordy niekompletne lub nieaktualne nie są zapisywane do lokalnego cache. Historia zdalna pozostaje nieobsługiwana przez bieżący kolektor; dostępne są lokalnie zapisane odczyty.
