@@ -27,7 +27,7 @@ assert "sudo install -d -o www-data -g www-data -m 0700 /var/log/apiaryguard-web
 assert "chmod 777" not in installer and "User=root" not in installer
 assert 'chmod 0600 "$BACKUP_FILE"' in root_installer
 assert 'install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"' in root_installer
-assert "pull --ff-only" in root_installer
+assert "pull --ff-only" in root_installer\nassert "core.hooksPath=/dev/null" in root_installer\nassert "git check-ref-format --branch" in root_installer
 assert "remote get-url origin" in root_installer
 assert 'rm -rf -- "$INSTALL_DIR"' in root_installer
 assert '"$HOME" == "/"' in root_installer
