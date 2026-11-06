@@ -105,6 +105,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Ciche sprawdzenie łączności dla cyklicznego odświeżania.
+     * Nie generuje powtarzających się komunikatów Toast podczas awarii sieci.
+     */
+    fun refreshConnectionAndData() {
+        viewModelScope.launch {
+            val ipAddress = repository.getSavedIpAddress() ?: run {
+                _connectionState.value = false
+                _apiaryData.value = emptyList()
+                return@launch
+            }
+            _isLoading.value = true
+            try {
+                when (repository.verifyConnection(ipAddress, repository.getSavedPort())) {
+                    is ConnectionResult.Success -> {
+                        val result = repository.fetchApiaries()
+                        result.onSuccess { data ->
+                            _connectionState.value = true
+                            _apiaryData.value = data
+                        }.onFailure {
+                            _connectionState.value = false
+                            _apiaryData.value = emptyList()
+                        }
+                    }
+                    is ConnectionResult.Error -> {
+                        _connectionState.value = false
+                        _apiaryData.value = emptyList()
+                    }
+                }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun clearError() {
         _errorMessage.value = null
     }
