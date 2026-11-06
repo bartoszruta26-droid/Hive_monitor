@@ -95,10 +95,10 @@ void activateSafeMode(const char* reason) {
  * @brief Deactivate safe mode and restore normal operation
  */
 void deactivateSafeMode() {
-    // Release both interlocks together to prevent split safety state.
-    deactivateFlowingHiveSafeMode();
+    // Do not clear the independent Flowing Hive latch here. A main-system
+    // reset must never silently release a subsystem-specific actuator lock.
     safe_mode_active = false;
-    DBG_EFF("[EFFECTORS] Safe mode deactivated - normal operation resumed\n");
+    DBG_EFF("[EFFECTORS] Main safe mode deactivated; Flowing Hive latch remains independent\\n");
 }
 
 /**
