@@ -50,6 +50,8 @@ float temperature = 0.0f;
 float humidity = 0.0f;
 uint16_t co2_eq = 0;
 uint16_t voc_idx = 0;
+uint16_t nox_idx = 0;
+bool co2_available = false;
 
 // Audio buffers
 int16_t audioBuffer[AUDIO_BUFFER_SIZE];
@@ -362,8 +364,15 @@ void sendHtmlDashboard(EthernetClient& client) {
     client.print("<p>Temperatura: "); client.print(temperature); client.println(" C</p>");
     client.print("<p>Wilgotność: "); client.print(humidity); client.println(" %</p>");
     client.print("<p>Waga: "); client.print(hx711_value); client.println(" kg</p>");
-    client.print("<p>CO2: "); client.print(co2_eq); client.println(" ppm</p>");
-    client.print("<p>VOC: "); client.print(voc_idx); client.println("</p>");
+    client.print("<p>CO2: ");
+    if (co2_available) {
+        client.print(co2_eq);
+        client.println(" ppm</p>");
+    } else {
+        client.println("niedostępne — SGP41 nie mierzy CO2</p>");
+    }
+    client.print("<p>VOC index: "); client.print(voc_idx); client.println("</p>");
+    client.print("<p>NOx index: "); client.print(nox_idx); client.println("</p>");
     
     client.println("<h3>Sterowanie</h3>");
     client.println("<a href='/cmd?SET_HEATER=0'><button>Grzałka OFF</button></a>");
