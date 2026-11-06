@@ -76,16 +76,7 @@ require(not unvalidated_keys,
         "every numeric key consumed by parseJSON must have a domain rule: " + ", ".join(sorted(unvalidated_keys)))
 
 struct_fields = re.findall(
-    r'^\s*(std::string|bool|int|long long|unsigned(?:\s+\w+)?|float|double|size_t)\s+(\w+)\s*(?:=\s*([^;]+))?;\s*(?://\s*(.*))?
-require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
-        "SQLite lifecycle must serialize initialization, producers and shutdown")
-require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
-        "sqlite3_busy_timeout" in database,
-        "SQLite shutdown must preserve failed batches and use bounded busy waits")
-
-
-print("Software security contract checks passed")
-,
+    r'^\s*(std::string|bool|int|long long|unsigned(?:\s+\w+)?|float|double|size_t)\s+(\w+)\s*(?:=\s*([^;]+))?;\s*(?://\s*(.*))?$',
     collector_types, re.MULTILINE
 )
 numeric_struct_fields = {name for kind, name, _, _ in struct_fields if kind not in {"std::string", "bool"}}
