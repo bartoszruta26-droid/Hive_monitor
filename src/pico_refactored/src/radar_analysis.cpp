@@ -384,7 +384,7 @@ void calculateRadarMetrics(RadarMetrics& metrics) {
  */
 void processRadarPeriodically(unsigned long now) {
     TRACE_ENTER(DEBUG_RADAR);
-    PERF_START(radar_process);
+    APIARY_PERF_START(radar_process);
     
     static unsigned long lastProcess = 0;
     static unsigned long process_count = 0;
@@ -442,6 +442,6 @@ void processRadarPeriodically(unsigned long now) {
     }
     #endif
     
-    PERF_END(radar_process);
+    APIARY_PERF_END(radar_process);
     TRACE_EXIT(DEBUG_RADAR);
 }
