@@ -1,6 +1,6 @@
 package com.apiguard.apiary.network
 
-import com.apiguard.apiary.data.remote.ApiaryApiService
+import com.apiguard.apiary.data.remote.ApiaryApiService\nimport com.apiguard.apiary.util.isValidApiHost
 
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -12,7 +12,7 @@ object RetrofitClient {
     private const val TIMEOUT_SECONDS = 10L
 
     fun buildBaseUrl(host: String, port: Int): String {
-        require(host.isNotBlank()) { "Host nie może być pusty" }
+        require(host.isValidApiHost()) { "Nieprawidłowy host lub adres IPv4" }
         require(port in 1..65535) { "Port musi należeć do zakresu 1..65535" }
         return "https://$host:$port/"
     }
