@@ -123,14 +123,26 @@ void initEthernet() {
  */
 void handleUSBCommand() {
     static String buffer = "";
-    
+    static bool discardingOverlongCommand = false;
+    const size_t maxCommandLength = 96;
+
     while (Serial.available()) {
-        char c = Serial.read();
+        const char c = static_cast<char>(Serial.read());
         if (c == '\n') {
-            processCommand(buffer);
+            if (discardingOverlongCommand) {
+                Serial.println("ERROR: Komenda przekracza limit 96 znakow; odrzucono.");
+            } else if (buffer.length() > 0) {
+                processCommand(buffer);
+            }
             buffer = "";
-        } else {
-            buffer += c;
+            discardingOverlongCommand = false;
+        } else if (c != '\r' && !discardingOverlongCommand) {
+            if (buffer.length() < maxCommandLength) {
+                buffer += c;
+            } else {
+                buffer = "";
+                discardingOverlongCommand = true;
+            }
         }
     }
 }
@@ -149,99 +161,149 @@ int extractValue(String cmd) {
 /**
  * @brief Process text commands from USB or Ethernet
  */
+// Accept only a complete command name followed by one unsigned integer.
+// Reject trailing characters, signs, empty arguments and out-of-range values.
+static bool parseUnsignedArgument(const String& command, const char* name,
+                                  unsigned long minValue, unsigned long maxValue,
+                                  unsigned long& value) {
+    const size_t nameLength = strlen(name);
+    if (command.length() <= nameLength ||
+        command.substring(0, nameLength) != name ||
+        command.charAt(nameLength) != ' ') {
+        return false;
+    }
+
+    String argument = command.substring(nameLength + 1);
+    argument.trim();
+    if (argument.length() == 0) return false;
+
+    unsigned long parsed = 0;
+    for (size_t i = 0; i < argument.length(); ++i) {
+        const char ch = argument.charAt(i);
+        if (ch < '0' || ch > '9') return false;
+        const unsigned long digit = static_cast<unsigned long>(ch - '0');
+        if (parsed > (maxValue - digit) / 10UL) return false;
+        parsed = parsed * 10UL + digit;
+    }
+
+    if (parsed < minValue || parsed > maxValue) return false;
+    value = parsed;
+    return true;
+}
+
+static bool isExactCommand(const String& command, const char* name) {
+    return command == name;
+}
+
+/**
+ * @brief Process strictly validated text commands from USB.
+ */
 void processCommand(String cmd) {
-    cmd.toUpperCase();
     cmd.trim();
-    
-    // Available commands:
-    // SET_HEATER [0-255]
-    // SET_FAN [0-255]
-    // SET_PUMP [0-255]
-    // SET_RELAY1 [ON/OFF]
-    // SET_RELAY2 [ON/OFF]
-    // CALIB_WEIGHT
-    // CALIB_WEIGHT_2      - Tare second HX711 (superstructure)
-    // SERVO_ANGLE [0-180] - Set servo angle
-    // SERVO_EMPTY         - Execute auto-empty sequence
-    // FLOW_RESET          - Reset flow counter
-    // STATUS_FLOWING      - Print Flowing Hive effector status
-    // STATUS
-    
-    if (cmd.startsWith("SET_HEATER")) {
-        int val = extractValue(cmd);
-        heaterDuty = constrain(val, 0, 255);
+    cmd.toUpperCase();
+
+    unsigned long value = 0;
+
+    if (parseUnsignedArgument(cmd, "SET_HEATER", 0, 255, value)) {
+        if (isSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie grzania odrzucone.");
+            return;
+        }
+        heaterDuty = static_cast<int>(value);
         Serial.println("OK: Grzałka ustawiona na " + String(heaterDuty));
     }
-    else if (cmd.startsWith("SET_FAN")) {
-        int val = extractValue(cmd);
-        fanDuty = constrain(val, 0, 255);
+    else if (parseUnsignedArgument(cmd, "SET_FAN", 0, 255, value)) {
+        if (isSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie wentylatora odrzucone.");
+            return;
+        }
+        fanDuty = static_cast<int>(value);
         Serial.println("OK: Wentylator ustawiony na " + String(fanDuty));
     }
-    else if (cmd.startsWith("SET_PUMP")) {
-        int val = extractValue(cmd);
-        pumpDuty = constrain(val, 0, 255);
+    else if (parseUnsignedArgument(cmd, "SET_PUMP", 0, 255, value)) {
+        if (isSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie pompy odrzucone.");
+            return;
+        }
+        pumpDuty = static_cast<int>(value);
         Serial.println("OK: Pompa ustawiona na " + String(pumpDuty));
     }
-    else if (cmd.startsWith("SET_RELAY1")) {
-        relay1State = (cmd.indexOf("ON") > 0 || cmd.indexOf("1") > 0);
+    else if (cmd == "SET_RELAY1 ON" || cmd == "SET_RELAY1 OFF") {
+        if (isSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie przekaźnika odrzucone.");
+            return;
+        }
+        relay1State = (cmd == "SET_RELAY1 ON");
         Serial.println("OK: Przekaźnik 1: " + String(relay1State ? "ON" : "OFF"));
     }
-    else if (cmd.startsWith("SET_RELAY2")) {
-        relay2State = (cmd.indexOf("ON") > 0 || cmd.indexOf("1") > 0);
+    else if (cmd == "SET_RELAY2 ON" || cmd == "SET_RELAY2 OFF") {
+        if (isSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie przekaźnika odrzucone.");
+            return;
+        }
+        relay2State = (cmd == "SET_RELAY2 ON");
         Serial.println("OK: Przekaźnik 2: " + String(relay2State ? "ON" : "OFF"));
     }
-    else if (cmd.startsWith("CALIB_WEIGHT")) {
-        // Perform actual tare/zeroing of HX711 weight sensor
-        // Take multiple readings and calculate offset
-        long sum = 0;
-        const int samples = 10;
-        Serial.println("Trwanie kalibracji...");
-        
-        for (int i = 0; i < samples; i++) {
-            long reading = readHX711();
-            if (reading != 0) {
-                sum += reading;
-            }
-            delay(10);
-        }
-        
-        hx711_offset = sum / samples;
-        Serial.println("OK: Waga wyzerowana (Tara). Offset: " + String(hx711_offset));
-    }
-    else if (cmd.startsWith("CALIB_WEIGHT_2")) {
-        // Second HX711 tare
+    // The longer command must be checked before CALIB_WEIGHT.
+    else if (isExactCommand(cmd, "CALIB_WEIGHT_2")) {
         tareHX711_2();
         Serial.println("OK: Nadstawka wyzerowana (Tara HX711 #2).");
     }
-    else if (cmd.startsWith("SERVO_ANGLE")) {
-        int angle = extractValue(cmd);
-        if (angle >= 0 && angle <= 180) {
-            setServoAngle(angle);
-            Serial.println("OK: Serwo ustawione na " + String(angle) + " stopni.");
-        } else {
-            Serial.println("ERROR: Kąt musi być 0-180.");
+    else if (isExactCommand(cmd, "CALIB_WEIGHT")) {
+        long sum = 0;
+        const int samples = 10;
+        int validSamples = 0;
+        Serial.println("Trwanie kalibracji...");
+
+        for (int i = 0; i < samples; ++i) {
+            const long reading = readHX711();
+            if (reading != 0) {
+                sum += reading;
+                ++validSamples;
+            }
+            delay(10);
         }
+
+        if (validSamples == 0) {
+            Serial.println("ERROR: Brak prawidlowych probek HX711; kalibracja przerwana.");
+            return;
+        }
+
+        hx711_offset = sum / validSamples;
+        Serial.println("OK: Waga wyzerowana. Offset: " + String(hx711_offset));
     }
-    else if (cmd.startsWith("SERVO_EMPTY")) {
-        unsigned long duration = 1800000; // Default 30 min
-        int val = extractValue(cmd);
-        if (val > 0) {
-            duration = val * 1000; // Convert seconds to ms
+    else if (parseUnsignedArgument(cmd, "SERVO_ANGLE", SERVO_MIN_ANGLE,
+                                   SERVO_MAX_ANGLE, value)) {
+        if (isFlowingHiveSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny Flowing Hive aktywny.");
+            return;
         }
+        setServoAngle(static_cast<uint16_t>(value));
+        Serial.println("OK: Serwo ustawione na " + String(value) + " stopni.");
+    }
+    else if (cmd == "SERVO_EMPTY" ||
+             parseUnsignedArgument(cmd, "SERVO_EMPTY", 1, 1800, value)) {
+        if (isFlowingHiveSafeModeActive()) {
+            Serial.println("ERROR: Tryb bezpieczny Flowing Hive aktywny.");
+            return;
+        }
+        const unsigned long duration = (cmd == "SERVO_EMPTY")
+            ? 1800000UL : value * 1000UL;
         executeAutoEmptySequence(duration);
-        Serial.println("OK: Rozpoczęto sekwencję opróżniania (" + String(duration/1000) + "s).");
+        Serial.println("OK: Rozpoczęto sekwencję opróżniania (" +
+                       String(duration / 1000UL) + "s).");
     }
-    else if (cmd.startsWith("FLOW_RESET")) {
+    else if (isExactCommand(cmd, "FLOW_RESET")) {
         resetFlowCounter();
         Serial.println("OK: Licznik przepływu zresetowany.");
     }
-    else if (cmd.startsWith("STATUS_FLOWING")) {
+    else if (isExactCommand(cmd, "STATUS_FLOWING")) {
         printFlowingHiveEffectorStatus();
     }
-    else if (cmd.startsWith("STATUS")) {
+    else if (isExactCommand(cmd, "STATUS")) {
         printStatus(Serial);
     }
-    else if (cmd.startsWith("HELP")) {
+    else if (isExactCommand(cmd, "HELP")) {
         Serial.println("Dostępne komendy:");
         Serial.println("  SET_HEATER [0-255]");
         Serial.println("  SET_FAN [0-255]");
@@ -249,15 +311,15 @@ void processCommand(String cmd) {
         Serial.println("  SET_RELAY1 [ON/OFF]");
         Serial.println("  SET_RELAY2 [ON/OFF]");
         Serial.println("  CALIB_WEIGHT");
-        Serial.println("  CALIB_WEIGHT_2      - Tare second HX711");
-        Serial.println("  SERVO_ANGLE [0-180] - Set servo angle");
-        Serial.println("  SERVO_EMPTY [sec]   - Auto-empty sequence");
-        Serial.println("  FLOW_RESET          - Reset flow counter");
-        Serial.println("  STATUS_FLOWING      - Flowing Hive status");
+        Serial.println("  CALIB_WEIGHT_2");
+        Serial.println("  SERVO_ANGLE [0-180]");
+        Serial.println("  SERVO_EMPTY [1-1800 sekund; domyślnie 1800]");
+        Serial.println("  FLOW_RESET");
+        Serial.println("  STATUS_FLOWING");
         Serial.println("  STATUS");
     }
     else {
-        Serial.println("Nieznana komenda. Wpisz HELP.");
+        Serial.println("ERROR: Nieznana komenda lub nieprawidlowy argument. Wpisz HELP.");
     }
 }
 
