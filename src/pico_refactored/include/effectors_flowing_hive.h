@@ -61,13 +61,13 @@ void initServoControl();
  * @brief Set servo to specific angle
  * 
  * GENTLE CODE FEATURES:
- * - Validates angle range (0-180 degrees)
+ * - Rejects angles outside the configured range (0-180 degrees)
  * - Checks if servo is detected before operation
  * - Respects safe mode - ignores command if active
  * - Logs warnings for invalid inputs without crashing
  * 
  * @param angle Angle in degrees (0-180)
- *              Constrained automatically to valid range
+ *              Rejected if outside the valid range
  * 
  * @return true if the command was accepted and queued; false if blocked
  * 
