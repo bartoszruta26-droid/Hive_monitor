@@ -614,7 +614,7 @@ void readSensors(unsigned long now) {
             co2_eq = 0;
             #ifdef DEBUG_SENSORS
             if (read_cycle % 30 == 0) {
-                DBG_SENSOR("[SENSORS] SGP41 - VOC index: %u, NOx index: %u, conditioning left: %u\\n",
+                DBG_SENSOR("[SENSORS] SGP41 - VOC index: %u, NOx index: %u, conditioning left: %u\n",
                            voc_idx, nox_idx, sgp_conditioning_remaining);
             }
             #endif
