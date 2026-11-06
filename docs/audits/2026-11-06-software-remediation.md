@@ -50,7 +50,7 @@
 ## Status CI
 
 - UI static checks, run `42277139682`: **success** — wszystkie kroki, w tym nowe testy regresyjne, zakończone powodzeniem.
-- RP2040 firmware build, run `42277186059`: oczekuje na zakończenie w chwili sporządzenia tego wpisu.
+- RP2040 firmware build, run `42277186059`: **success** — wszystkie kroki, w tym kompilacja firmware, zakończone powodzeniem.
 
 ## Zakres nadal niepotwierdzony
 
