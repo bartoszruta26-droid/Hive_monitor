@@ -11,9 +11,9 @@ Ta poprawka wzmacnia programową blokadę wyjść w module `src/pico_refactored`
 
 ## Ważne ograniczenie sprzętowe
 
-W aktualnej konfiguracji firmware przyjmuje, że stan LOW oznacza wyłączenie przekaźnika. Kod bazowy już używał tego założenia podczas inicjalizacji GPIO. **Nie wolno wdrażać tej poprawki na rzeczywistym ulu, dopóki nie zostanie potwierdzona polaryzacja konkretnej płytki przekaźnikowej oraz sposób sterowania wejściami modułów mocy.** Moduły aktywne stanem LOW mogą mieć odwrotną logikę.
+W konfiguracji przekazanej przez operatora moduł przekaźnikowy jest aktywny stanem HIGH, a nieaktywny stanem LOW. Firmware ustawia więc LOW jako stan wyłączenia. Potwierdzenie dotyczy wskazanego modułu; przed wdrożeniem należy jeszcze sprawdzić każdy kanał i stan wejść podczas resetu MCU.
 
-W tej wersji tryb bezpieczny jest mechanizmem programowym aktywowanym przez wywołanie `activateSafeMode()`; przegląd kodu nie wykazał jeszcze automatycznego wyzwalania go po awarii sensora, utracie komunikacji ani błędzie temperatury. Samo istnienie funkcji nie oznacza więc, że system sam wykryje i odetnie każdy stan niebezpieczny. To pozostaje osobnym zadaniem. Tryb programowy nie zastępuje zabezpieczeń sprzętowych. Grzałka wymaga niezależnego ogranicznika temperatury / bezpiecznika termicznego dobranego do instalacji, a obwody mocy powinny przechodzić do stanu bezpiecznego także przy resecie MCU, utracie zasilania, zawieszeniu programu lub uszkodzeniu tranzystora. Nie należy traktować tego firmware jako układu bezpieczeństwa certyfikowanego.
+Wprowadzono automatyczną blokadę grzałki: gdy operator żąda grzania, firmware sprawdza obecność i aktywność DHT oraz świeżość pomiaru temperatury. Trzy kolejne nieprawidłowe próbki temperatury albo brak poprawnego pomiaru przez ponad 6 sekund powodują aktywację trybu bezpiecznego. Brak lub nieaktywność czujnika również blokuje grzanie. Blokada jest zatrzaskiwana; odzyskanie odczytów nie wznawia automatycznie grzania. Progi 3 próbki / 6 sekund są wstępnymi progami programowymi i wymagają weryfikacji na docelowym sprzęcie. Nie jest to zabezpieczenie przed rzeczywistym przegrzaniem elementu grzejnego: DHT mierzy warunki otoczenia, a nie temperaturę powierzchni grzałki. Tryb programowy nie zastępuje zabezpieczeń sprzętowych. Grzałka wymaga niezależnego ogranicznika temperatury / bezpiecznika termicznego dobranego do instalacji, a obwody mocy powinny przechodzić do stanu bezpiecznego także przy resecie MCU, utracie zasilania, zawieszeniu programu lub uszkodzeniu tranzystora. Nie należy traktować tego firmware jako układu bezpieczeństwa certyfikowanego.
 
 Poziom wentylatora w trybie bezpiecznym pozostaje wartością konfiguracyjną `SAFE_MODE_FAN_DUTY`. Wartość 128 nie jest uniwersalnie bezpieczna: jej właściwość zależy od wentylatora, sterownika, polaryzacji PWM i warunków ula. Przed uruchomieniem trzeba ją zweryfikować.
 
@@ -22,17 +22,18 @@ Poziom wentylatora w trybie bezpiecznym pozostaje wartością konfiguracyjną `S
 Testy wykonywać najpierw bez podłączonych obciążeń (miernik / oscyloskop / diody testowe), a następnie z obciążeniami zastępczymi. Nie testować pierwszej wersji na rodzinie pszczelej.
 
 1. Potwierdzić mapę pinów, typ modułu przekaźnikowego, polaryzację wejść i stan po resecie.
-2. Włączyć zasilanie i sprawdzić, że PWM grzałki oraz wentylatora ma stan 0, a wszystkie wyjścia przekaźnikowe są nieaktywne.
+2. Włączyć zasilanie i sprawdzić, że PWM grzałki oraz wentylatora ma stan 0, a wszystkie wyjścia przekaźnikowe są nieaktywne (moduł aktywny HIGH, stan LOW = OFF).
 3. Aktywować `activateSafeMode()`; sprawdzić wszystkie 11 wyjść przekaźnikowych, grzałkę i wentylator.
 4. Podczas aktywnego trybu bezpiecznego wywołać kolejno funkcje `setFanPWM`, `setPump`, `setValve1`, `setValve2`, `setRelay`; żadne polecenie nie może załączyć wyjścia.
 5. Wielokrotnie wywołać `updateOutputs()` w trybie bezpiecznym; stan wyjść ma pozostać bezpieczny.
 6. Sprawdzić reset watchdogiem, odłączenie Ethernetu, utratę komunikacji i ponowne uruchomienie zasilania.
-7. Dopiero po pozytywnych testach elektrycznych wykonać test obciążeniowy z ograniczeniem prądowym i niezależnym odcięciem grzałki.
+7. Wymusić odłączenie DHT, błędny odczyt temperatury i brak aktualizacji pomiaru; po żądaniu grzania blokada ma zadziałać, a ponowny prawidłowy odczyt nie może samodzielnie wznowić grzania.
+8. Dopiero po pozytywnych testach elektrycznych wykonać test obciążeniowy z ograniczeniem prądowym i niezależnym odcięciem grzałki.
 
 ## Pozostałe ryzyka do zamknięcia
 
 - brak sprzężenia zwrotnego potwierdzającego rzeczywisty stan przekaźników i elementów wykonawczych;
-- brak niezależnego pomiaru temperatury / sprzętowego odcięcia grzałki w torze bezpieczeństwa potwierdzonego w kodzie;
+- brak niezależnego czujnika temperatury elementu grzejnego i sprzętowego odcięcia grzałki w torze bezpieczeństwa;
 - komendy USB nie mają jeszcze kompletnej walidacji składni, limitów czasu i uprawnień operatora;
 - sekwencja serwa Flowing Hive wymaga osobnej walidacji mechanicznej, limitów ruchu i procedury awaryjnego zatrzymania;
 - brak testów HIL (hardware-in-the-loop) i testów na docelowej płytce.
