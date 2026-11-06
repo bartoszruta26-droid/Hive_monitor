@@ -52,9 +52,8 @@
 // ----------------------------------------------------------------------------
 static Servo flowingHiveServo;                         ///< RP2040 PIO-backed servo controller
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
-static unsigned long lastServoUpdate = 0;                   ///< Last update timestamp (millis)
-static bool servoInitialized = false;                       ///< PWM initialized flag
-static bool servoControllerReady = false;                          ///< Hardware detection flag
+static bool servoInitialized = false;                       ///< Servo PIO attachment succeeded
+static bool servoControllerReady = false;                  ///< Controller attached; no physical feedback
 static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
 static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
 static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
