@@ -105,6 +105,12 @@ void initPWM() {
     
     pinMode(HEATER_PWM, OUTPUT);
     pinMode(FAN_PWM, OUTPUT);
+
+    // Deterministic power-up state: heater and fan start disabled.
+    // Safe-mode fan ventilation is applied only after an explicit fault.
+    analogWrite(HEATER_PWM, 0);
+    analogWrite(FAN_PWM, 0);
+
     // analogWriteFrequency is not available on RP2040 Arduino core
     // PWM frequency is set automatically (default ~1kHz)
     
