@@ -126,17 +126,23 @@ init_system() {
 
 # Start kolektora danych w tle
 start_collector() {
-    if [ ! -f "$COLLECTOR_BIN" ]; then
+    if [ ! -x "$COLLECTOR_BIN" ]; then
         echo -e "${COLOR_RED}Błąd: Nie znaleziono binarki apiary_collector: $COLLECTOR_BIN${COLOR_RESET}"
         echo "Skompiluj najpierw: cd /workspace/src/rpi_tui && make all"
         return 1
     fi
     
-    # Sprawdź czy już działa
+    # Nie uruchamiaj drugiej instancji, jeśli działa już usługa systemowa.
+    if command -v curl >/dev/null 2>&1 && curl -fsS --connect-timeout 1 --max-time 2 http://localhost:8080/health >/dev/null 2>&1; then
+        echo -e "${COLOR_GREEN}Wykryto działający kolektor HTTP na porcie 8080.${COLOR_RESET}"
+        return 0
+    fi
+
+    # Sprawdź czy ta instancja TUI już uruchomiła kolektor.
     if [ -n "$COLLECTOR_PID" ] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
         return 0
     fi
-    
+
     # Uruchom kolektor w tle
     "$COLLECTOR_BIN" &
     COLLECTOR_PID=$!
