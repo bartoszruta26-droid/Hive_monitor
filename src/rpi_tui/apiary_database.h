@@ -238,7 +238,6 @@ private:
     
     // Statystyki
     std::atomic<size_t> accepted_records_{0};
-    std::atomic<size_t> accepted_records_{0};
     std::atomic<size_t> total_records_{0};
     std::atomic<size_t> raw_records_{0};
     std::atomic<size_t> aggregated_records_{0};
