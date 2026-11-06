@@ -16,7 +16,9 @@ struct NumericRange {
 
 inline const std::map<std::string, NumericRange>& measurementRanges() {
     static const std::map<std::string, NumericRange> ranges = {
-        {"temp", {-40, 85, false}}, {"temp_raw", {-40, 85, false}},\n        {"th_heat_index", {-80, 100, false}}, {"th_dew_point", {-100, 80, false}},\n        {"aq_iaq_index", {0, 500, false}}, {"hx711_slope_1h", {-1.0e6, 1.0e6, false}},
+        {"temp", {-40, 85, false}}, {"temp_raw", {-40, 85, false}},
+        {"th_heat_index", {-80, 100, false}}, {"th_dew_point", {-100, 80, false}},
+        {"aq_iaq_index", {0, 500, false}}, {"hx711_slope_1h", {-1.0e6, 1.0e6, false}},
         {"hum", {0, 100, false}}, {"hum_raw", {0, 100, false}},
         {"weight", {0, 1000, false}}, {"bat", {0, 100, true}},
         {"co2", {0, 100000, true}}, {"co2_raw", {0, 100000, true}},
