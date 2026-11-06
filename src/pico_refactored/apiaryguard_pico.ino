@@ -323,8 +323,10 @@ void printStatus(Print& out) {
     out.print("{\"temp\":"); out.print(temperature);
     out.print(", \"hum\":"); out.print(humidity);
     out.print(", \"weight\":"); out.print(hx711_value);
-    out.print(", \"co2\":"); out.print(co2_eq);
+    out.print(", \"co2_available\":"); out.print(co2_available ? "true" : "false");
+    out.print(", \"co2\":"); if (co2_available) out.print(co2_eq); else out.print("null");
     out.print(", \"voc\":"); out.print(voc_idx);
+    out.print(", \"nox\":"); out.print(nox_idx);
     out.print(", \"heater\":"); out.print(heaterDuty);
     out.print(", \"fan\":"); out.print(fanDuty);
     out.print(", \"relay1\":"); out.print(relay1State ? 1 : 0);
