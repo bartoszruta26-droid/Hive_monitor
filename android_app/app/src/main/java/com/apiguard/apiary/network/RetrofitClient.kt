@@ -1,6 +1,7 @@
 package com.apiguard.apiary.network
 
-import com.apiguard.apiary.data.remote.ApiaryApiService\nimport com.apiguard.apiary.util.isValidApiHost
+import com.apiguard.apiary.data.remote.ApiaryApiService
+import com.apiguard.apiary.util.isValidApiHost
 
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
