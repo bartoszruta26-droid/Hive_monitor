@@ -317,7 +317,7 @@ if ($requiresApiKey) {
     $providedApiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
     if ($configuredApiKey === '') {
         http_response_code(503);
-        echo json_encode(['error' => 'write_api_disabled', 'message' => 'Zapis wyłączony: administrator musi skonfigurować APIARY_API_KEY.']);
+        echo json_encode(['error' => 'api_access_disabled', 'message' => 'Dostęp do API wyłączony: administrator musi skonfigurować APIARY_API_KEY.']);
         exit();
     }
     if ($providedApiKey === '' || !hash_equals($configuredApiKey, $providedApiKey)) {
