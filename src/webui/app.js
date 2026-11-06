@@ -481,10 +481,8 @@ function getEffectorName(type) {
 }
 
 function showAddEffectorModal() {
-    updateHiveSelects();
-    document.getElementById('addEffectorModal').classList.add('active');
+    alert('Konfiguracja efektorów przez WebUI jest wyłączona. Nie istnieje bezpieczny endpoint zapisu.');
 }
-
 function toggleEffectorState() {
     alert('Sterowanie efektorami jest wyłączone: kolektor nie udostępnia bezpiecznego endpointu zapisu.');
 }
@@ -820,150 +818,15 @@ function viewHiveDetails(hiveId) {
 function toggleEffector(hiveId) {
     alert(`Sterowanie efektorami ula ${hiveId} nie jest dostępne przez HTTP. Panel prezentuje wyłącznie dane odczytowe.`);
 }
-function editSensor(sensorId) {
-    const sensor = AppState.sensors.find(s => s.id === sensorId) || 
-                   AppState.hives.flatMap(h => [
-                       { id: `TEMP-${h.hive_id}`, type: 'temperature', hive: h.hive_id },
-                       { id: `HUM-${h.hive_id}`, type: 'humidity', hive: h.hive_id }
-                   ]).find(s => s.id === sensorId);
-    
-    if (!sensor) {
-        alert(`Nie znaleziono sensora ${sensorId}`);
-        return;
-    }
-    
-    const modal = document.getElementById('editSensorModal');
-    if (modal) {
-        const modalContent = modal.querySelector('.modal-content');
-        if (modalContent) {
-            modalContent.innerHTML = `
-                <div class="modal-header">
-                    <h2>✏️ Edycja sensora ${sensorId}</h2>
-                    <button class="modal-close" onclick="closeModal('editSensorModal')">&times;</button>
-                </div>
-                <form id="editSensorForm">
-                    <div class="form-group">
-                        <label for="editSensorType">Typ:</label>
-                        <input type="text" id="editSensorType" class="form-control" value="${sensor.type}" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label for="editSensorHive">Ul:</label>
-                        <select id="editSensorHive" class="form-control">
-                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === sensor.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="editSensorStatus">Status:</label>
-                        <select id="editSensorStatus" class="form-control">
-                            <option value="active" ${sensor.status === 'active' ? 'selected' : ''}>Aktywny</option>
-                            <option value="inactive" ${sensor.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
-                        <button type="button" class="btn btn-secondary" onclick="closeModal('editSensorModal')" style="flex: 1;">Anuluj</button>
-                    </div>
-                </form>
-            `;
-            
-            document.getElementById('editSensorForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const newHive = document.getElementById('editSensorHive').value;
-                const newStatus = document.getElementById('editSensorStatus').value;
-                
-                // TODO: Wysyłanie do API
-                logMessage("info", `Updating sensor ${sensorId}: hive=${newHive}, status=${newStatus}`);
-                alert(`✅ Zapisano zmiany dla sensora ${sensorId}`);
-                closeModal('editSensorModal');
-                renderSensorsTable();
-            });
-        }
-        modal.classList.add('active');
-    } else {
-        alert(`Edycja sensora ${sensorId} - dostępna po dodaniu modala editSensorModal`);
-    }
+function editSensor() {
+    alert('Edycja sensorów przez WebUI jest niedostępna — panel działa w trybie tylko do odczytu.');
 }
-
-function deleteSensor(sensorId) {
-    if (confirm(`Czy na pewno chcesz usunąć sensor ${sensorId}? Ta operacja jest nieodwracalna.`)) {
-        // TODO: Wysyłanie DELETE request do API
-        logMessage("info", `Deleting sensor ${sensorId}`);
-        
-        // Symulacja usunięcia
-        const index = AppState.sensors.findIndex(s => s.id === sensorId);
-        if (index > -1) {
-            AppState.sensors.splice(index, 1);
-        }
-        
-        alert(`✅ Usunięto sensor ${sensorId}`);
-        renderSensorsTable();
-    }
+function deleteSensor() {
+    alert('Usuwanie sensorów przez WebUI jest niedostępne — panel działa w trybie tylko do odczytu.');
 }
-
-function editEffector(effectorId) {
-    const effector = AppState.effectors.find(e => e.id === effectorId) || 
-                     { id: effectorId, type: 'unknown', hive: 'UL-1', status: 'active', state: 'off' };
-    
-    const modal = document.getElementById('editEffectorModal');
-    if (modal) {
-        const modalContent = modal.querySelector('.modal-content');
-        if (modalContent) {
-            modalContent.innerHTML = `
-                <div class="modal-header">
-                    <h2>✏️ Edycja efektora ${effectorId}</h2>
-                    <button class="modal-close" onclick="closeModal('editEffectorModal')">&times;</button>
-                </div>
-                <form id="editEffectorForm">
-                    <div class="form-group">
-                        <label for="editEffectorType">Typ:</label>
-                        <select id="editEffectorType" class="form-control">
-                            <option value="fan" ${effector.type === 'fan' ? 'selected' : ''}>Wentylator</option>
-                            <option value="heater" ${effector.type === 'heater' ? 'selected' : ''}>Grzałka</option>
-                            <option value="humidifier" ${effector.type === 'humidifier' ? 'selected' : ''}>Nawilżacz</option>
-                            <option value="feeder" ${effector.type === 'feeder' ? 'selected' : ''}>Podkarmiacz</option>
-                            <option value="light" ${effector.type === 'light' ? 'selected' : ''}>Oświetlenie</option>
-                            <option value="alarm" ${effector.type === 'alarm' ? 'selected' : ''}>Alarm</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="editEffectorHive">Ul:</label>
-                        <select id="editEffectorHive" class="form-control">
-                            ${AppState.hives.map(h => `<option value="${h.hive_id}" ${h.hive_id === effector.hive ? 'selected' : ''}>${h.hive_id}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="editEffectorStatus">Status:</label>
-                        <select id="editEffectorStatus" class="form-control">
-                            <option value="active" ${effector.status === 'active' ? 'selected' : ''}>Aktywny</option>
-                            <option value="inactive" ${effector.status === 'inactive' ? 'selected' : ''}>Nieaktywny</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Zapisz</button>
-                        <button type="button" class="btn btn-secondary" onclick="closeModal('editEffectorModal')" style="flex: 1;">Anuluj</button>
-                    </div>
-                </form>
-            `;
-            
-            document.getElementById('editEffectorForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const newType = document.getElementById('editEffectorType').value;
-                const newHive = document.getElementById('editEffectorHive').value;
-                const newStatus = document.getElementById('editEffectorStatus').value;
-                
-                // TODO: Wysyłanie do API
-                logMessage("info", `Updating effector ${effectorId}: type=${newType}, hive=${newHive}, status=${newStatus}`);
-                alert(`✅ Zapisano zmiany dla efektora ${effectorId}`);
-                closeModal('editEffectorModal');
-                renderEffectorsTable();
-            });
-        }
-        modal.classList.add('active');
-    } else {
-        alert(`Edycja efektora ${effectorId} - dostępna po dodaniu modala editEffectorModal`);
-    }
+function editEffector() {
+    alert('Edycja efektorów przez WebUI jest niedostępna — sterowanie pozostaje wyłączone.');
 }
-
 function exportData() {
     const dataStr = JSON.stringify(AppState.hives, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
