@@ -62,8 +62,18 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
+            background-color: #6c757d;
+            animation: none;
+        }
+
+        .status-indicator.connected {
             background-color: var(--success-color);
             animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background-color: var(--danger-color);
+            animation: none;
         }
 
         @keyframes pulse {
@@ -453,7 +463,7 @@
         </h1>
         <div class="status">
             <div class="status-indicator" id="connectionStatus"></div>
-            <span id="statusText">Połączono</span>
+            <span id="statusText" role="status" aria-live="polite">Sprawdzanie połączenia…</span>
             <span class="refresh-timer" id="refreshTimer">Odświeżanie za: 10s</span>
         </div>
     </header>
@@ -554,7 +564,7 @@
                                 <th>Ule</th>
                                 <th>Status</th>
                                 <th>Stan</th>
-                                <th>Akcje</th>
+                                <th>Tryb</th>
                             </tr>
                         </thead>
                         <tbody id="effectorsTable">
