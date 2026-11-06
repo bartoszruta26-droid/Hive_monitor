@@ -272,11 +272,13 @@ function updateConnectionStatus(connected) {
     
     if (!indicator || !statusText) return; // Guard clause
     
+    indicator.classList.toggle('connected', connected);
+    indicator.classList.toggle('disconnected', !connected);
     if (connected) {
-        indicator.style.backgroundColor = '#28a745';
+        indicator.style.backgroundColor = '';
         statusText.textContent = 'Połączono z APIARY_COLLECTOR';
     } else {
-        indicator.style.backgroundColor = '#fd7e14';
+        indicator.style.backgroundColor = '';
         statusText.textContent = 'Brak połączenia — dane niedostępne';
     }
 }
