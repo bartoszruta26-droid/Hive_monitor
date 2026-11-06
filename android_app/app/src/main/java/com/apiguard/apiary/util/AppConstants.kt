@@ -11,7 +11,7 @@ object AppConstants {
     const val PREF_API_PORT = "pref_api_port"
     
     // Domyślny port API
-    const val DEFAULT_PORT = 5000
+    const val DEFAULT_PORT = 8080
     
     // Zakres portów
     const val MIN_PORT = 1
