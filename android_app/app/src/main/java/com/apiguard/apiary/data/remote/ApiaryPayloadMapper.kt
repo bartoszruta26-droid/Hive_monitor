@@ -20,9 +20,10 @@ object ApiaryPayloadMapper {
             val humidity = values.doubleOrNull("hum")
             val weight = values.doubleOrNull("weight")
             val battery = values.intOrNull("bat")
-            val lastSeen = values.longOrNull("last_seen") ?: responseTimestamp
+            val reportedLastSeen = values.longOrNull("last_seen")
+            val lastSeen = reportedLastSeen ?: responseTimestamp
             val hasCompleteMetrics = temperature != null && humidity != null &&
-                weight != null && battery != null && lastSeen > 0L
+                weight != null && battery != null && reportedLastSeen != null && lastSeen > 0L
             val reportedOnline = values.booleanOrNull("online") == true
             val ageSeconds = nowEpochSeconds - lastSeen
             val isOnline = reportedOnline && lastSeen > 0L && ageSeconds in 0L..60L
