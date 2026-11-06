@@ -376,13 +376,8 @@ void sendHtmlDashboard(EthernetClient& client) {
     client.print("<p>VOC index: "); client.print(voc_idx); client.println("</p>");
     client.print("<p>NOx index: "); client.print(nox_idx); client.println("</p>");
     
-    client.println("<h3>Sterowanie</h3>");
-    client.println("<a href='/cmd?SET_HEATER=0'><button>Grzałka OFF</button></a>");
-    client.println("<a href='/cmd?SET_HEATER=128'><button>Grzałka 50%</button></a>");
-    client.println("<a href='/cmd?SET_HEATER=255'><button>Grzałka 100%</button></a><br>");
-    
-    client.println("<a href='/cmd?SET_RELAY1=ON'><button>Relay1 ON</button></a>");
-    client.println("<a href='/cmd?SET_RELAY1=OFF'><button>Relay1 OFF</button></a><br>");
+    client.println("<p>Panel tylko do odczytu. Sterowanie wykonuj przez lokalny port USB.</p>");
+    client.println("<p><a href='/status'>Otworz dane JSON</a></p>");
     
     client.println("</body></html>");
 }
