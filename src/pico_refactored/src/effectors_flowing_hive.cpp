@@ -38,6 +38,7 @@
 
 #include "effectors_flowing_hive.h"
 #include <Arduino.h>
+#include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
 #include <RP2040Watchdog.h>
 #endif
@@ -49,6 +50,7 @@
 // ----------------------------------------------------------------------------
 // Servo State Variables
 // ----------------------------------------------------------------------------
+static Servo flowingHiveServo;                         ///< RP2040 PIO-backed servo controller
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
 static unsigned long lastServoUpdate = 0;                   ///< Last update timestamp (millis)
 static bool servoInitialized = false;                       ///< PWM initialized flag
@@ -139,28 +141,43 @@ void IRAM_ATTR flowSensorISR() {
  */
 void initServoControl() {
     TRACE_ENTER(SERVO);
-    
-    // Configure PWM output pin
+
     pinMode(SERVO_EMPTY_PIN, OUTPUT);
-    
-    // Initialize PWM for servo control
-    // Standard RC servos use 50Hz (20ms period)
-    // Pulse width: 500us (0°) to 2500us (180°)
-    // NOTE: analogWriteFrequency is not available on RP2040 Arduino core
-    // PWM frequency is set automatically (default ~1kHz)
-    analogWrite(SERVO_EMPTY_PIN, 0);  // Start at 0% duty cycle
-    
-    // Update state
-    servoInitialized = true;
-    servoDetected = true;  // Assume present - no feedback from servo
+    digitalWrite(SERVO_EMPTY_PIN, LOW);
+
+    // The Arduino-Pico core includes a PIO-backed Servo implementation.
+    // It generates the 20ms servo frame independently of the main loop.
+    const int servoChannel = flowingHiveServo.attach(
+        SERVO_EMPTY_PIN,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+
+    servoInitialized = (servoChannel > 0);
+    servoDetected = servoInitialized; // Physical servo presence is not sensed.
     currentServoAngle = SERVO_REST_ANGLE;
-    
-    // Log initialization
-    DBG_SERVO("[SERVO] Initialized on GPIO %d\n", SERVO_EMPTY_PIN);
-    DBG_SERVO("[SERVO] Rest position: %d degrees\n", SERVO_REST_ANGLE);
-    DBG_SERVO("[SERVO] PWM: 50Hz, pulse width %d-%d us\n", 
+    autoEmptyActive = false;
+
+    if (!servoInitialized) {
+        LOG_ERROR("SERVO", "Servo PIO attachment failed; movement commands disabled");
+        TRACE_EXIT(SERVO);
+        return;
+    }
+
+    const uint32_t restPulse = map(
+        SERVO_REST_ANGLE,
+        SERVO_MIN_ANGLE,
+        SERVO_MAX_ANGLE,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+    flowingHiveServo.writeMicroseconds(static_cast<int>(restPulse));
+
+    DBG_SERVO("[SERVO] Initialized on GPIO %d, PIO channel %d\n",
+              SERVO_EMPTY_PIN, servoChannel);
+    DBG_SERVO("[SERVO] Pulse range: %d-%d us; refresh interval: 20 ms\n",
               SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
-    
+
     TRACE_EXIT(SERVO);
 }
 
@@ -181,22 +198,6 @@ void initServoControl() {
  * 
  * @note Internal helper function - not exposed in API
  */
-static uint8_t angleToDuty(uint16_t angle) {
-    // Gentle code: Constrain input to prevent hardware damage
-    angle = constrain(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE);
-    
-    // Map angle to pulse width using linear interpolation
-    uint32_t pulseWidth = map(angle, SERVO_MIN_ANGLE, SERVO_MAX_ANGLE, 
-                              SERVO_PULSE_WIDTH_MIN, SERVO_PULSE_WIDTH_MAX);
-    
-    // Convert pulse width to duty cycle (8-bit resolution)
-    // For 50Hz: period = 20ms = 20000μs
-    // duty = (pulseWidth / 20000) * 255
-    uint8_t duty = (pulseWidth * 255) / 20000;
-    
-    return duty;
-}
-
 /**
  * @brief Set servo to specific angle
  * 
@@ -245,14 +246,22 @@ void setServoAngle(uint16_t angle) {
         angle = SERVO_MAX_ANGLE;  // Auto-correct instead of failing
     }
     
-    // Update state and apply new position
+    // Convert the requested angle to a pulse width in microseconds.
+    // Servo library keeps generating stable 50Hz pulses in the RP2040 PIO.
+    const uint32_t pulseWidth = map(
+        angle,
+        SERVO_MIN_ANGLE,
+        SERVO_MAX_ANGLE,
+        SERVO_PULSE_WIDTH_MIN,
+        SERVO_PULSE_WIDTH_MAX
+    );
+
     currentServoAngle = angle;
-    uint8_t duty = angleToDuty(angle);
-    
-    analogWrite(SERVO_EMPTY_PIN, duty);
-    
-    DBG_SERVO("[SERVO] Angle set to %d degrees (duty=%d/255)\n", angle, duty);
-    
+    flowingHiveServo.writeMicroseconds(static_cast<int>(pulseWidth));
+
+    DBG_SERVO("[SERVO] Angle set to %d degrees (pulse=%lu us)\n",
+              angle, static_cast<unsigned long>(pulseWidth));
+
     TRACE_EXIT(SERVO);
 }
 
