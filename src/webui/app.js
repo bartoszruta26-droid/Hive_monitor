@@ -495,8 +495,7 @@ function renderSensorsTable() {
             </td>
             <td>${new Date(sensor.lastRead).toLocaleString('pl-PL')}</td>
             <td>
-                <button class="btn btn-secondary" onclick="editSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">✏️</button>
-                <button class="btn btn-danger" onclick="deleteSensor('${escapeHtml(sensor.id)}')" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🗑️</button>
+                <span class="metric-label">Tylko odczyt</span>
             </td>
         </tr>
     `).join('');
