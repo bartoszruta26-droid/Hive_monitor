@@ -47,3 +47,6 @@ jobs:
 
       - name: Run logger tests
         run: make -C src/rpi_tui test
+
+      - name: Run HTTP protocol regression tests
+        run: make -C src/rpi_tui test-http
