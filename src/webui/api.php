@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Konfiguracja - używaj HTTPS w produkcji
 $isProduction = getenv('APIARY_ENVIRONMENT') === 'production';
-$COLLECTOR_HOST = getenv('APIARY_COLLECTOR_HOST') ?: 'localhost';
+$COLLECTOR_HOST = getenv('APIARY_COLLECTOR_HOST') ?: '127.0.0.1';
 $COLLECTOR_PORT = (int)(getenv('APIARY_COLLECTOR_PORT') ?: 8080);
 // Automatyczne wykrywanie protokołu - HTTPS w produkcji
 $protocol = $isProduction ? 'https' : 'http';
