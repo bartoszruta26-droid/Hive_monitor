@@ -1,6 +1,7 @@
 package com.apiguard.apiary.data.remote
 
 import com.google.gson.JsonObject
+import com.apiguard.apiary.model.ApiaryData
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Path
