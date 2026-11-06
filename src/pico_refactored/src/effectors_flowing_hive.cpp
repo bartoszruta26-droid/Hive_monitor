@@ -220,7 +220,7 @@ void initServoControl() {
  * 
  * @note Non-blocking operation - returns immediately
  */
-void setServoAngle(uint16_t angle) {
+bool setServoAngle(uint16_t angle) {
     TRACE_ENTER(SERVO);
     servo_op_count++;
     
@@ -228,14 +228,14 @@ void setServoAngle(uint16_t angle) {
     if (!servoDetected || !servoInitialized) {
         DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
         TRACE_EXIT(SERVO);
-        return;  // Graceful exit - no error thrown
+        return false;  // Graceful exit - no error thrown
     }
     
     // GENTLE CODE: Respect safe mode
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Command ignored - safe mode active\n");
         TRACE_EXIT(SERVO);
-        return;  // Blocked for safety
+        return false;  // Blocked for safety
     }
     
     // Validate angle with graceful degradation
@@ -263,34 +263,42 @@ void setServoAngle(uint16_t angle) {
               angle, static_cast<unsigned long>(pulseWidth));
 
     TRACE_EXIT(SERVO);
+    return true;
 }
 
 /**
  * @brief Move servo to rest position
  */
-void setServoRestPosition() {
+bool setServoRestPosition() {
     DBG_SERVO("[SERVO] Moving to rest position (%d degrees)\n", SERVO_REST_ANGLE);
-    setServoAngle(SERVO_REST_ANGLE);
+    return setServoAngle(SERVO_REST_ANGLE);
 }
 
 /**
  * @brief Move servo to emptying position
  */
-void setServoEmptyPosition() {
+bool setServoEmptyPosition() {
     DBG_SERVO("[SERVO] Moving to emptying position (%d degrees)\n", SERVO_EMPTY_ANGLE);
-    setServoAngle(SERVO_EMPTY_ANGLE);
+    return setServoAngle(SERVO_EMPTY_ANGLE);
 }
 
 /**
  * @brief Execute automatic frame emptying sequence
  */
-void executeAutoEmptySequence(unsigned long duration_ms) {
+bool executeAutoEmptySequence(unsigned long duration_ms) {
     TRACE_ENTER(SERVO);
 
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\n");
         TRACE_EXIT(SERVO);
-        return;
+        return false;
+    }
+
+    if (!servoInitialized || !servoDetected) {
+        ++servo_error_count;
+        LOG_WARN("SERVO", "Auto-empty request rejected: servo controller is unavailable");
+        TRACE_EXIT(SERVO);
+        return false;
     }
 
     if (duration_ms < SERVO_AUTO_EMPTY_MIN_MS ||
@@ -298,17 +306,21 @@ void executeAutoEmptySequence(unsigned long duration_ms) {
         ++servo_error_count;
         LOG_WARN("SERVO", "Auto-empty duration outside permitted 1-1800 second range");
         TRACE_EXIT(SERVO);
-        return;
+        return false;
     }
 
     DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\n", duration_ms);
-    setServoEmptyPosition();
+    if (!setServoEmptyPosition()) {
+        TRACE_EXIT(SERVO);
+        return false;
+    }
 
     autoEmptyActive = true;
     autoEmptyStartTime = millis();
     autoEmptyDuration = duration_ms;
 
     TRACE_EXIT(SERVO);
+    return true;
 }
 
 /**
