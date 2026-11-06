@@ -490,15 +490,15 @@ function toggleEffectorState() {
 // ============================================================================
 // DANE HISTORYCZNE
 // ============================================================================
-async function loadHistoryData() {
+function loadHistoryData() {
     const canvas = document.getElementById('historyChart');
     if (!canvas) return;
-    const container = canvas.parentElement;
     if (historyChart) {
         historyChart.destroy();
         historyChart = null;
     }
     canvas.style.display = 'none';
+    const container = canvas.parentElement;
     let message = container.querySelector('.history-empty-state');
     if (!message) {
         message = document.createElement('p');
@@ -506,26 +506,9 @@ async function loadHistoryData() {
         message.style.cssText = 'padding:2rem;text-align:center;color:#666;';
         container.appendChild(message);
     }
-    message.textContent = 'Ładowanie danych historycznych…';
-    try {
-        const response = await fetch(`${CONFIG.apiBaseUrl}${CONFIG.endpoints.history}`, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000)
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json();
-        if (Array.isArray(payload.labels) && Array.isArray(payload.data) && payload.labels.length && payload.data.length) {
-            message.remove();
-            canvas.style.display = 'block';
-            renderHistoryChart(payload.labels, payload.data, document.getElementById('historyMetricSelect')?.value || 'Pomiar');
-        } else {
-            message.textContent = 'Kolektor nie udostępnia jeszcze rzeczywistych danych historycznych. Wykres pozostaje pusty zamiast generować dane symulowane.';
-        }
-    } catch (error) {
-        message.textContent = 'Nie udało się pobrać historii. Sprawdź połączenie z kolektorem.';
-        logMessage('warn', 'Błąd pobierania historii', error.message);
-    }
+    message.textContent = 'Historia pomiarów nie jest obecnie udostępniana przez kolektor. Wykres pojawi się po wdrożeniu trwałego magazynu danych historycznych.';
 }
+
 function renderHistoryChart(labels, data, label) {
     const canvas = document.getElementById('historyChart');
     if (!canvas) {
@@ -593,7 +576,8 @@ function loadLogs() {
     container.textContent = 'Kolektor nie udostępnia obecnie endpointu dziennika. Nie są wyświetlane przykładowe ani fikcyjne wpisy.';
 }
 function clearLogs() {
-    document.getElementById('logContainer').innerHTML = '';
+    const container = document.getElementById('logContainer');
+    if (container) container.textContent = 'Dziennik kolektora nie jest dostępny przez obecne API.';
 }
 
 // ============================================================================
@@ -759,7 +743,7 @@ function viewHiveDetails(hiveId) {
         if (modalContent) {
             modalContent.innerHTML = `
                 <div class="modal-header">
-                    <h2>🐝 Szczegóły ula ${hiveId}</h2>
+                    <h2>🐝 Szczegóły ula ${escapeHtml(hiveId)}</h2>
                     <button class="modal-close" onclick="closeModal('hiveDetailsModal')">&times;</button>
                 </div>
                 <div class="metric-grid" style="margin-bottom: 1rem;">
@@ -792,7 +776,7 @@ function viewHiveDetails(hiveId) {
                 </div>
                 <div class="form-group">
                     <label>Ostatni odczyt:</label>
-                    <p>${hive.last_update ? new Date(hive.last_update).toLocaleString('pl-PL') : 'Brak danych'}</p>
+                    <p>${hive.timestamp ? new Date(hive.timestamp * 1000).toLocaleString('pl-PL') : 'Brak danych'}</p>
                 </div>
                 <div class="form-group">
                     <label>Sensory:</label>
