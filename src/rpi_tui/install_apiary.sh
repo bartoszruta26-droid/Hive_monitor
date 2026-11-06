@@ -75,7 +75,7 @@ sudo make install
 echo -e "${GREEN}✅ Binarki zainstalowane${NC}"
 echo ""
 
-# Klucz API: jeden losowy sekret współdzielony przez Apache i usługę kolektora.
+# Klucz API dla starszego i nowszego endpointu PHP; kolektor nie otrzymuje tego sekretu.
 # Plik jest czytelny wyłącznie dla roota i grupy serwera WWW.
 # Oddziel konto usługi od Apache: kolektor nie może odczytać klucza API PHP.
 if ! id -u apiaryguard >/dev/null 2>&1; then
@@ -108,6 +108,12 @@ sudo chmod 0750 /var/lib/apiaryguard
 sudo touch "$DB_PATH"
 sudo chown apiaryguard:www-data "$DB_PATH"
 sudo chmod 0640 "$DB_PATH"
+for sidecar in "$DB_PATH-wal" "$DB_PATH-shm" "$DB_PATH-journal"; do
+    if sudo test -e "$sidecar"; then
+        sudo chown apiaryguard:www-data "$sidecar"
+        sudo chmod 0640 "$sidecar"
+    fi
+done
 sudo install -d -o apiaryguard -g apiaryguard -m 0750 /var/log/apiaryguard
 sudo chown apiaryguard:apiaryguard /var/log/apiaryguard
 sudo chmod 0750 /var/log/apiaryguard
@@ -372,6 +378,7 @@ sudo systemctl daemon-reload
 sudo apache2ctl configtest
 sudo systemctl restart apache2
 sudo systemctl enable apiary-collector
+sudo systemctl restart apiary-collector
 
 echo "✅ Instalacja zakończona pomyślnie!"
 echo ""
