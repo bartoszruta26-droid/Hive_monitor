@@ -65,6 +65,7 @@ inline const char* httpReasonPhrase(int statusCode) {
         case 400: return "Bad Request";
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
+        case 501: return "Not Implemented";
         default: return "Internal Server Error";
     }
 }
