@@ -37,7 +37,7 @@ jobs:
           arduino-cli lib update-index
           arduino-cli lib install "Ethernet"
           arduino-cli lib install "DHT sensor library"
-          arduino-cli lib install "Adafruit SGP41 Sensor"
+          arduino-cli lib install "Adafruit SGP41"
 
       - name: Compile Raspberry Pi Pico firmware
         run: |
