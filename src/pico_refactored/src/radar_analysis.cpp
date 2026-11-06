@@ -397,7 +397,8 @@ void processRadarPeriodically(unsigned long now) {
     // Try to read new data from radar
     bool newData = false;
     
-    TRY_CATCH_RECOVER("RADAR", radar_error_count++)
+    // RP2040 Arduino builds with exceptions disabled; routines report errors through status/counters.
+    {
         newData = readRadarData();
         
         if (newData) {
@@ -423,8 +424,6 @@ void processRadarPeriodically(unsigned long now) {
                 noDataCount = 0;
             }
         }
-    CATCH_RECOVER("RADAR", radar_error_count++)
-        LOG_ERROR("RADAR", "Exception during radar processing");
     }
     
     // Log stats summary every 30 minutes (900 cycles at 2s interval)
