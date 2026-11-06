@@ -21,12 +21,14 @@ function reservePort(): int {
     return (int)substr(strrchr($address, ':'), 1);
 }
 
-function startApiServer(string $home, string $apiKey): array {
+function startApiServer(string $home, string $apiKey, int $collectorPort = 1): array {
     $port = reservePort();
     putenv('HOME=' . $home);
     putenv('APIARY_API_KEY=' . $apiKey);
     putenv('APIARY_CORS_ORIGIN=http://127.0.0.1');
     putenv('APIARY_ENVIRONMENT=development');
+    putenv('APIARY_COLLECTOR_HOST=127.0.0.1');
+    putenv('APIARY_COLLECTOR_PORT=' . $collectorPort);
     $root = dirname(__DIR__, 2);
     $command = [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', $root . '/src/webui'];
     $process = proc_open($command, [
@@ -66,7 +68,7 @@ function requestApi(string $url, string $method, ?array $body = null, ?string $k
     $options = [
         'method' => $method,
         'ignore_errors' => true,
-        'timeout' => 3,
+        'timeout' => 6,
         'header' => implode("\r\n", $headers)
     ];
     if ($body !== null) {
@@ -121,7 +123,37 @@ try {
     [$status] = requestApi($url, 'PUT', ['intervals' => ['bad key' => 1]], 'test-secret-key');
     assertSameValue(400, $status, 'Invalid configuration key rejected');
 
-    echo "PHP API authentication and configuration regression tests passed\n";
+    proc_terminate($server);
+    proc_close($server);
+    $server = null;
+
+    // A stalled collector must not hold the WebUI health request indefinitely.
+    $mockPort = reservePort();
+    $mockRouter = $home . '/slow-collector.php';
+    file_put_contents($mockRouter, "<?php usleep(5000000); header('Content-Type: application/json'); echo '{\\"status\\":\\"ok\\"}';");
+    $mock = proc_open([PHP_BINARY, '-S', "127.0.0.1:{$mockPort}", $mockRouter], [
+        0 => ['pipe', 'r'],
+        1 => ['file', '/dev/null', 'a'],
+        2 => ['file', '/dev/null', 'a']
+    ], $mockPipes, $home);
+    if (!is_resource($mock)) {
+        throw new RuntimeException('Cannot start slow collector fixture');
+    }
+    fclose($mockPipes[0]);
+    usleep(200000);
+    [$server, $url] = startApiServer($home, 'test-secret-key', $mockPort);
+    $healthUrl = str_replace('endpoint=config', 'endpoint=health', $url);
+    $startedAt = microtime(true);
+    [$status, $healthBody] = requestApi($healthUrl, 'GET');
+    $elapsed = microtime(true) - $startedAt;
+    assertSameValue(200, $status, 'WebUI health endpoint remains responsive');
+    $health = json_decode($healthBody, true);
+    assertSameValue('disconnected', $health['collector'] ?? null, 'Stalled collector is marked disconnected');
+    assertSameValue(true, $elapsed < 4.5, 'Collector health check respects bounded timeout');
+    proc_terminate($mock);
+    proc_close($mock);
+
+    echo "PHP API authentication, configuration and timeout regression tests passed\n";
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);
@@ -130,6 +162,8 @@ try {
     putenv('APIARY_API_KEY');
     putenv('APIARY_CORS_ORIGIN');
     putenv('APIARY_ENVIRONMENT');
+    putenv('APIARY_COLLECTOR_HOST');
+    putenv('APIARY_COLLECTOR_PORT');
     putenv('HOME');
     $files = glob($home . '/.hive_monitor/*') ?: [];
     foreach ($files as $file) {
