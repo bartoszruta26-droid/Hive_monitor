@@ -212,11 +212,37 @@ fetch_hive_data() {
             if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
                 # Parsuj CSV (pomijaj nagłówek)
                 local first_line=true
-                while IFS=',' read -r id status timestamp temp hum weight bat co2 voc motion online audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq; do
+                while IFS= read -r csv_line; do
                     if $first_line; then
                         first_line=false
                         continue
                     fi
+
+                    # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
+                    IFS=',' read -r -a columns <<< "$csv_line"
+                    if (( ${#columns[@]} < 198 )); then
+                        continue
+                    fi
+                    id="${columns[0]}"
+                    status="${columns[1]}"
+                    timestamp="${columns[2]}"
+                    temp="${columns[3]}"
+                    hum="${columns[4]}"
+                    weight="${columns[5]}"
+                    bat="${columns[6]}"
+                    co2="${columns[7]}"
+                    voc="${columns[8]}"
+                    motion="${columns[9]}"
+                    online="${columns[10]}"
+                    audio_rms="${columns[11]}"
+                    audio_freq="${columns[21]}"
+                    swarm_prob="${columns[78]}"
+                    radar_dist="${columns[83]}"
+                    radar_energy="${columns[84]}"
+                    radar_act="${columns[96]}"
+                    wag_rate="${columns[121]}"
+                    wag_trend="${columns[132]}"
+                    air_iaq="${columns[197]}"
                     
                     # Ignoruj puste linie
                     [ -z "$id" ] && continue
@@ -279,11 +305,37 @@ fetch_hive_data() {
         
         if [ -n "$csv_data" ]; then
             local first_line=true
-            while IFS=',' read -r id status timestamp temp hum weight bat co2 voc motion online audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq; do
+            while IFS= read -r csv_line; do
                 if $first_line; then
                     first_line=false
                     continue
                 fi
+
+                # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
+                IFS=',' read -r -a columns <<< "$csv_line"
+                if (( ${#columns[@]} < 198 )); then
+                    continue
+                fi
+                id="${columns[0]}"
+                status="${columns[1]}"
+                timestamp="${columns[2]}"
+                temp="${columns[3]}"
+                hum="${columns[4]}"
+                weight="${columns[5]}"
+                bat="${columns[6]}"
+                co2="${columns[7]}"
+                voc="${columns[8]}"
+                motion="${columns[9]}"
+                online="${columns[10]}"
+                audio_rms="${columns[11]}"
+                audio_freq="${columns[21]}"
+                swarm_prob="${columns[78]}"
+                radar_dist="${columns[83]}"
+                radar_energy="${columns[84]}"
+                radar_act="${columns[96]}"
+                wag_rate="${columns[121]}"
+                wag_trend="${columns[132]}"
+                air_iaq="${columns[197]}"
                 
                 [ -z "$id" ] && continue
                 
