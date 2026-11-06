@@ -88,6 +88,8 @@ if (!mkdir($home, 0700, true)) {
 }
 
 $server = null;
+$mock = null;
+$mockRouter = null;
 try {
     // Missing server key must fail closed.
     [$server, $url] = startApiServer($home, '');
@@ -130,7 +132,7 @@ try {
     // A stalled collector must not hold the WebUI health request indefinitely.
     $mockPort = reservePort();
     $mockRouter = $home . '/slow-collector.php';
-    file_put_contents($mockRouter, "<?php usleep(5000000); header('Content-Type: application/json'); echo '{\\"status\\":\\"ok\\"}';");
+    file_put_contents($mockRouter, "<?php usleep(5000000); header('Content-Type: application/json'); echo '{}';");
     $mock = proc_open([PHP_BINARY, '-S', "127.0.0.1:{$mockPort}", $mockRouter], [
         0 => ['pipe', 'r'],
         1 => ['file', '/dev/null', 'a'],
@@ -152,12 +154,20 @@ try {
     assertSameValue(true, $elapsed < 4.5, 'Collector health check respects bounded timeout');
     proc_terminate($mock);
     proc_close($mock);
+    $mock = null;
 
     echo "PHP API authentication, configuration and timeout regression tests passed\n";
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);
         proc_close($server);
+    }
+    if (is_resource($mock)) {
+        proc_terminate($mock);
+        proc_close($mock);
+    }
+    if ($mockRouter !== null && is_file($mockRouter)) {
+        @unlink($mockRouter);
     }
     putenv('APIARY_API_KEY');
     putenv('APIARY_CORS_ORIGIN');
