@@ -18,7 +18,11 @@ DEBUG_FILE="/var/log/apiaryguard/debug.log"
 CONFIG_DIR="/etc/apiaryguard"
 DATA_DIR="/var/lib/apiaryguard"
 LOCK_FILE="/tmp/apiary_tui.lock"
-COLLECTOR_BIN="/workspace/src/rpi_tui/apiary_collector"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+COLLECTOR_BIN="${APIARY_COLLECTOR_BIN:-${SCRIPT_DIR}/apiary_collector}"
+if [ ! -x "$COLLECTOR_BIN" ] && [ -x "/usr/local/bin/apiary-collector" ]; then
+    COLLECTOR_BIN="/usr/local/bin/apiary-collector"
+fi
 COLLECTOR_FIFO="/tmp/apiary_collector_fifo"
 COLLECTOR_DATA_FILE="/tmp/apiary_data.csv"
 
@@ -200,10 +204,10 @@ fetch_hive_data() {
     # Spróbuj pobrać dane z kolektora przez HTTP API
     if command -v curl &> /dev/null; then
         # Sprawdź czy kolektor jest dostępny
-        if curl -s --connect-timeout 2 http://localhost:8080/health > /dev/null 2>&1; then
+        if curl -fsS --connect-timeout 2 --max-time 4 http://localhost:8080/health > /dev/null 2>&1; then
             # Pobierz dane CSV z kolektora
             local csv_data
-            csv_data=$(curl -s --connect-timeout 2 http://localhost:8080/api/csv 2>/dev/null)
+            csv_data=$(curl -fsS --connect-timeout 2 --max-time 4 http://localhost:8080/api/csv 2>/dev/null)
             
             if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
                 # Parsuj CSV (pomijaj nagłówek)
