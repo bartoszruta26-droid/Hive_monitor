@@ -469,6 +469,21 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
     }
 
     const std::string source_time = "src." + source_time_column;
+    const std::string temperature_column = source_is_raw ? "src.temperature" : "src.temperature_avg";
+    const std::string humidity_column = source_is_raw ? "src.humidity" : "src.humidity_avg";
+    const std::string weight_column = source_is_raw ? "src.weight" : "src.weight_avg";
+    const std::string battery_column = source_is_raw ? "src.battery_level" : "src.battery_avg";
+    const std::string co2_column = source_is_raw ? "src.co2_eq" : "src.co2_avg";
+    const std::string voc_column = source_is_raw ? "src.voc_idx" : "src.voc_avg";
+    const std::string audio_rms_column = source_is_raw ? "src.audio_rms" : "src.audio_rms_avg";
+    const std::string audio_frequency_column = source_is_raw ? "src.audio_dominant_freq" : "src.audio_dominant_freq_avg";
+    const std::string audio_swarm_column = source_is_raw ? "src.audio_swarm_prob" : "src.audio_swarm_prob_avg";
+    const std::string audio_activity_column = source_is_raw ? "src.audio_bee_activity" : "src.audio_bee_activity_avg";
+    const std::string radar_distance_column = source_is_raw ? "src.radar_distance" : "src.radar_distance_avg";
+    const std::string radar_energy_column = source_is_raw ? "src.radar_energy" : "src.radar_energy_avg";
+    const std::string radar_activity_column = source_is_raw ? "src.radar_activity" : "src.radar_activity_avg";
+    const std::string hx711_current_column = source_is_raw ? "src.hx711_current" : "src.hx711_current_avg";
+    const std::string hx711_slope_column = source_is_raw ? "src.hx711_slope_24h" : "src.hx711_slope_24h_avg";
     const long long target_type_value = static_cast<int>(target_type);
     const long long source_type_value = static_cast<int>(source_type);
 
@@ -487,14 +502,14 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
         << "(" << source_time << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,"
         << "src.hive_id,"
         << target_type_value << ","
-        << "AVG(src.temperature), MIN(src.temperature), MAX(src.temperature),"
-        << "AVG(src.humidity), MIN(src.humidity), MAX(src.humidity),"
-        << "AVG(src.weight), MIN(src.weight), MAX(src.weight),"
-        << "AVG(src.battery_level), AVG(src.co2_eq), AVG(src.voc_idx),"
-        << "AVG(src.audio_rms), AVG(src.audio_dominant_freq),"
-        << "AVG(src.audio_swarm_prob), AVG(src.audio_bee_activity),"
-        << "AVG(src.radar_distance), AVG(src.radar_energy), AVG(src.radar_activity),"
-        << "AVG(src.hx711_current), AVG(src.hx711_slope_24h), COUNT(*) "
+        << "AVG(" << temperature_column << "), MIN(" << temperature_column << "), MAX(" << temperature_column << "),"
+        << "AVG(" << humidity_column << "), MIN(" << humidity_column << "), MAX(" << humidity_column << "),"
+        << "AVG(" << weight_column << "), MIN(" << weight_column << "), MAX(" << weight_column << "),"
+        << "AVG(" << battery_column << "), AVG(" << co2_column << "), AVG(" << voc_column << "),"
+        << "AVG(" << audio_rms_column << "), AVG(" << audio_frequency_column << "),"
+        << "AVG(" << audio_swarm_column << "), AVG(" << audio_activity_column << "),"
+        << "AVG(" << radar_distance_column << "), AVG(" << radar_energy_column << "), AVG(" << radar_activity_column << "),"
+        << "AVG(" << hx711_current_column << "), AVG(" << hx711_slope_column << "), COUNT(*) "
         << "FROM " << source_table << " AS src "
         << "WHERE " << source_time << " < (strftime('%s', 'now') - " << interval_sec << ") ";
 
