@@ -6,6 +6,11 @@
 # Strict mode for better error handling and safety
 set -euo pipefail
 
+if [[ -z "${HOME:-}" || "$HOME" == "/" ]]; then
+    echo "Refusing to run with an unsafe HOME directory." >&2
+    exit 1
+fi
+
 # ============================================================================
 # GLOBAL VARIABLES
 # ============================================================================
