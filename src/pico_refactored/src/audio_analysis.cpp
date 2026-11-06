@@ -501,7 +501,8 @@ void processAudioPeriodically(unsigned long now) {
     Serial.println("[AUDIO] Processing audio data...");
     #endif
     
-    TRY_CATCH_RECOVER("AUDIO", audio_error_count++)
+    // RP2040 Arduino builds with exceptions disabled; routines report errors through status/counters.
+    {
         // Read audio signal
         readAudioSignal();
         
@@ -520,8 +521,6 @@ void processAudioPeriodically(unsigned long now) {
                       event.type == AudioEventType::NORMAL_ACTIVITY ? "NORMAL" : "ALERT",
                       event.description);
         #endif
-    CATCH_RECOVER("AUDIO", audio_error_count++)
-        LOG_ERROR("AUDIO", "Exception during audio processing");
     }
     
     // Log stats summary every 30 minutes (360 cycles)
