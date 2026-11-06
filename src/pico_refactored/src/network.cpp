@@ -60,7 +60,7 @@ static unsigned long link_losses = 0;
  */
 void initW6100() {
     TRACE_ENTER(NETWORK);
-    PERF_START(initW6100);
+    APIARY_PERF_START(initW6100);
     
     network_init_count++;
     
@@ -170,7 +170,7 @@ void initW6100() {
                   network_init_count, network_error_count, dhcp_failures);
     #endif
     
-    PERF_END(initW6100);
+    APIARY_PERF_END(initW6100);
     TRACE_EXIT(NETWORK);
 }
 
