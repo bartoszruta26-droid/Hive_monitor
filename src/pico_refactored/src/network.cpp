@@ -139,7 +139,7 @@ void initW6100() {
     
     // Check link status
     t_link_status linkStatus = Ethernet.linkStatus();
-    if (linkStatus == LNK) {
+    if (linkStatus == LinkON) {
         Serial.println("  [✓] Ethernet link established");
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] Link speed: 10/100 Mbps (auto-negotiated)");
@@ -303,7 +303,7 @@ void sendUDPData() {
     if (millis() - lastUdpSend < 10000) return;
     
     // Check if network is ready
-    if (Ethernet.linkStatus() != LNK) {
+    if (Ethernet.linkStatus() != LinkON) {
         #ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] WARNING: Cannot send UDP - no link");
         #endif
