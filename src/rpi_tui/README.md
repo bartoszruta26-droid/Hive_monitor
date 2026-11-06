@@ -61,10 +61,10 @@ make
 # Lub ręczna kompilacja samego kolektora
 g++ -std=c++17 -pthread -o apiary_collector apiary_collector.cpp apiary_logger.cpp
 
-# Uruchomienie kolektora w trybie symulacji (test bez fizycznych uli)
+# Uruchomienie kolektora w trybie symulacji (wyłącznie jawny test bez fizycznych uli)
 ./apiary_collector --sim
 
-# Uruchomienie kolektora w trybie sieciowym (odbiera dane z Pico przez UDP port 5005)
+# Uruchomienie kolektora w trybie sieciowym (odbiera dane z Pico przez UDP port 5005; brak sieci kończy start, nie uruchamia symulacji)
 ./apiary_collector
 ```
 
@@ -276,3 +276,8 @@ Projekt na licencji MIT - zobacz plik LICENSE w głównym katalogu.
 
 APIARY Guard Team © 2024
 
+
+
+## Tryb rzeczywisty a symulacja
+
+Kolektor uruchamia odbiór UDP przed wystawieniem HTTP. Domyślne uruchomienie (`./apiary_collector`) oznacza wyłącznie nasłuch rzeczywistych danych na UDP 5005. Błąd utworzenia lub zbindowania socketu kończy uruchomienie — nie przełącza automatycznie systemu na dane syntetyczne. Symulację uruchamia się wyłącznie jawnie przez `./apiary_collector --sim`. TUI nie uzupełnia już pustego odczytu przykładowymi wartościami; opcjonalne lokalne dane demonstracyjne wymagają `APIARY_TUI_DEMO=1`.
