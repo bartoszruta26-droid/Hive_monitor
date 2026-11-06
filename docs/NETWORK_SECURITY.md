@@ -5,7 +5,7 @@
 Kolektor UDP i serwer HTTP nasłuchują domyślnie wyłącznie na `127.0.0.1`.
 Chroni to przed przypadkowym wystawieniem nieautoryzowanego API na wszystkie
 interfejsy sieciowe. Adresy wiązania są walidowane jako IPv4 z zakresów
-prywatnych RFC 1918 lub loopback; `0.0.0.0`, adresy publiczne i niepoprawne
+prywatnych RFC 1918, loopback lub link-local; `0.0.0.0`, adresy publiczne i niepoprawne
 wartości powodują przerwanie inicjalizacji odpowiedniego gniazda.
 
 ## Konfiguracja pracy w sieci lokalnej
