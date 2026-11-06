@@ -461,33 +461,8 @@ function renderSensorsTable() {
 }
 
 function showAddSensorModal() {
-    updateHiveSelects();
-    document.getElementById('addSensorModal').classList.add('active');
+    alert('Konfiguracja sensorów przez WebUI nie jest obecnie obsługiwana.');
 }
-
-function updateHiveSelects() {
-    const selects = ['sensorHive', 'effectorHive', 'historyHiveSelect'];
-    
-    selects.forEach(selectId => {
-        const select = document.getElementById(selectId);
-        if (!select) return;
-        
-        const currentValue = select.value;
-        const options = (AppState.hives || []).map(h => `<option value="${escapeHtml(h.hive_id)}">${escapeHtml(h.hive_id)}</option>`).join('');
-        
-        if (selectId === 'historyHiveSelect') {
-            select.innerHTML = '<option value="all">Wszystkie ule</option>' + options;
-        } else {
-            select.innerHTML = options;
-        }
-        
-        if (currentValue) select.value = currentValue;
-    });
-}
-
-// ============================================================================
-// ZARZĄDZANIE EFEKTORAMI
-// ============================================================================
 function renderEffectorsTable() {
     const tbody = document.getElementById('effectorsTable');
     if (!tbody) return;
@@ -758,60 +733,21 @@ function initModals() {
 function initSensorForm() {
     const form = document.getElementById('addSensorForm');
     if (form) {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Walidacja client-side
-            const sensorType = document.getElementById('sensorType').value;
-            const sensorHive = document.getElementById('sensorHive').value;
-            
-            if (!sensorType || !sensorHive) {
-                logMessage('error', 'Wszystkie pola są wymagane');
-                alert('❌ Wszystkie pola są wymagane');
-                return;
-            }
-            
-            // Sanityzacja danych przed wysłaniem
-            const safeType = escapeHtml(sensorType);
-            const safeHive = escapeHtml(sensorHive);
-            
-            logMessage('info', `Dodawanie sensora: typ=${safeType}, ul=${safeHive}`);
-            alert(`✅ Dodano sensor ${safeType} dla ula ${safeHive} (symulacja)`);
-            closeModal('addSensorModal');
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            alert('Dodawanie sensorów jest niedostępne. Konfigurację sprzętu należy wykonać w systemie urządzenia.');
         });
     }
 }
-
 function initEffectorForm() {
     const form = document.getElementById('addEffectorForm');
     if (form) {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Walidacja client-side
-            const effectorType = document.getElementById('effectorType').value;
-            const effectorHive = document.getElementById('effectorHive').value;
-            
-            if (!effectorType || !effectorHive) {
-                logMessage('error', 'Wszystkie pola są wymagane');
-                alert('❌ Wszystkie pola są wymagane');
-                return;
-            }
-            
-            // Sanityzacja danych przed wysłaniem
-            const safeType = escapeHtml(effectorType);
-            const safeHive = escapeHtml(effectorHive);
-            
-            logMessage('info', `Dodawanie efektora: typ=${safeType}, ul=${safeHive}`);
-            alert(`✅ Dodano effektor ${safeType} dla ula ${safeHive} (symulacja)`);
-            closeModal('addEffectorModal');
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            alert('Dodawanie efektorów jest niedostępne. Sterowanie pozostaje wyłączone do czasu wdrożenia bezpiecznego API.');
         });
     }
 }
-
-// ============================================================================
-// AKCJE - PEŁNE IMPLEMENTACJE
-// ============================================================================
 function viewHiveDetails(hiveId) {
     const hive = AppState.hives.find(h => h.hive_id === hiveId);
     if (!hive) {
