@@ -1,4 +1,5 @@
 #include "apiary_database.h"
+#include "csv_utils.h"
 
 #include <cassert>
 #include <cstdio>
@@ -8,6 +9,10 @@
 #include <sqlite3.h>
 
 int main() {
+    assert(apiary::csvEscape("UL-1") == "UL-1");
+    assert(apiary::csvEscape("UL,1") == "\"UL,1\"");
+    assert(apiary::csvEscape("UL\"1") == "\"UL\"\"1\"");
+    assert(apiary::csvEscape("UL-1\r\nUL-2") == "\"UL-1\r\nUL-2\"");
     const std::string path = "/tmp/apiary_database_regression_" +
                              std::to_string(static_cast<long long>(getpid())) + ".db";
 
