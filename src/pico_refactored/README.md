@@ -97,3 +97,11 @@ Odkomentuj definicje w config.h:
 ## SGP41 data semantics
 
 The SGP41 supplies raw VOC and NOx signals; the firmware converts them to VOC and NOx indices using Sensirion Gas Index Algorithm. The SGP41 does **not** measure CO2 or eCO2. The API therefore exposes `co2_available=false` and `co2=null` rather than reporting a fabricated CO2 value. A separate CO2-capable sensor is required if CO2 data is needed.
+
+## HTTP read-only endpoints
+
+- `GET /` and `GET /index.html` return the read-only HTML dashboard.
+- `GET /status` and `GET /api/status` return JSON sensor status.
+- Other paths return 404; methods other than GET return 405.
+- The request line is limited to 95 bytes, the total headers to 512 bytes, and the connection has a 5-second timeout.
+- HTTP actuator controls are intentionally absent. Actuator changes are accepted only through the locally connected USB command interface.
