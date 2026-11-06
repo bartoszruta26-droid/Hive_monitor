@@ -102,12 +102,21 @@ void ApiaryDatabase::initialize(const DatabaseConfig& config) {
     LOG_INFO("Otwarto bazę danych SQLite: " + config_.db_path);
     
     // Włączenie optymalizacji
-    char* errMsg = nullptr;
-    sqlite3_exec(db_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, &errMsg);
-    sqlite3_exec(db_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr, &errMsg);
-    sqlite3_exec(db_, "PRAGMA cache_size=-64000;", nullptr, nullptr, &errMsg); // 64MB cache
-    sqlite3_exec(db_, "PRAGMA temp_store=MEMORY;", nullptr, nullptr, &errMsg);
-    
+    const auto executePragma = [this](const char* sql, const char* label) {
+        char* error_message = nullptr;
+        const int pragma_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &error_message);
+        if (pragma_rc != SQLITE_OK) {
+            const std::string detail = error_message ? error_message : sqlite3_errmsg(db_);
+            sqlite3_free(error_message);
+            throw DatabaseInitException(std::string(label) + ": " + detail);
+        }
+        sqlite3_free(error_message);
+    };
+    executePragma("PRAGMA journal_mode=WAL;", "Cannot enable SQLite WAL");
+    executePragma("PRAGMA synchronous=NORMAL;", "Cannot configure SQLite synchronous mode");
+    executePragma("PRAGMA cache_size=-64000;", "Cannot configure SQLite cache"); // 64MB cache
+    executePragma("PRAGMA temp_store=MEMORY;", "Cannot configure SQLite temporary storage");
+
     // Tworzenie tabel i indeksów
     createTables();
     createIndexes();
@@ -247,11 +256,16 @@ void ApiaryDatabase::createIndexes() {
     };
     
     for (const auto& sql : sql_indexes) {
-        char* errMsg = nullptr;
-        sqlite3_exec(db_, sql, nullptr, nullptr, &errMsg);
-        sqlite3_free(errMsg);
+        char* error_message = nullptr;
+        const int rc = sqlite3_exec(db_, sql, nullptr, nullptr, &error_message);
+        if (rc != SQLITE_OK) {
+            const std::string detail = error_message ? error_message : sqlite3_errmsg(db_);
+            sqlite3_free(error_message);
+            throw DatabaseInitException("Cannot create SQLite index: " + detail);
+        }
+        sqlite3_free(error_message);
     }
-    
+
     LOG_DEBUG("Indeksy bazy danych utworzone pomyślnie");
 }
 
@@ -265,8 +279,8 @@ void ApiaryDatabase::startBackgroundThreads() {
 
 void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
     if (!initialized_ || !db_) {
-        write_errors_++;
-        return;
+        ++write_errors_;
+        throw DatabaseWriteException("Database is not initialized; record was not accepted");
     }
 
     bool flush_required = false;
