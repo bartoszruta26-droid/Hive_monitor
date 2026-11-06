@@ -51,10 +51,11 @@ inline HttpRouteResult resolveHttpRequestLine(const std::string& requestLine) {
     if (path == "/api/status" || path == "/api/hives") return {HttpRoute::Status, 200};
     if (path == "/health") return {HttpRoute::Health, 200};
     if (path == "/api/csv") return {HttpRoute::Csv, 200};
-    if (path == "/api/sensors") return {HttpRoute::Sensors, 200};
-    if (path == "/api/effectors") return {HttpRoute::Effectors, 200};
-    if (path == "/api/history") return {HttpRoute::History, 200};
-    if (path == "/api/logs") return {HttpRoute::Logs, 200};
+    // These routes are reserved but have no live backend implementation yet.
+    if (path == "/api/sensors") return {HttpRoute::Sensors, 501};
+    if (path == "/api/effectors") return {HttpRoute::Effectors, 501};
+    if (path == "/api/history") return {HttpRoute::History, 501};
+    if (path == "/api/logs") return {HttpRoute::Logs, 501};
     return {HttpRoute::NotFound, 404};
 }
 
