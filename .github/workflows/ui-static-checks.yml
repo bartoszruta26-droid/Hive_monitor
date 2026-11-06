@@ -48,6 +48,9 @@ jobs:
       - name: Verify software security contracts without hardware
         run: python3 src/rpi_tui/tests/test_security_contracts.py
 
+      - name: Verify installer and Android security defaults
+        run: python3 src/rpi_tui/tests/test_deployment_security.py
+
       - name: Build TUI collector and logger tests
         run: |
           sudo apt-get update
@@ -59,6 +62,9 @@ jobs:
 
       - name: Run HTTP protocol regression tests
         run: make -C src/rpi_tui test-http
+
+      - name: Run structural JSON parser regression tests
+        run: make -C src/rpi_tui test-json
 
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network

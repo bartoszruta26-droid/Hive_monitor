@@ -18,6 +18,7 @@ TEST_TARGET = apiary_logger_test
 HTTP_TEST_TARGET = http_protocol_test
 DATABASE_TEST_TARGET = database_regression_test
 NETWORK_TEST_TARGET = network_security_test
+JSON_TEST_TARGET = json_object_parser_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -35,7 +36,7 @@ $(LOGGER_TARGET): apiary_logger.o
 	@echo "Logger zbudowany jako plik nagłówkowy - użyj w swoim projekcie"
 
 # Budowanie kolektora danych z uli (z obsługą bazy danych)
-$(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h http_protocol.h
+$(COLLECTOR_TARGET): $(ALL_SRCS) apiary_database.h apiary_logger.h http_protocol.h network_security.h json_object_parser.h
 	@echo "Budowanie kolektora danych uli z bazą danych SQLite..."
 	$(CXX) $(CXXFLAGS) -DCOLLECTOR_BUILD $(COLLECTOR_SRCS) $(DATABASE_SRCS) $(LOGGER_SRCS) -o $@ $(LDFLAGS)
 	@echo "Gotowe: ./$(COLLECTOR_TARGET)"
@@ -65,9 +66,16 @@ $(NETWORK_TEST_TARGET): tests/test_network_security.cpp network_security.h
 test-network: $(NETWORK_TEST_TARGET)
 	./$(NETWORK_TEST_TARGET)
 
+# Testy parsera JSON (bez zależności zewnętrznych)
+$(JSON_TEST_TARGET): tests/test_json_object_parser.cpp json_object_parser.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_json_object_parser.cpp -o $@
+
+test-json: $(JSON_TEST_TARGET)
+	./$(JSON_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
@@ -75,7 +83,7 @@ install: $(COLLECTOR_TARGET) $(TEST_TARGET)
 	sudo mkdir -p /var/log/apiaryguard
 	sudo mkdir -p /etc/apiaryguard
 	sudo mkdir -p /var/lib/apiaryguard
-	sudo chmod 777 /var/log/apiaryguard
+	sudo chmod 0750 /var/log/apiaryguard
 	sudo cp $(COLLECTOR_TARGET) /usr/local/bin/apiary-collector
 	sudo cp $(TEST_TARGET) /usr/local/bin/apiary-logger
 	sudo cp apiary_tui.sh /usr/local/bin/apiary-tui
@@ -129,4 +137,4 @@ help:
 	@echo "  make test-collector # Testuj kolektor (symulacja)"
 	@echo "  sudo make install # Instaluj"
 
-.PHONY: all clean install uninstall test test-http test-database test-network test-collector debug help
+.PHONY: all clean install uninstall test test-http test-database test-network test-json test-collector debug help
