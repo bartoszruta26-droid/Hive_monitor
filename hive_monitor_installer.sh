@@ -294,8 +294,14 @@ option_install_software() {
                     return 1
                 }
                 
+                if ! git check-ref-format --branch "$current_branch" >/dev/null 2>&1; then
+                    echo -e "${RED}Invalid local Git branch name; update cancelled.${NC}"
+                    wait_for_key
+                    return 1
+                fi
                 echo "Current branch: $current_branch"
-                if ! git -C "$INSTALL_DIR" pull --ff-only origin "$current_branch" 2>&1; then
+                # Disable repository-local hooks during update; the checkout is not trusted.
+                if ! git -c core.hooksPath=/dev/null -C "$INSTALL_DIR" pull --ff-only origin "$current_branch" 2>&1; then
                     echo -e "${RED}Failed to update repository from branch '$current_branch'${NC}"
                     log_message "ERROR" "Failed to update repository from branch '$current_branch'"
                     wait_for_key
