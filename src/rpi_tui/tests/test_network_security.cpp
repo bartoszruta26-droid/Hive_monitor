@@ -21,6 +21,22 @@ int main() {
     assert(!apiary::parseIPv4BindAddress("8.8.8.8", "127.0.0.1", address));
     assert(apiary::parseIPv4BindAddress("10.20.30.40", "127.0.0.1", address));
 
+    apiary::ConnectionRateLimiter limiter;
+    for (int i = 0; i < 10; ++i) assert(limiter.allowConnection("192.168.1.10", 1000));
+    assert(!limiter.allowConnection("192.168.1.10", 1000));
+    assert(limiter.allowConnection("192.168.1.11", 1000));
+    assert(limiter.allowConnection("192.168.1.10", 1002));
+
+    apiary::ConnectionRateLimiter bounded;
+    for (size_t i = 0; i < apiary::ConnectionRateLimiter::MAX_TRACKED_IPS; ++i) {
+        assert(bounded.allowConnection("client-" + std::to_string(i), 2000));
+    }
+    assert(!bounded.allowConnection("overflow-client", 2000));
+    assert(bounded.trackedAddressCount() == apiary::ConnectionRateLimiter::MAX_TRACKED_IPS);
+    bounded.cleanup(2061);
+    assert(bounded.trackedAddressCount() == 0);
+    assert(bounded.allowConnection("after-cleanup", 2061));
+
     std::cout << "Network safety helper tests passed\n";
     return 0;
 }
