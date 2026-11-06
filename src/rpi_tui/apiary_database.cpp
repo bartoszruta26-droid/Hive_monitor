@@ -314,6 +314,7 @@ void ApiaryDatabase::flushBuffer() {
         return;
     }
 
+    const size_t batch_size = data_buffer_.size();
     bool batch_ok = true;
     for (const auto& data : data_buffer_) {
         int rc = sqlite3_bind_int64(stmt, 1, data.timestamp);
@@ -369,6 +370,8 @@ void ApiaryDatabase::flushBuffer() {
         ++write_errors_;
     } else {
         data_buffer_.clear();
+        raw_records_ += batch_size;
+        total_records_ += batch_size;
     }
 
     sqlite3_finalize(stmt);
@@ -773,6 +776,11 @@ AggregationType ApiaryDatabase::stringToAggregationType(const std::string& str) 
 
 std::map<std::string, size_t> ApiaryDatabase::getStats() const {
     std::map<std::string, size_t> stats;
+    {
+        std::lock_guard<std::mutex> lock(buffer_mutex_);
+        stats["buffered_records"] = data_buffer_.size();
+    }
+    stats["accepted_records"] = accepted_records_;
     stats["total_records"] = total_records_;
     stats["raw_records"] = raw_records_;
     stats["aggregated_records"] = aggregated_records_;
