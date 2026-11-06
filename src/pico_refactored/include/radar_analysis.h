@@ -35,7 +35,7 @@ extern RadarMetrics currentRadarMetrics;
 
 // Function declarations
 void processRadarPeriodically(unsigned long now);
-void readRadarData();
+bool readRadarData();
 void calculateRadarMetrics(RadarMetrics& metrics);
 
 #endif // RADAR_ANALYSIS_H
