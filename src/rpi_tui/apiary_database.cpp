@@ -396,7 +396,12 @@ bool ApiaryDatabase::flushBuffer() {
             LOG_ERROR(std::string("Reset instrukcji SQLite nie powiódł się: ") + sqlite3_errmsg(db_));
             break;
         }
-        sqlite3_clear_bindings(stmt);
+        rc = sqlite3_clear_bindings(stmt);
+        if (rc != SQLITE_OK) {
+            batch_ok = false;
+            LOG_ERROR(std::string("Nie można wyczyścić parametrów instrukcji SQLite: ") + sqlite3_errmsg(db_));
+            break;
+        }
     }
 
     if (batch_ok) {
@@ -409,7 +414,13 @@ bool ApiaryDatabase::flushBuffer() {
     }
 
     if (!batch_ok) {
-        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        char* rollback_error = nullptr;
+        const int rollback_rc = sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, &rollback_error);
+        if (rollback_rc != SQLITE_OK) {
+            const std::string detail = rollback_error ? rollback_error : sqlite3_errmsg(db_);
+            LOG_ERROR("Nie udało się wycofać transakcji SQLite: " + detail);
+        }
+        sqlite3_free(rollback_error);
         ++write_errors_;
     } else {
         data_buffer_.clear();
