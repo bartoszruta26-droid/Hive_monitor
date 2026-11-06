@@ -5,7 +5,12 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
@@ -54,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         // Sprawdź czy mamy zapisany adres IP przy każdym uruchomieniu (również po odtworzeniu stanu)
         // Nowy MainViewModel zaczyna z nieustawionym stanem połączenia, więc musimy sprawdzić zapisane dane
         viewModel.checkSavedConnection()
+        startTelemetryRefresh()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -66,6 +72,17 @@ class MainActivity : AppCompatActivity() {
         
         // Zapisz stan dialogu
         outState.putBoolean(KEY_DIALOG_SHOWING, isIpDialogShowing)
+    }
+
+    private fun startTelemetryRefresh() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(10_000L)
+                    if (viewModel.isConnected()) viewModel.loadData()
+                }
+            }
+        }
     }
 
     private fun setupViewModel() {
