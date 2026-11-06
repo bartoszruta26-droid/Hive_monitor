@@ -183,12 +183,18 @@ WebUI korzysta z następujących endpointów:
 | `/api.php?endpoint=history` | GET | Dane historyczne |
 | `/api.php?endpoint=logs` | GET | Logi systemu |
 
-## Tryb Demo
+## Dane rzeczywiste i tryb demonstracyjny
 
-Gdy `apiary_collector` nie jest dostępny, WebUI automatycznie przechodzi w tryb demo z przykładowymi danymi:
-- 3 ule (UL-001, UL-002, UL-003)
-- Symulowane odczyty sensorów
-- Generowane dane historyczne
+WebUI nie wstawia automatycznie przykładowych pomiarów. Przy braku kolektora prezentuje pusty stan i informację o utracie łączności. Dane demonstracyjne po stronie PHP są dostępne wyłącznie po jawnym ustawieniu `APIARY_DEMO_MODE=true`; odpowiedź jest oznaczona polami `mode=demo` i `data_quality=DEMO`.
+
+Kolektor Raspberry Pi udostępnia:
+- `GET /health` — stan procesu kolektora,
+- `GET /api/status` i `GET /api/hives` — bieżący stan telemetryczny,
+- `GET /api/csv` — eksport CSV.
+
+WebUI normalizuje odpowiedź JSON kolektora (mapę `hives`) do kart uli. SGP41 nie jest czujnikiem CO2/eCO2, dlatego interfejs nie prezentuje z niego fikcyjnego pomiaru CO2.
+
+Panele sensorów i efektorów są odczytowe. Sterowanie wykonawcze przez HTTP jest wyłączone, ponieważ kolektor nie udostępnia bezpiecznego, autoryzowanego interfejsu zapisu. Wykres historii pokazuje dane tylko wtedy, gdy backend rzeczywiście je zwróci — nie generuje losowych serii.
 
 ## Rozwiązywanie problemów
 
