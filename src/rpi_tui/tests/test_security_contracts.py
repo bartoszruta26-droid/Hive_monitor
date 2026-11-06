@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Static regression checks for security properties that do not require hardware."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise SystemExit(f"FAIL: {message}")
+
+
+collector = (ROOT / "src/rpi_tui/apiary_collector.cpp").read_text(encoding="utf-8")
+network = (ROOT / "src/rpi_tui/network_security.h").read_text(encoding="utf-8")
+protocol = (ROOT / "src/rpi_tui/http_protocol.h").read_text(encoding="utf-8")
+database = (ROOT / "src/rpi_tui/apiary_database.cpp").read_text(encoding="utf-8")
+firmware_sensors = (ROOT / "src/pico_refactored/src/sensors.cpp").read_text(encoding="utf-8")
+firmware_flow = (ROOT / "src/pico_refactored/src/effectors_flowing_hive.cpp").read_text(encoding="utf-8")
+php_api = (ROOT / "src/webui/api.php").read_text(encoding="utf-8")
+
+require("recvmsg(server_socket" in collector and "datagramWasTruncated" in collector,
+        "UDP receive path must detect truncated datagrams")
+require("INADDR_ANY" not in collector and "inet_ntoa(" not in collector,
+        "collector must not bind wildcard interfaces or use inet_ntoa")
+require("Access-Control-Allow-Origin: *" not in collector,
+        "collector must not emit permissive wildcard CORS")
+require("parseIPv4BindAddress" in collector and "127.0.0.1" in collector,
+        "collector must use validated loopback-by-default bind addresses")
+require("MAX_TRACKED_IPS = 4096" in network and "cleanupLocked" in network,
+        "rate limiter must remain bounded and periodically cleaned")
+require("inet_ntop" in network and "inet_pton" in network,
+        "network address conversion and parsing must use reentrant APIs")
+for route in ("sensors", "effectors", "history", "logs"):
+    require(f'path == "/api/{route}") return {{HttpRoute::' in protocol,
+            f"route /api/{route} must remain explicitly registered")
+require("return {HttpRoute::Sensors, 501}" in protocol and
+        "return {HttpRoute::Effectors, 501}" in protocol and
+        "return {HttpRoute::History, 501}" in protocol and
+        "return {HttpRoute::Logs, 501}" in protocol,
+        "unimplemented collector routes must return HTTP 501")
+
+dht_start = firmware_sensors.index("bool detectDHT() {")
+dht_end = firmware_sensors.index("\n}\n", dht_start)
+dht_function = firmware_sensors[dht_start:dht_end]
+require("delay(2000)" in dht_function and "delay(100)" not in dht_function,
+        "DHT detection must respect the minimum sampling interval")
+
+require("flowSensorInterruptConfigured" in firmware_flow and
+        "flowSensorInterruptReady" not in firmware_flow,
+        "flow diagnostics must distinguish interrupt setup from physical detection")
+require("csvEscape(rec.hive_id)" in database,
+        "CSV export must escape hive identifiers")
+require("raw_records_ += batch_size" in database and
+        "accepted_records_" in database and "buffered_records" in database,
+        "database statistics must distinguish accepted, buffered and committed records")
+require("CURLOPT_CONNECTTIMEOUT" in php_api and
+        "callCollector('/health', 'GET', null, 3)" in php_api,
+        "PHP collector health checks must use a bounded connection and total timeout")
+
+print("Software security contract checks passed")
