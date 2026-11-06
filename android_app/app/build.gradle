@@ -21,11 +21,13 @@ android {
     buildTypes {
         release {
             minifyEnabled true
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
             minifyEnabled false
             testCoverageEnabled true
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
     }
     
