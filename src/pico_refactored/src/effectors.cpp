@@ -61,7 +61,7 @@ void updateOutputs() {
     // Safe mode is an output interlock, not merely a change to three outputs.
     if (safe_mode_active) {
         applySafeOutputState();
-        DBG_EFF("[EFFECTORS] Safe mode active - all relay outputs inhibited\\n");
+        DBG_EFF("[EFFECTORS] Safe mode active - all relay outputs inhibited\n");
         return;
     }
     
@@ -169,7 +169,7 @@ void setFanPWM(uint8_t duty) {
     effector_op_count++;
 
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Fan command ignored - safe mode active\n");
         return;
     }
 
@@ -206,7 +206,7 @@ void setFanPWM(uint8_t duty) {
 void setPump(bool state) {
     effector_op_count++;
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Pump command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Pump command ignored - safe mode active\n");
         return;
     }
     relay_switches++;
@@ -230,7 +230,7 @@ void setPump(bool state) {
 void setValve1(bool state) {
     effector_op_count++;
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Valve 1 command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Valve 1 command ignored - safe mode active\n");
         return;
     }
     relay_switches++;
@@ -254,7 +254,7 @@ void setValve1(bool state) {
 void setValve2(bool state) {
     effector_op_count++;
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Valve 2 command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Valve 2 command ignored - safe mode active\n");
         return;
     }
     relay_switches++;
@@ -285,7 +285,7 @@ void setRelay(uint8_t channel, bool state) {
     effector_op_count++;
 
     if (safe_mode_active) {
-        DBG_EFF("[EFFECTORS] Relay command ignored - safe mode active\\n");
+        DBG_EFF("[EFFECTORS] Relay command ignored - safe mode active\n");
         return;
     }
 
