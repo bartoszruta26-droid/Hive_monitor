@@ -17,6 +17,7 @@ COLLECTOR_TARGET = apiary_collector
 TEST_TARGET = apiary_logger_test
 HTTP_TEST_TARGET = http_protocol_test
 DATABASE_TEST_TARGET = database_regression_test
+NETWORK_TEST_TARGET = network_security_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -58,9 +59,15 @@ $(DATABASE_TEST_TARGET): tests/test_database.cpp apiary_database.cpp apiary_data
 test-database: $(DATABASE_TEST_TARGET)
 	./$(DATABASE_TEST_TARGET)
 
+$(NETWORK_TEST_TARGET): tests/test_network_security.cpp network_security.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_network_security.cpp -o $@
+
+test-network: $(NETWORK_TEST_TARGET)
+	./$(NETWORK_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
@@ -111,6 +118,7 @@ help:
 	@echo "  test          - Uruchom testy loggera"
 	@echo "  test-http     - Uruchom testy parsera HTTP"
 	@echo "  test-database - Uruchom testy regresyjne SQLite"
+	@echo "  test-network  - Uruchom testy bezpieczeństwa sieciowego"
 	@echo "  test-collector- Testuj kolektor w trybie symulacji"
 	@echo "  debug         - Build z symbolami debugowania"
 	@echo "  help          - Pokaż tę pomoc"
@@ -121,4 +129,4 @@ help:
 	@echo "  make test-collector # Testuj kolektor (symulacja)"
 	@echo "  sudo make install # Instaluj"
 
-.PHONY: all clean install uninstall test test-http test-database test-collector debug help
+.PHONY: all clean install uninstall test test-http test-database test-network test-collector debug help
