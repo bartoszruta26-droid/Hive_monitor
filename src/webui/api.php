@@ -217,13 +217,13 @@ function handleException($exception) {
     
     if (!headers_sent()) {
         http_response_code(500);
+        // Szczegóły wyjątku pozostają wyłącznie w logach serwera.
+        // Nie ujawniaj ich w odpowiedzi HTTP, także przy przypadkowo włączonym DEBUG_MODE.
         echo json_encode([
             'error' => 'Internal server error',
-            'type' => DEBUG_MODE ? get_class($exception) : 'InternalServerError',
-            'file' => DEBUG_MODE ? $exception->getFile() : null,
-            'line' => DEBUG_MODE ? $exception->getLine() : null,
-            'message' => DEBUG_MODE ? $exception->getMessage() : 'An unexpected error occurred'
-        ]);
+            'type' => 'InternalServerError',
+            'message' => 'An unexpected error occurred'
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }
 
@@ -726,5 +726,9 @@ try {
 } catch (Exception $e) {
     logMessage('ERROR', $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'Internal server error', 'details' => $e->getMessage()]);
+    // Szczegóły wyjątku są zapisane po stronie serwera, nie trafiają do klienta.
+    echo json_encode([
+        'error' => 'Internal server error',
+        'message' => 'An unexpected error occurred'
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
