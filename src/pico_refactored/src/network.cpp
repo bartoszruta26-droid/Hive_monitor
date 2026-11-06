@@ -8,6 +8,7 @@
  */
 
 #include "network.h"
+#include "sensors.h"
 #include "config.h"
 #include <SPI.h>
 #include <Arduino.h>
@@ -22,10 +23,10 @@ extern SensorState sensors;
 
 // MAC address as byte array
 byte macAddress[] = MAC_ADDRESS;
-IPAddress staticIP STATIC_IP;
-IPAddress gateway GATEWAY;
-IPAddress subnet SUBNET;
-IPAddress rpiIP RPI_IP;
+IPAddress staticIP(STATIC_IP);
+IPAddress gateway(GATEWAY);
+IPAddress subnet(SUBNET);
+IPAddress rpiIP(RPI_IP);
 
 // Debug counters for network health monitoring
 static unsigned long network_init_count = 0;
@@ -138,7 +139,7 @@ void initW6100() {
     delay(1000);
     
     // Check link status
-    t_link_status linkStatus = Ethernet.linkStatus();
+    EthernetLinkStatus linkStatus = Ethernet.linkStatus();
     if (linkStatus == LinkON) {
         Serial.println("  [✓] Ethernet link established");
         #ifdef DEBUG_NETWORK
