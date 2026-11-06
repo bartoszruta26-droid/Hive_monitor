@@ -347,9 +347,12 @@ Ustawia kąt serwa:
 
 #### `void executeAutoEmptySequence(unsigned long duration_ms)`
 Uruchamia sekwencję automatycznego opróżniania:
-1. Przejście do pozycji EMPTY (160°)
-2. Oczekiwanie przez określony czas
-3. Powrót do pozycji REST (10°)
+1. Sprawdza tryb bezpieczny i dozwolony czas pracy.
+2. Przechodzi do pozycji EMPTY (160°).
+3. Oczekuje przez określony czas.
+4. Wraca do pozycji REST (10°).
+
+**Ograniczenie czasu:** od 1 do 1800 sekund (maksymalnie 30 minut). Wartości spoza zakresu są odrzucane bez uruchomienia serwa.
 
 **Przykład użycia:**
 ```cpp
