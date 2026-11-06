@@ -1575,7 +1575,7 @@ int main(int argc, char* argv[]) {
                     if (recv_result == 0) break;
                     received_bytes += static_cast<size_t>(recv_result);
                     buffer[received_bytes] = '\0';
-                    if (std::strstr(buffer, "\\r\\n") != nullptr) {
+                    if (std::strstr(buffer, "\r\n") != nullptr) {
                         request_line_complete = true;
                         break;
                     }
