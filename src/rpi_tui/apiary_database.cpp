@@ -73,6 +73,7 @@ ApiaryDatabase::~ApiaryDatabase() {
 }
 
 void ApiaryDatabase::initialize(const DatabaseConfig& config) {
+    if (!config.validate()) throw DatabaseInitException("Invalid database configuration");
     if (initialized_) {
         LOG_WARNING("Baza danych już zainicjalizowana");
         return;
@@ -110,10 +111,9 @@ void ApiaryDatabase::initialize(const DatabaseConfig& config) {
     createTables();
     createIndexes();
     
-    // Uruchomienie wątków tła
-    startBackgroundThreads();
-    
+    // Opublikuj gotowy stan przed uruchomieniem wątków tła.
     initialized_ = true;
+    startBackgroundThreads();
     LOG_INFO("Baza danych zainicjalizowana pomyślnie");
 }
 
@@ -267,27 +267,25 @@ void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
         write_errors_++;
         return;
     }
-    
-    // Dodaj do bufora
+
+    bool flush_required = false;
     {
         std::lock_guard<std::mutex> lock(buffer_mutex_);
         data_buffer_.push_back(hiveData);
-        
-        // Jeśli bufor pełny, zapisz do bazy
-        if (data_buffer_.size() >= BUFFER_SIZE) {
-            flushBuffer();
-        }
+        flush_required = data_buffer_.size() >= BUFFER_SIZE;
     }
-    
+
+    if (flush_required) flushBuffer();
+
     total_records_++;
     raw_records_++;
 }
 
 void ApiaryDatabase::flushBuffer() {
+    std::lock_guard<std::mutex> buffer_lock(buffer_mutex_);
     if (data_buffer_.empty() || !db_) return;
-    
-    std::lock_guard<std::mutex> lock(db_mutex_);
-    
+
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
     const char* sql = R"(
         INSERT INTO raw_data (
             timestamp, hive_id,
@@ -299,64 +297,98 @@ void ApiaryDatabase::flushBuffer() {
             aq_gas_idx
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    sqlite3_stmt* stmt;
+
+    sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        write_errors_++;
-        data_buffer_.clear();
+        ++write_errors_;
+        LOG_ERROR(std::string("Nie można przygotować zapisu SQLite: ") + sqlite3_errmsg(db_));
+        return; // Zachowaj bufor do kolejnej próby.
+    }
+
+    char* error_message = nullptr;
+    if (sqlite3_exec(db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &error_message) != SQLITE_OK) {
+        ++write_errors_;
+        LOG_ERROR(std::string("Nie można rozpocząć transakcji SQLite: ") +
+                  (error_message ? error_message : sqlite3_errmsg(db_)));
+        sqlite3_free(error_message);
+        sqlite3_finalize(stmt);
         return;
     }
-    
-    sqlite3_exec(db_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-    
+
+    bool batch_ok = true;
     for (const auto& data : data_buffer_) {
-        sqlite3_bind_int64(stmt, 1, data.timestamp);
-        sqlite3_bind_text(stmt, 2, data.hive_id.c_str(), -1, SQLITE_STATIC);
-        
-        sqlite3_bind_double(stmt, 3, data.temperature);
-        sqlite3_bind_double(stmt, 4, data.humidity);
-        sqlite3_bind_double(stmt, 5, data.weight);
-        sqlite3_bind_int(stmt, 6, data.battery_level);
-        sqlite3_bind_int(stmt, 7, data.co2_eq);
-        sqlite3_bind_int(stmt, 8, data.voc_idx);
-        sqlite3_bind_int(stmt, 9, data.motion_detected);
-        
-        sqlite3_bind_double(stmt, 10, data.audio_rms);
-        sqlite3_bind_double(stmt, 11, data.audio_dominant_freq);
-        sqlite3_bind_double(stmt, 12, data.audio_swarm_prob);
-        sqlite3_bind_double(stmt, 13, data.audio_bee_activity);
-        
-        sqlite3_bind_double(stmt, 14, data.radar_distance);
-        sqlite3_bind_double(stmt, 15, data.radar_energy);
-        sqlite3_bind_double(stmt, 16, data.radar_activity);
-        
-        sqlite3_bind_double(stmt, 17, data.hx711_current);
-        sqlite3_bind_double(stmt, 18, data.hx711_slope_24h);
-        
-        sqlite3_bind_double(stmt, 19, data.th_heat_index);
-        sqlite3_bind_double(stmt, 20, data.th_dew_point);
-        sqlite3_bind_double(stmt, 21, data.th_vpd);
-        
-        sqlite3_bind_double(stmt, 22, data.aq_gas_idx);
-        
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            write_errors_++;
+        int rc = sqlite3_bind_int64(stmt, 1, data.timestamp);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_text(stmt, 2, data.hive_id.c_str(), -1, SQLITE_TRANSIENT);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 3, data.temperature);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 4, data.humidity);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 5, data.weight);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt, 6, data.battery_level);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt, 7, data.co2_eq);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt, 8, data.voc_idx);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt, 9, data.motion_detected);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 10, data.audio_rms);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 11, data.audio_dominant_freq);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 12, data.audio_swarm_prob);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 13, data.audio_bee_activity);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 14, data.radar_distance);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 15, data.radar_energy);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 16, data.radar_activity);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 17, data.hx711_current);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 18, data.hx711_slope_24h);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 19, data.th_heat_index);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 20, data.th_dew_point);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 21, data.th_vpd);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 22, data.aq_gas_idx);
+
+        if (rc == SQLITE_OK) rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            batch_ok = false;
+            LOG_ERROR(std::string("Zapis rekordu SQLite nie powiódł się: ") + sqlite3_errmsg(db_));
+            break;
         }
-        
-        sqlite3_reset(stmt);
+
+        rc = sqlite3_reset(stmt);
+        if (rc != SQLITE_OK) {
+            batch_ok = false;
+            LOG_ERROR(std::string("Reset instrukcji SQLite nie powiódł się: ") + sqlite3_errmsg(db_));
+            break;
+        }
+        sqlite3_clear_bindings(stmt);
     }
-    
-    sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, nullptr);
+
+    if (batch_ok) {
+        if (sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, &error_message) != SQLITE_OK) {
+            batch_ok = false;
+            LOG_ERROR(std::string("Commit SQLite nie powiódł się: ") +
+                      (error_message ? error_message : sqlite3_errmsg(db_)));
+            sqlite3_free(error_message);
+        }
+    }
+
+    if (!batch_ok) {
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        ++write_errors_;
+    } else {
+        data_buffer_.clear();
+    }
+
     sqlite3_finalize(stmt);
-    
-    data_buffer_.clear();
 }
 
 void ApiaryDatabase::aggregationLoop() {
     while (running_) {
-        std::this_thread::sleep_for(std::chrono::seconds(config_.aggregation_interval_sec));
-        
+        std::unique_lock<std::mutex> wait_lock(wake_mutex_);
+        const bool stopping = wake_cv_.wait_for(
+            wait_lock,
+            std::chrono::seconds(config_.aggregation_interval_sec),
+            [this] { return !running_.load(); }
+        );
+        wait_lock.unlock();
+        if (stopping || !running_) break;
+
         try {
+            // Najpierw utrwal dane surowe, dopiero potem uruchom agregację.
+            flushBuffer();
             performAggregation();
         } catch (const std::exception& e) {
             LOG_ERROR(std::string("Błąd agregacji: ") + e.what());
@@ -545,8 +577,15 @@ int ApiaryDatabase::cleanupOldData() {
 
 void ApiaryDatabase::cleanupLoop() {
     while (running_) {
-        std::this_thread::sleep_for(std::chrono::seconds(config_.cleanup_interval_sec));
-        
+        std::unique_lock<std::mutex> wait_lock(wake_mutex_);
+        const bool stopping = wake_cv_.wait_for(
+            wait_lock,
+            std::chrono::seconds(config_.cleanup_interval_sec),
+            [this] { return !running_.load(); }
+        );
+        wait_lock.unlock();
+        if (stopping || !running_) break;
+
         if (config_.auto_cleanup_enabled) {
             try {
                 cleanupOldData();
@@ -564,73 +603,80 @@ std::vector<AggregatedRecord> ApiaryDatabase::getHistoricalData(
     long long end_time
 ) {
     std::vector<AggregatedRecord> result;
-    
-    if (!db_) return result;
-    
+    if (start_time > end_time) return result;
+
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    std::stringstream sql;
-    sql << "SELECT timestamp_start, timestamp_end, hive_id, agg_type,";
-    sql << "temperature_avg, temperature_min, temperature_max,";
-    sql << "humidity_avg, humidity_min, humidity_max,";
-    sql << "weight_avg, weight_min, weight_max,";
-    sql << "battery_avg, co2_avg, voc_avg,";
-    sql << "audio_rms_avg, audio_dominant_freq_avg, audio_swarm_prob_avg, audio_bee_activity_avg,";
-    sql << "radar_distance_avg, radar_energy_avg, radar_activity_avg,";
-    sql << "hx711_current_avg, hx711_slope_24h_avg,";
-    sql << "record_count ";
-    sql << "FROM aggregated_data ";
-    sql << "WHERE hive_id = '" << hive_id << "' ";
-    sql << "AND agg_type = " << static_cast<int>(agg_type) << " ";
-    sql << "AND timestamp_start >= " << start_time << " ";
-    sql << "AND timestamp_start <= " << end_time << " ";
-    sql << "ORDER BY timestamp_start ASC";
-    
-    sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(db_, sql.str().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    if (!db_) return result;
+
+    const char* sql =
+        "SELECT timestamp_start, timestamp_end, hive_id, agg_type,"
+        "temperature_avg, temperature_min, temperature_max,"
+        "humidity_avg, humidity_min, humidity_max,"
+        "weight_avg, weight_min, weight_max,"
+        "battery_avg, co2_avg, voc_avg,"
+        "audio_rms_avg, audio_dominant_freq_avg, audio_swarm_prob_avg, audio_bee_activity_avg,"
+        "radar_distance_avg, radar_energy_avg, radar_activity_avg,"
+        "hx711_current_avg, hx711_slope_24h_avg, record_count "
+        "FROM aggregated_data "
+        "WHERE hive_id = ? AND agg_type = ? "
+        "AND timestamp_start >= ? AND timestamp_start <= ? "
+        "ORDER BY timestamp_start ASC";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        LOG_ERROR(std::string("Nie można przygotować odczytu historii SQLite: ") + sqlite3_errmsg(db_));
         return result;
     }
-    
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+
+    int rc = sqlite3_bind_text(stmt, 1, hive_id.c_str(), -1, SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt, 2, static_cast<int>(agg_type));
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 3, start_time);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 4, end_time);
+
+    if (rc != SQLITE_OK) {
+        LOG_ERROR(std::string("Nie można przypisać parametrów odczytu SQLite: ") + sqlite3_errmsg(db_));
+        sqlite3_finalize(stmt);
+        return result;
+    }
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         AggregatedRecord record;
         record.timestamp_start = sqlite3_column_int64(stmt, 0);
         record.timestamp_end = sqlite3_column_int64(stmt, 1);
-        record.hive_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        const auto* stored_hive_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.hive_id = stored_hive_id ? stored_hive_id : "";
         record.agg_type = static_cast<AggregationType>(sqlite3_column_int(stmt, 3));
-        
-        record.temperature_avg = sqlite3_column_double(stmt, 4);
-        record.temperature_min = sqlite3_column_double(stmt, 5);
-        record.temperature_max = sqlite3_column_double(stmt, 6);
-        
-        record.humidity_avg = sqlite3_column_double(stmt, 7);
-        record.humidity_min = sqlite3_column_double(stmt, 8);
-        record.humidity_max = sqlite3_column_double(stmt, 9);
-        
-        record.weight_avg = sqlite3_column_double(stmt, 10);
-        record.weight_min = sqlite3_column_double(stmt, 11);
-        record.weight_max = sqlite3_column_double(stmt, 12);
-        
+
+        record.temperature_avg = static_cast<float>(sqlite3_column_double(stmt, 4));
+        record.temperature_min = static_cast<float>(sqlite3_column_double(stmt, 5));
+        record.temperature_max = static_cast<float>(sqlite3_column_double(stmt, 6));
+        record.humidity_avg = static_cast<float>(sqlite3_column_double(stmt, 7));
+        record.humidity_min = static_cast<float>(sqlite3_column_double(stmt, 8));
+        record.humidity_max = static_cast<float>(sqlite3_column_double(stmt, 9));
+        record.weight_avg = static_cast<float>(sqlite3_column_double(stmt, 10));
+        record.weight_min = static_cast<float>(sqlite3_column_double(stmt, 11));
+        record.weight_max = static_cast<float>(sqlite3_column_double(stmt, 12));
         record.battery_avg = sqlite3_column_int(stmt, 13);
         record.co2_avg = sqlite3_column_int(stmt, 14);
         record.voc_avg = sqlite3_column_int(stmt, 15);
-        
-        record.audio_rms_avg = sqlite3_column_double(stmt, 16);
-        record.audio_dominant_freq_avg = sqlite3_column_double(stmt, 17);
-        record.audio_swarm_prob_avg = sqlite3_column_double(stmt, 18);
-        record.audio_bee_activity_avg = sqlite3_column_double(stmt, 19);
-        
-        record.radar_distance_avg = sqlite3_column_double(stmt, 20);
-        record.radar_energy_avg = sqlite3_column_double(stmt, 21);
-        record.radar_activity_avg = sqlite3_column_double(stmt, 22);
-        
-        record.hx711_current_avg = sqlite3_column_double(stmt, 23);
-        record.hx711_slope_24h_avg = sqlite3_column_double(stmt, 24);
-        
+        record.audio_rms_avg = static_cast<float>(sqlite3_column_double(stmt, 16));
+        record.audio_dominant_freq_avg = static_cast<float>(sqlite3_column_double(stmt, 17));
+        record.audio_swarm_prob_avg = static_cast<float>(sqlite3_column_double(stmt, 18));
+        record.audio_bee_activity_avg = static_cast<float>(sqlite3_column_double(stmt, 19));
+        record.radar_distance_avg = static_cast<float>(sqlite3_column_double(stmt, 20));
+        record.radar_energy_avg = static_cast<float>(sqlite3_column_double(stmt, 21));
+        record.radar_activity_avg = static_cast<float>(sqlite3_column_double(stmt, 22));
+        record.hx711_current_avg = static_cast<float>(sqlite3_column_double(stmt, 23));
+        record.hx711_slope_24h_avg = static_cast<float>(sqlite3_column_double(stmt, 24));
         record.record_count = sqlite3_column_int(stmt, 25);
-        
         result.push_back(record);
     }
-    
+
+    if (rc != SQLITE_DONE) {
+        LOG_ERROR(std::string("Odczyt historii SQLite przerwany: ") + sqlite3_errmsg(db_));
+        result.clear();
+    }
+
     sqlite3_finalize(stmt);
     return result;
 }
@@ -713,24 +759,26 @@ std::map<std::string, size_t> ApiaryDatabase::getStats() const {
 
 void ApiaryDatabase::shutdown() noexcept {
     running_ = false;
-    
-    // Flush bufora przed zamknięciem
+    wake_cv_.notify_all();
+
+    // Zatrzymaj wszystkie zadania korzystające z połączenia przed jego zamknięciem.
+    if (aggregation_thread_.joinable()) aggregation_thread_.join();
+    if (cleanup_thread_.joinable()) cleanup_thread_.join();
+
+    // Po zakończeniu wątków można bezpiecznie opróżnić bufor i zamknąć SQLite.
     flushBuffer();
-    
-    // Poczekaj na wątki
-    if (aggregation_thread_.joinable()) {
-        aggregation_thread_.join();
+    {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (db_) {
+            const int rc = sqlite3_close(db_);
+            if (rc == SQLITE_OK) {
+                db_ = nullptr;
+            } else {
+                LOG_ERROR(std::string("Nie można zamknąć bazy SQLite: ") + sqlite3_errmsg(db_));
+            }
+        }
     }
-    if (cleanup_thread_.joinable()) {
-        cleanup_thread_.join();
-    }
-    
-    // Zamknij bazę
-    if (db_) {
-        sqlite3_close(db_);
-        db_ = nullptr;
-    }
-    
+
     initialized_ = false;
     LOG_INFO("Baza danych zamknięta");
 }
