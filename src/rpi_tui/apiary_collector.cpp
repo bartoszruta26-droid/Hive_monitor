@@ -73,6 +73,7 @@
 #include "apiary_database.h"
 #include "http_protocol.h"
 #include "network_security.h"
+#include "json_object_parser.h"
 
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
@@ -700,26 +701,18 @@ public:
         GENTLE_TRY
         
         try {
-            // Prosty parser JSON bez zewnetrznych bibliotek
-            auto getValue = [&json_str](const std::string& key) -> std::string {
-                std::string searchKey = "\"" + key + "\":";
-                size_t pos = json_str.find(searchKey);
-                if (pos == std::string::npos) return "";
-                
-                pos += searchKey.length();
-                while (pos < json_str.length() && (json_str[pos] == ' ' || json_str[pos] == '\t')) pos++;
-                
-                if (pos >= json_str.length()) return "";
-                
-                if (json_str[pos] == '"') {
-                    size_t endPos = json_str.find('"', pos + 1);
-                    if (endPos == std::string::npos) return "";
-                    return json_str.substr(pos + 1, endPos - pos - 1);
-                } else {
-                    size_t endPos = pos;
-                    while (endPos < json_str.length() && json_str[endPos] != ',' && json_str[endPos] != '}' && json_str[endPos] != ' ') endPos++;
-                    return json_str.substr(pos, endPos - pos);
-                }
+            // Parsuj pełną strukturę JSON; nie wyszukuj kluczy tekstowo,
+            // ponieważ mogłoby to pomylić pola zagnieżdżone lub escaped strings.
+            std::map<std::string, std::string> json_values;
+            if (!apiary::parseJsonObjectScalars(json_str, json_values)) {
+                Logger::getInstance().warning("Odrzucono niepoprawny JSON od " + source_ip, "PARSER");
+                DEBUG_COUNTER_INC("json_parse_errors");
+                DEBUG_FUNC_EXIT();
+                return;
+            }
+            auto getValue = [&json_values](const std::string& key) -> std::string {
+                const auto it = json_values.find(key);
+                return it == json_values.end() ? std::string() : it->second;
             };
             
             std::string hive_id = getValue("hive_id");
