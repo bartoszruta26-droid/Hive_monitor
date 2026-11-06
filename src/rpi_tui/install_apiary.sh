@@ -77,6 +77,11 @@ echo ""
 
 # Klucz API: jeden losowy sekret współdzielony przez Apache i usługę kolektora.
 # Plik jest czytelny wyłącznie dla roota i grupy serwera WWW.
+# Oddziel konto usługi od Apache: kolektor nie może odczytać klucza API PHP.
+if ! id -u apiaryguard >/dev/null 2>&1; then
+    sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin apiaryguard
+fi
+
 sudo install -d -o root -g www-data -m 0750 /etc/apiaryguard
 if ! sudo test -s /etc/apiaryguard/apiary_api_key; then
     umask 077
@@ -97,14 +102,15 @@ sudo a2enconf apiaryguard-env
 # 4. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
-sudo install -d -o www-data -g www-data -m 0750 /var/lib/apiaryguard
+sudo install -d -o apiaryguard -g www-data -m 0750 /var/lib/apiaryguard
 sudo touch "$DB_PATH"
-sudo chown www-data:www-data "$DB_PATH"
-sudo chmod 0660 "$DB_PATH"
-sudo install -d -o www-data -g www-data -m 0750 /var/log/apiaryguard
+sudo chown apiaryguard:www-data "$DB_PATH"
+sudo chmod 0640 "$DB_PATH"
+sudo install -d -o apiaryguard -g apiaryguard -m 0750 /var/log/apiaryguard
+sudo install -d -o www-data -g www-data -m 0750 /var/log/apiaryguard-web
 
 # Inicjalizacja schematu bazy danych z pełną obsługą agregacji
-sudo -u www-data sqlite3 "$DB_PATH" <<EOF
+sudo -u apiaryguard sqlite3 "$DB_PATH" <<EOF
 -- Tabela dla danych surowych (sekundowych)
 CREATE TABLE IF NOT EXISTS raw_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -330,8 +336,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
+User=apiaryguard
+Group=apiaryguard
 ExecStart=${COLLECTOR_BIN}
 Restart=on-failure
 RestartSec=5
