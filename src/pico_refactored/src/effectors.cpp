@@ -95,10 +95,35 @@ void activateSafeMode(const char* reason) {
  * @brief Deactivate safe mode and restore normal operation
  */
 void deactivateSafeMode() {
-    // Do not clear the independent Flowing Hive latch here. A main-system
-    // reset must never silently release a subsystem-specific actuator lock.
+    // Releasing the interlock must never resume stale actuator commands.
+    // Clear remembered setpoints; the operator must issue fresh commands
+    // after investigating and resolving the condition that caused safe mode.
+    heaterDuty = 0;
+    fanDuty = 0;
+    pumpDuty = 0;
+    relay1State = false;
+    relay2State = false;
+
+    // Force every output inactive immediately. Do not restore prior fan,
+    // heater, pump, valve, or relay states on safe-mode release.
+    analogWrite(HEATER_PWM, 0);
+    analogWrite(FAN_PWM, 0);
+    digitalWrite(PUMP_RELAY, LOW);
+    digitalWrite(VALVE_1, LOW);
+    digitalWrite(VALVE_2, LOW);
+    digitalWrite(RELAY_CH1, LOW);
+    digitalWrite(RELAY_CH2, LOW);
+    digitalWrite(RELAY_CH3, LOW);
+    digitalWrite(RELAY_CH4, LOW);
+    digitalWrite(RELAY_CH5, LOW);
+    digitalWrite(RELAY_CH6, LOW);
+    digitalWrite(RELAY_CH7, LOW);
+    digitalWrite(RELAY_CH8, LOW);
+
+    // Keep the independent Flowing Hive latch active. Releasing the main
+    // interlock must never silently unlock a subsystem-specific actuator.
     safe_mode_active = false;
-    DBG_EFF("[EFFECTORS] Main safe mode deactivated; Flowing Hive latch remains independent\n");
+    DBG_EFF("[EFFECTORS] Main safe mode released; setpoints cleared; Flowing Hive latch remains independent\\n");
 }
 
 /**
