@@ -98,7 +98,7 @@ function ensureDirectoryExists($path) {
     
     if (!is_dir($path)) {
         try {
-            if (!mkdir($path, 0755, true)) {
+            if (!mkdir($path, 0700, true)) {
                 error_log("[FILESYSTEM ERROR] Cannot create directory: {$path}");
                 return false;
             }
