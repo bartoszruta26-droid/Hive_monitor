@@ -1614,7 +1614,7 @@ int main(int argc, char* argv[]) {
                 http_response << "HTTP/1.1 " << status_code << " " << httpReasonPhrase(status_code) << "\r\n";
                 http_response << "Content-Type: " << content_type << "\r\n";
                 if (status_code == 405) http_response << "Allow: GET\r\n";
-                http_response << "Access-Control-Allow-Origin: *\r\n";
+                // No permissive CORS header: browser clients must use the same-origin WebUI proxy.
                 http_response << "Content-Length: " << response.length() << "\r\n";
                 http_response << "Connection: close\r\n\r\n";
                 http_response << response;
