@@ -279,7 +279,7 @@ void executeAutoEmptySequence(unsigned long duration_ms) {
     TRACE_ENTER(SERVO);
 
     if (flowingHiveSafeMode) {
-        DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\\n");
+        DBG_SERVO("[SERVO] Auto-empty sequence blocked - safe mode active\n");
         TRACE_EXIT(SERVO);
         return;
     }
@@ -292,7 +292,7 @@ void executeAutoEmptySequence(unsigned long duration_ms) {
         return;
     }
 
-    DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\\n", duration_ms);
+    DBG_SERVO("[SERVO] Starting auto-empty sequence (duration: %lu ms)\n", duration_ms);
     setServoEmptyPosition();
 
     autoEmptyActive = true;
@@ -523,7 +523,7 @@ void updateFlowSensor() {
         const float measuredRate = liters / timeMinutes;
 
         if (measuredRate < 0.0f || measuredRate > FLOW_MAX_RATE) {
-            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\\n", measuredRate);
+            DBG_FLOW("[FLOW] WARNING: Invalid flow rate %.3f L/min\n", measuredRate);
             ++flow_error_count;
             currentFlowRate = 0.0f;
         } else {
@@ -536,7 +536,7 @@ void updateFlowSensor() {
 
 #ifdef DEBUG_FLOW
     if (flow_read_count % 10 == 0) {
-        DBG_FLOW("[FLOW] Rate: %.3f L/min, Total: %.3f L\\n", currentFlowRate, totalVolume);
+        DBG_FLOW("[FLOW] Rate: %.3f L/min, Total: %.3f L\n", currentFlowRate, totalVolume);
     }
 #endif
 }
@@ -565,7 +565,7 @@ void resetFlowCounter() {
     interrupts();
     currentFlowRate = 0.0f;
     lastFlowUpdate = millis();
-    DBG_FLOW("[FLOW] Volume counter reset\\n");
+    DBG_FLOW("[FLOW] Volume counter reset\n");
 }
 
 /**
