@@ -41,6 +41,18 @@ int main() {
     result = resolveHttpRequestLine("GET /health HTTP/1.1 extra");
     assert(result.route == HttpRoute::BadRequest && result.statusCode == 400);
 
+    result = resolveHttpRequestLine("GET /api/sensors HTTP/1.1");
+    assert(result.route == HttpRoute::Sensors && result.statusCode == 501);
+
+    result = resolveHttpRequestLine("GET /api/effectors HTTP/1.1");
+    assert(result.route == HttpRoute::Effectors && result.statusCode == 501);
+
+    result = resolveHttpRequestLine("GET /api/history HTTP/1.1");
+    assert(result.route == HttpRoute::History && result.statusCode == 501);
+
+    result = resolveHttpRequestLine("GET /api/logs HTTP/1.1");
+    assert(result.route == HttpRoute::Logs && result.statusCode == 501);
+
     std::cout << "HTTP request-line routing tests passed\n";
     return 0;
 }
