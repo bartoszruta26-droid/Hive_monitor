@@ -687,8 +687,11 @@ public:
         
         long long now = std::time(nullptr);
         
-        // Sprawdz czy to JSON
-        if (raw_data.find('{') != std::string::npos && raw_data.find('}') != std::string::npos) {
+        // Format rozpoznawaj po pierwszym znaku niebędącym białym znakiem.
+        // Niekompletny obiekt JSON ma trafić do parsera JSON i zostać odrzucony,
+        // a nie być interpretowany jako potencjalny rekord CSV.
+        const auto first = raw_data.find_first_not_of(" \\t\\r\\n");
+        if (first != std::string::npos && raw_data[first] == '{') {
             parseJSON(raw_data, source_ip, now);
         } else {
             parseCSV(raw_data, source_ip, now);
