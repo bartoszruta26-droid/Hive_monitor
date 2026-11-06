@@ -75,7 +75,7 @@ install: $(COLLECTOR_TARGET) $(TEST_TARGET)
 	sudo mkdir -p /var/log/apiaryguard
 	sudo mkdir -p /etc/apiaryguard
 	sudo mkdir -p /var/lib/apiaryguard
-	sudo chmod 777 /var/log/apiaryguard
+	sudo chmod 0750 /var/log/apiaryguard
 	sudo cp $(COLLECTOR_TARGET) /usr/local/bin/apiary-collector
 	sudo cp $(TEST_TARGET) /usr/local/bin/apiary-logger
 	sudo cp apiary_tui.sh /usr/local/bin/apiary-tui
