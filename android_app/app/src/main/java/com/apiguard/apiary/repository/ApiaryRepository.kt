@@ -11,7 +11,7 @@ import com.apiguard.apiary.data.remote.ApiaryPayloadMapper
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.network.RetrofitClient
 import com.apiguard.apiary.util.AppConstants
-import com.apiguard.apiary.util.isValidIpAddress
+import com.apiguard.apiary.util.isValidApiHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -68,7 +68,10 @@ class ApiaryRepository(private val application: Application) {
     }
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
-        // Walidacja zakresu portów przed zapisem
+        // Walidacja hosta i portu przed trwałym zapisem ustawień.
+        if (!ipAddress.isValidApiHost()) {
+            throw IllegalArgumentException("Nieprawidłowy host lub adres IP")
+        }
         if (port < MIN_PORT || port > MAX_PORT) {
             throw IllegalArgumentException("Port musi być w zakresie $MIN_PORT-$MAX_PORT")
         }
