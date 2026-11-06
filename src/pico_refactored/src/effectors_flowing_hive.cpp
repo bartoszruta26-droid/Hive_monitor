@@ -697,5 +697,5 @@ void deactivateFlowingHiveSafeMode() {
     }
 
     flowingHiveSafeMode = false;
-    DBG_SERVO("[SERVO] Safe mode deactivated\\n");
+    DBG_SERVO("[SERVO] Safe mode deactivated\n");
 }
