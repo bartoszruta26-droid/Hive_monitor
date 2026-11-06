@@ -2,6 +2,7 @@
 """Static regression checks for security properties that do not require hardware."""
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -64,6 +65,14 @@ require("validateHivePayloadFields" in collector and "json_validation_errors" in
         "collector must validate measurement payloads before conversion and persistence")
 require("measurementRanges()" in measurement_validation and "std::isfinite(value)" in measurement_validation,
         "measurement schema must enforce finite, field-specific numeric bounds")
+
+parse_start = collector.index("void parseJSON")
+parse_end = collector.index("void parseCSV", parse_start)
+parser_keys = set(re.findall(r'getValue\("([^"]+)"\)', collector[parse_start:parse_end]))
+range_keys = set(re.findall(r'\{"([^"]+)",\s*\{', measurement_validation))
+unvalidated_keys = parser_keys - {"hive_id", "data_source"} - range_keys
+require(not unvalidated_keys,
+        "every numeric key consumed by parseJSON must have a domain rule: " + ", ".join(sorted(unvalidated_keys)))
 require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
         "SQLite lifecycle must serialize initialization, producers and shutdown")
 require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
