@@ -447,16 +447,16 @@ void ApiaryDatabase::performAggregation() {
 }
 
 int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType target_type) {
-    if (!db_) return 0;
-    
+    if (source_type == target_type || target_type == AggregationType::RAW) return 0;
+
     std::lock_guard<std::mutex> lock(db_mutex_);
-    
-    std::string source_table = (source_type == AggregationType::RAW) ? "raw_data" : "aggregated_data";
-    std::string source_filter = (source_type == AggregationType::RAW) ? 
-        "timestamp" : "timestamp_start";
-    
-    // Określenie interwału czasowego w sekundach
-    int interval_sec = 60; // domyślnie minuta
+    if (!db_) return 0;
+
+    const bool source_is_raw = source_type == AggregationType::RAW;
+    const std::string source_table = source_is_raw ? "raw_data" : "aggregated_data";
+    const std::string source_time_column = source_is_raw ? "timestamp" : "timestamp_start";
+
+    int interval_sec = 60;
     switch (target_type) {
         case AggregationType::MINUTE: interval_sec = 60; break;
         case AggregationType::HOUR: interval_sec = 3600; break;
@@ -465,10 +465,13 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
         case AggregationType::MONTH: interval_sec = 2592000; break;
         case AggregationType::QUARTER: interval_sec = 7776000; break;
         case AggregationType::YEAR: interval_sec = 31536000; break;
-        default: break;
+        default: return 0;
     }
-    
-    // SQL do agregacji
+
+    const std::string source_time = "src." + source_time_column;
+    const long long target_type_value = static_cast<int>(target_type);
+    const long long source_type_value = static_cast<int>(source_type);
+
     std::stringstream sql;
     sql << "INSERT INTO aggregated_data ("
            "timestamp_start, timestamp_end, hive_id, agg_type,"
@@ -478,59 +481,54 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
            "battery_avg, co2_avg, voc_avg,"
            "audio_rms_avg, audio_dominant_freq_avg, audio_swarm_prob_avg, audio_bee_activity_avg,"
            "radar_distance_avg, radar_energy_avg, radar_activity_avg,"
-           "hx711_current_avg, hx711_slope_24h_avg,"
-           "record_count"
+           "hx711_current_avg, hx711_slope_24h_avg, record_count"
         ") SELECT "
-        << source_filter << " / " << interval_sec << " * " << interval_sec << " AS ts_start,"
-        << "(" << source_filter << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,"
-        << "hive_id,"
-        << static_cast<int>(target_type) << ","
-        << "AVG(temperature) as temp_avg,"
-           "MIN(temperature) as temp_min,"
-           "MAX(temperature) as temp_max,"
-           "AVG(humidity) as hum_avg,"
-           "MIN(humidity) as hum_min,"
-           "MAX(humidity) as hum_max,"
-           "AVG(weight) as weight_avg,"
-           "MIN(weight) as weight_min,"
-           "MAX(weight) as weight_max,"
-           "AVG(battery_level) as batt_avg,"
-           "AVG(co2_eq) as co2_avg,"
-           "AVG(voc_idx) as voc_avg,"
-           "AVG(audio_rms) as audio_avg,"
-           "AVG(audio_dominant_freq) as freq_avg,"
-           "AVG(audio_swarm_prob) as swarm_avg,"
-           "AVG(audio_bee_activity) as activity_avg,"
-           "AVG(radar_distance) as dist_avg,"
-           "AVG(radar_energy) as energy_avg,"
-           "AVG(radar_activity) as rad_act_avg,"
-           "AVG(hx711_current) as hx_avg,"
-           "AVG(hx711_slope_24h) as hx_slope_avg,"
-           "COUNT(*) as cnt "
-        "FROM " << source_table
-        << " WHERE " << source_filter << " < (strftime('%s', 'now') - " << interval_sec << ")"
-        << " GROUP BY " << source_filter << " / " << interval_sec << ", hive_id"
-        << " HAVING cnt >= " << (interval_sec / 10) << "  -- Minimalna liczba rekordów";
-    
-    char* errMsg = nullptr;
-    int rc = sqlite3_exec(db_, sql.str().c_str(), nullptr, nullptr, &errMsg);
-    
+        << source_time << " / " << interval_sec << " * " << interval_sec << " AS ts_start,"
+        << "(" << source_time << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,"
+        << "src.hive_id,"
+        << target_type_value << ","
+        << "AVG(src.temperature), MIN(src.temperature), MAX(src.temperature),"
+        << "AVG(src.humidity), MIN(src.humidity), MAX(src.humidity),"
+        << "AVG(src.weight), MIN(src.weight), MAX(src.weight),"
+        << "AVG(src.battery_level), AVG(src.co2_eq), AVG(src.voc_idx),"
+        << "AVG(src.audio_rms), AVG(src.audio_dominant_freq),"
+        << "AVG(src.audio_swarm_prob), AVG(src.audio_bee_activity),"
+        << "AVG(src.radar_distance), AVG(src.radar_energy), AVG(src.radar_activity),"
+        << "AVG(src.hx711_current), AVG(src.hx711_slope_24h), COUNT(*) "
+        << "FROM " << source_table << " AS src "
+        << "WHERE " << source_time << " < (strftime('%s', 'now') - " << interval_sec << ") ";
+
+    if (!source_is_raw) {
+        sql << "AND src.agg_type = " << source_type_value << " ";
+    }
+
+    // Każdy zamknięty przedział może zostać zagregowany tylko raz.
+    // Chroni to przed wielokrotnym dopisywaniem tych samych minut/godzin.
+    sql << "AND NOT EXISTS ("
+        << "SELECT 1 FROM aggregated_data AS existing "
+        << "WHERE existing.hive_id = src.hive_id "
+        << "AND existing.agg_type = " << target_type_value << " "
+        << "AND existing.timestamp_start = ("
+        << source_time << " / " << interval_sec << " * " << interval_sec << ")) "
+        << "GROUP BY " << source_time << " / " << interval_sec << ", src.hive_id "
+        << "HAVING COUNT(*) >= " << (interval_sec / 10);
+
+    char* error_message = nullptr;
+    const int rc = sqlite3_exec(db_, sql.str().c_str(), nullptr, nullptr, &error_message);
     if (rc != SQLITE_OK) {
-        std::string err = errMsg ? errMsg : "Unknown error";
-        sqlite3_free(errMsg);
-        LOG_WARNING("Agregacja nie powiodła się: " + err);
+        const std::string error = error_message ? error_message : sqlite3_errmsg(db_);
+        sqlite3_free(error_message);
+        LOG_WARNING("Agregacja nie powiodła się: " + error);
         return 0;
     }
-    
-    int changes = sqlite3_changes(db_);
-    aggregated_records_ += changes;
-    
+
+    const int changes = sqlite3_changes(db_);
+    aggregated_records_ += static_cast<size_t>(changes);
     if (changes > 0) {
-        LOG_DEBUG("Zagregowano " + std::to_string(changes) + " rekordów z " + 
-                  aggregationTypeToString(source_type) + " do " + 
+        LOG_DEBUG("Zagregowano " + std::to_string(changes) + " rekordów z " +
+                  aggregationTypeToString(source_type) + " do " +
                   aggregationTypeToString(target_type));
     }
-    
     return changes;
 }
 
