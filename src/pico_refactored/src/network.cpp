@@ -12,6 +12,7 @@
 #include "config.h"
 #include <SPI.h>
 #include <Arduino.h>
+#include <string.h>
 
 // External global sensor variables (defined in main .ino file)
 extern float temperature;
@@ -196,95 +197,119 @@ void initW6100() {
  */
 void handleClients() {
     EthernetClient client = server.available();
-    
-    if (client) {
-        client_connections++;
-        
-        #ifdef DEBUG_NETWORK
-        Serial.print("[NETWORK] Client connected from ");
-        Serial.println(client.remoteIP().toString().c_str());
-        #endif
-        
-        bool currentLineIsBlank = true;
-        String httpRequest = "";
-        unsigned long startTime = millis();
-        const unsigned long timeout = 5000; // 5 second timeout
-        
-        while (client.connected()) {
-            // Timeout protection
-            if (millis() - startTime > timeout) {
-                #ifdef DEBUG_NETWORK
-                Serial.println("[NETWORK] WARNING: Client request timeout");
-                #endif
-                network_error_count++;
+    if (!client) return;
+
+    ++client_connections;
+
+#ifdef DEBUG_NETWORK
+    Serial.print("[NETWORK] Client connected from ");
+    Serial.println(client.remoteIP().toString().c_str());
+#endif
+
+    // The endpoint is read-only. Bound both the request line and total headers
+    // and reject non-GET methods rather than buffering arbitrary client input.
+    char requestLine[96] = {0};
+    size_t requestLineLength = 0;
+    size_t totalRequestBytes = 0;
+    bool requestLineComplete = false;
+    bool currentLineIsBlank = true;
+    bool responseSent = false;
+    const unsigned long startTime = millis();
+    const unsigned long timeout = 5000;
+    const size_t maxHeaderBytes = 512;
+
+    while (client.connected() && !responseSent) {
+        if (millis() - startTime > timeout) {
+#ifdef DEBUG_NETWORK
+            Serial.println("[NETWORK] Request timeout");
+#endif
+            ++network_error_count;
+            break;
+        }
+
+        while (client.available() && !responseSent) {
+            const char ch = static_cast<char>(client.read());
+            if (++totalRequestBytes > maxHeaderBytes) {
+                client.println("HTTP/1.1 431 Request Header Fields Too Large");
+                client.println("Connection: close");
+                client.println("Content-Length: 0");
+                client.println();
+                responseSent = true;
+                ++network_error_count;
                 break;
             }
-            
-            if (client.available()) {
-                char c = client.read();
-                httpRequest += c;
-                
-                #ifdef DEBUG_NETWORK
-                if (httpRequest.length() <= 50) {
-                    Serial.print(c);
-                }
-                #endif
-                
-                if (c == '\n' && currentLineIsBlank) {
-                    // Send HTTP response header
-                    #ifdef DEBUG_NETWORK
-                    Serial.println("\n[NETWORK] Sending HTTP response...");
-                    #endif
-                    
-                    client.println("HTTP/1.1 200 OK");
-                    client.println("Content-Type: application/json");
-                    client.println("Connection: close");
-                    client.println();
-                    
-                    // Send JSON response with sensor data
-                    client.print("{\"temp\":");
-                    client.print(temperature);
-                    client.print(",\"hum\":");
-                    client.print(humidity);
-                    client.print(",\"co2_available\":");
-                    client.print(co2_available ? "true" : "false");
-                    client.print(",\"co2\":");
-                    if (co2_available) client.print(co2_eq); else client.print("null");
-                    client.print(",\"voc\":");
-                    client.print(voc_idx);
-                    client.print(",\"nox\":");
-                    client.print(nox_idx);
-                    client.print(",\"weight\":");
-                    client.print(hx711_value);
-                    client.println("}");
-                    
-                    #ifdef DEBUG_NETWORK
-                    Serial.println("[NETWORK] Response sent successfully");
-                    Serial.printf("[DEBUG] Total client connections: %lu\n", client_connections);
-                    #endif
-                    
-                    break;
-                }
-                
-                if (c == '\n') {
+
+            if (!requestLineComplete) {
+                if (ch == '\n') {
+                    requestLine[requestLineLength] = '\0';
+                    requestLineComplete = true;
                     currentLineIsBlank = true;
-                } else if (c != '\r') {
-                    currentLineIsBlank = false;
+
+                    if (strncmp(requestLine, "GET ", 4) != 0) {
+                        client.println("HTTP/1.1 405 Method Not Allowed");
+                        client.println("Allow: GET");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
+                        ++network_error_count;
+                    }
+                } else if (ch != '\r') {
+                    if (requestLineLength >= sizeof(requestLine) - 1) {
+                        client.println("HTTP/1.1 414 URI Too Long");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
+                        ++network_error_count;
+                    } else {
+                        requestLine[requestLineLength++] = ch;
+                    }
                 }
+                continue;
             }
-            
-            // Small delay to prevent CPU hogging
-            delay(1);
+
+            if (ch == '\n' && currentLineIsBlank) {
+                client.println("HTTP/1.1 200 OK");
+                client.println("Content-Type: application/json");
+                client.println("Connection: close");
+                client.println();
+
+                client.print("{\"temp\":");
+                client.print(temperature);
+                client.print(",\"hum\":");
+                client.print(humidity);
+                client.print(",\"co2_available\":");
+                client.print(co2_available ? "true" : "false");
+                client.print(",\"co2\":");
+                if (co2_available) client.print(co2_eq); else client.print("null");
+                client.print(",\"voc\":");
+                client.print(voc_idx);
+                client.print(",\"nox\":");
+                client.print(nox_idx);
+                client.print(",\"weight\":");
+                client.print(hx711_value);
+                client.println("}");
+
+                responseSent = true;
+                break;
+            }
+
+            if (ch == '\n') {
+                currentLineIsBlank = true;
+            } else if (ch != '\r') {
+                currentLineIsBlank = false;
+            }
         }
-        
-        // Cleanup
-        delay(1);
-        client.stop();
-        
-        #ifdef DEBUG_NETWORK
-        Serial.println("[NETWORK] Client connection closed");
-        #endif
+
+        if (!responseSent) delay(1);
     }
+
+    client.stop();
+
+#ifdef DEBUG_NETWORK
+    Serial.println("[NETWORK] Client connection closed");
+#endif
 }
 
 /**
