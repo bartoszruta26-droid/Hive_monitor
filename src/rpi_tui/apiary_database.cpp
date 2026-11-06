@@ -273,12 +273,11 @@ void ApiaryDatabase::storeRawData(const HiveData& hiveData) {
     {
         std::lock_guard<std::mutex> lock(buffer_mutex_);
         data_buffer_.push_back(hiveData);
+        accepted_records_++;
         flush_required = data_buffer_.size() >= BUFFER_SIZE;
     }
 
     if (flush_required) flushBuffer();
-
-    accepted_records_++;
 }
 
 void ApiaryDatabase::flushBuffer() {
