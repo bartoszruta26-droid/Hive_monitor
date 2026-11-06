@@ -220,7 +220,7 @@ fetch_hive_data() {
 
                     # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
                     IFS=',' read -r -a columns <<< "$csv_line"
-                    if (( ${#columns[@]} < 198 )); then
+                    if (( ${#columns[@]} < 272 )); then
                         continue
                     fi
                     id="${columns[0]}"
@@ -242,7 +242,7 @@ fetch_hive_data() {
                     radar_act="${columns[96]}"
                     wag_rate="${columns[121]}"
                     wag_trend="${columns[132]}"
-                    air_iaq="${columns[197]}"
+                    air_iaq="${columns[271]}"
                     
                     # Ignoruj puste linie
                     [ -z "$id" ] && continue
@@ -313,7 +313,7 @@ fetch_hive_data() {
 
                 # Indeksy odpowiadają nagłówkowi getStatusCSV() w apiary_collector.cpp.
                 IFS=',' read -r -a columns <<< "$csv_line"
-                if (( ${#columns[@]} < 198 )); then
+                if (( ${#columns[@]} < 272 )); then
                     continue
                 fi
                 id="${columns[0]}"
@@ -335,7 +335,7 @@ fetch_hive_data() {
                 radar_act="${columns[96]}"
                 wag_rate="${columns[121]}"
                 wag_trend="${columns[132]}"
-                air_iaq="${columns[197]}"
+                air_iaq="${columns[271]}"
                 
                 [ -z "$id" ] && continue
                 
