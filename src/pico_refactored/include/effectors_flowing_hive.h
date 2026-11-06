@@ -74,7 +74,7 @@ void initServoControl();
  * @note Controls the servo motor that tilts the Flowing Hive frames
  *       for automatic honey extraction
  */
-void setServoAngle(uint16_t angle);
+bool setServoAngle(uint16_t angle);
 
 /**
  * @brief Move servo to rest position
@@ -84,7 +84,7 @@ void setServoAngle(uint16_t angle);
  * 
  * @note Positions frames in normal bee-accessible configuration
  */
-void setServoRestPosition();
+bool setServoRestPosition();
 
 /**
  * @brief Move servo to emptying position
@@ -94,7 +94,7 @@ void setServoRestPosition();
  * 
  * @note Tilts frames to drain honey through the collection system
  */
-void setServoEmptyPosition();
+bool setServoEmptyPosition();
 
 /**
  * @brief Execute automatic frame emptying sequence
@@ -116,7 +116,7 @@ void setServoEmptyPosition();
  * 
  * @note Call from main loop, then periodically call updateServoLoop()
  */
-void executeAutoEmptySequence(unsigned long duration_ms = 1800000);
+bool executeAutoEmptySequence(unsigned long duration_ms = 1800000);
 
 /**
  * @brief Update servo control loop (call periodically)
