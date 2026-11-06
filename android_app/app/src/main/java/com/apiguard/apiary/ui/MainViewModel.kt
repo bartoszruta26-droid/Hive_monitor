@@ -55,23 +55,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun verifyAndSaveConnection(ipAddress: String, port: Int) {
-        // Użyj stałych z AppConstants zamiast hardcoded values
         if (!port.isValidPort()) {
             _errorMessage.value = "Nieprawidłowy numer portu"
             return
         }
-        
+        if (_isLoading.value == true) return
+
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val result = repository.verifyConnection(ipAddress, port)
-                
-                when (result) {
+                when (val result = repository.verifyConnection(ipAddress, port)) {
                     is ConnectionResult.Success -> {
                         repository.saveIpAddress(ipAddress, port)
                         _connectionState.value = true
                         _errorMessage.value = null
-                        loadData()
+                        repository.fetchApiaries()
+                            .onSuccess { data -> _apiaryData.value = data }
+                            .onFailure { error ->
+                                _apiaryData.value = emptyList()
+                                _connectionState.value = false
+                                _errorMessage.value = "Połączono, ale nie udało się pobrać pomiarów: ${error.message}"
+                            }
                     }
                     is ConnectionResult.Error -> {
                         _connectionState.value = false
@@ -85,6 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadData() {
+        if (_isLoading.value == true) return
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -110,6 +115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Nie generuje powtarzających się komunikatów Toast podczas awarii sieci.
      */
     fun refreshConnectionAndData() {
+        if (_isLoading.value == true) return
         viewModelScope.launch {
             val ipAddress = repository.getSavedIpAddress() ?: run {
                 _connectionState.value = false
