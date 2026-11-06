@@ -45,6 +45,9 @@ jobs:
       - name: Verify collector CSV and TUI column contract
         run: python3 src/rpi_tui/tests/test_csv_contract.py
 
+      - name: Verify software security contracts without hardware
+        run: python3 src/rpi_tui/tests/test_security_contracts.py
+
       - name: Build TUI collector and logger tests
         run: |
           sudo apt-get update
