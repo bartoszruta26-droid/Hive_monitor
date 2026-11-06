@@ -51,5 +51,5 @@ jobs:
           arduino-cli compile \
             --fqbn rp2040:rp2040:rpipico \
             --warnings all \
-            --build-property compiler.cpp.extra_flags="-I.ci/pico-build/include" \
+            --build-property compiler.cpp.extra_flags="-I${GITHUB_WORKSPACE}/.ci/pico-build/include" \
             .ci/pico-build
