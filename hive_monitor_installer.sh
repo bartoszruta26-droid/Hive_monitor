@@ -17,6 +17,16 @@ LOG_FILE="${CONFIG_DIR}/installer.log"
 CURRENT_LANG="en"
 INSTALL_FAILED=0
 
+# Pliki konfiguracji, dzienniki i kopie mogą zawierać sekrety.
+if [[ -L "$CONFIG_DIR" ]]; then
+    echo "Refusing to use a symlink as the private configuration directory." >&2
+    exit 1
+fi
+install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+chmod 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
+
 # Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -222,7 +232,7 @@ option_install_software() {
     print_header "${LANG[MENU_3]}"
     
     GITHUB_REPO="https://github.com/bartoszruta26-droid/Hive_monitor"
-    INSTALL_DIR="${HOME}/hive_monitor"
+    INSTALL_DIR="${HOME%/}/hive_monitor"
     
     echo "This option will clone and install software from:"
     echo "$GITHUB_REPO"
@@ -249,10 +259,30 @@ option_install_software() {
         case $update_choice in
             1)
                 echo "Updating existing installation..."
-                cd "$INSTALL_DIR" || { echo -e "${RED}Failed to change directory${NC}"; return 1; }
-                
+                # Do not run update operations in a directory with an unexpected origin.
+                if [[ -L "$INSTALL_DIR" || ! -d "$INSTALL_DIR/.git" ]]; then
+                    echo -e "${RED}Refusing to update a non-Git or symlink installation directory.${NC}"
+                    log_message "ERROR" "Unsafe installation directory rejected"
+                    wait_for_key
+                    return 1
+                fi
+                origin_url=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null) || {
+                    echo -e "${RED}Cannot verify Git origin.${NC}"
+                    wait_for_key
+                    return 1
+                }
+                case "$origin_url" in
+                    "https://github.com/bartoszruta26-droid/Hive_monitor"|"https://github.com/bartoszruta26-droid/Hive_monitor.git"|"git@github.com:bartoszruta26-droid/Hive_monitor.git") ;;
+                    *)
+                        echo -e "${RED}Unexpected Git origin; update cancelled.${NC}"
+                        log_message "ERROR" "Unexpected Git origin rejected: $origin_url"
+                        wait_for_key
+                        return 1
+                        ;;
+                esac
+
                 # Check current branch and pull from correct branch
-                current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+                current_branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null) || {
                     echo -e "${RED}Failed to determine git branch${NC}"
                     log_message "ERROR" "Failed to determine git branch"
                     wait_for_key
@@ -260,7 +290,7 @@ option_install_software() {
                 }
                 
                 echo "Current branch: $current_branch"
-                if ! git pull origin "$current_branch" 2>&1; then
+                if ! git -C "$INSTALL_DIR" pull --ff-only origin "$current_branch" 2>&1; then
                     echo -e "${RED}Failed to update repository from branch '$current_branch'${NC}"
                     log_message "ERROR" "Failed to update repository from branch '$current_branch'"
                     wait_for_key
@@ -338,9 +368,29 @@ option_install_software() {
                 ;;
             2)
                 echo "Removing existing installation..."
-                rm -rf "$INSTALL_DIR"
+                if [[ -L "$INSTALL_DIR" || ! -d "$INSTALL_DIR/.git" || "$INSTALL_DIR" != "${HOME%/}/hive_monitor" || "$HOME" == "/" ]]; then
+                    echo -e "${RED}Refusing unsafe removal target: $INSTALL_DIR${NC}"
+                    log_message "ERROR" "Unsafe reinstall target rejected"
+                    wait_for_key
+                    return 1
+                fi
+                origin_url=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null) || {
+                    echo -e "${RED}Cannot verify Git origin; reinstall cancelled.${NC}"
+                    wait_for_key
+                    return 1
+                }
+                case "$origin_url" in
+                    "https://github.com/bartoszruta26-droid/Hive_monitor"|"https://github.com/bartoszruta26-droid/Hive_monitor.git"|"git@github.com:bartoszruta26-droid/Hive_monitor.git") ;;
+                    *)
+                        echo -e "${RED}Unexpected Git origin; reinstall cancelled.${NC}"
+                        log_message "ERROR" "Unsafe reinstall origin rejected: $origin_url"
+                        wait_for_key
+                        return 1
+                        ;;
+                esac
+                rm -rf -- "$INSTALL_DIR"
                 echo "Cloning repository..."
-                if ! git clone "$GITHUB_REPO" "$INSTALL_DIR"; then
+                if ! git clone -- "$GITHUB_REPO" "$INSTALL_DIR"; then
                     echo -e "${RED}Failed to clone repository${NC}"
                     log_message "ERROR" "Failed to clone repository from GitHub during reinstall"
                     wait_for_key
@@ -489,8 +539,9 @@ option_backup_config() {
     echo "Backup location: ${BACKUP_DIR}"
     echo ""
     
-    # Create backup directory if it doesn't exist
-    mkdir -p "$BACKUP_DIR"
+    # Keep archives containing API keys and environment files private.
+    install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+    chmod 0700 "$CONFIG_DIR" "$BACKUP_DIR"
     
     # Define config files to backup with their relative paths for preservation
     declare -A CONFIG_FILES_MAP=(
@@ -543,9 +594,21 @@ option_backup_config() {
     
     echo ""
     echo "Creating backup archive: $BACKUP_FILE"
-    tar -czf "$BACKUP_FILE" -C "$TEMP_BACKUP_DIR" .
-    
-    if [[ $? -eq 0 ]]; then
+    local previous_umask
+    previous_umask=$(umask)
+    umask 077
+    if tar -czf "$BACKUP_FILE" -C "$TEMP_BACKUP_DIR" .; then
+        chmod 0600 "$BACKUP_FILE"
+        umask "$previous_umask"
+    else
+        umask "$previous_umask"
+        echo -e "${RED}Failed to create configuration backup${NC}"
+        rm -rf -- "$TEMP_BACKUP_DIR"
+        wait_for_key
+        return 1
+    fi
+
+    if [[ -f "$BACKUP_FILE" ]]; then
         echo -e "${GREEN}Backup created successfully!${NC}"
         echo "Backup file: $BACKUP_FILE"
         echo "Size: $(du -h "$BACKUP_FILE" | cut -f1)"
