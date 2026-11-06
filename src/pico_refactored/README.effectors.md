@@ -342,8 +342,14 @@ Inicjalizuje sterowanie serwem:
 Ustawia kąt serwa:
 - **Parametr**: `angle` - kąt w stopniach (0-180)
 - Walidacja zakresu
-- Konwersja na sygnał PWM (500-2500µs)
+- Sterowanie przez wbudowaną w rdzeń Arduino-Pico bibliotekę `Servo`, wykorzystującą PIO do generowania impulsów z okresem 20 ms (50 Hz).
+- Zakres impulsów jest ustawiany przez `SERVO_PULSE_WIDTH_MIN/MAX` (obecnie 500-2500 µs); wymaga kalibracji dla konkretnego modelu serwa i mechanizmu.
 - Blokada w trybie safe mode
+- Błąd przydzielenia kanału PIO powoduje odrzucenie poleceń ruchu. Flaga oznacza gotowość sterownika, a nie fizyczne wykrycie serwa.
+
+
+
+**Uwaga sprzętowa:** biblioteka `Servo` w rdzeniu Arduino-Pico wykorzystuje PIO i generuje przebieg w tle, niezależnie od obciążenia pętli głównej. Nie potwierdza to jednak prawidłowości mechanicznego zakresu ruchu. Pierwsze uruchomienie należy wykonać bez obciążenia mechanizmu, z ograniczonym zakresem impulsów i kontrolą poboru prądu.
 
 #### `void executeAutoEmptySequence(unsigned long duration_ms)`
 Uruchamia sekwencję automatycznego opróżniania:
