@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         )[MainViewModel::class.java]
 
         viewModel.connectionState.observe(this) { isConnected ->
-            if (!isConnected) {
+            if (!isConnected && viewModel.getSavedIpAddress() == null) {
                 showIpInputDialog()
             }
         }
