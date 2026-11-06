@@ -242,40 +242,39 @@ bool detectHX711() {
  */
 bool detectDHT() {
     sensor_init_count++;
-    
+
     pinMode(DHT_PIN, INPUT_PULLUP);
     dht.begin();
-    
+
     #ifdef DEBUG_SENSORS
     Serial.print("[SENSORS] Attempting DHT detection on pin ");
     Serial.println(DHT_PIN);
     #endif
-    
-    // Try to read with retries
-    for (int i = 0; i < DHT_READ_RETRY; i++) {
-        float h = dht.readHumidity();
-        float t = dht.readTemperature();
-        
-        if (!isnan(h) && !isnan(t)) {
-            #ifdef DEBUG_SENSORS
-            Serial.printf("  [✓] DHT: Detected (T=%.1f°C, H=%.1f%%) after %d attempts\n", t, h, i+1);
-            #else
-            Serial.printf("  [✓] DHT: Detected (T=%.1f°C, H=%.1f%%)\n", t, h);
-            #endif
-            return true;
-        }
-        
+
+    // DHT22/AM2302 readings must be spaced by at least ~2 seconds.
+    // Do not issue rapid retries: many DHT libraries return a cached/invalid
+    // value inside their minimum interval, which is not an independent probe.
+    delay(2000);
+    const float h = dht.readHumidity();
+    const float t = dht.readTemperature();
+
+    if (!isnan(h) && !isnan(t)) {
         #ifdef DEBUG_SENSORS
-        Serial.printf("[SENSORS] DHT read attempt %d failed (H=%s, T=%s)\n", 
-                      i+1, isnan(h)?"NaN":"OK", isnan(t)?"NaN":"OK");
+        Serial.printf("  [✓] DHT: Detected (T=%.1f°C, H=%.1f%%)\n", t, h);
+        #else
+        Serial.printf("  [✓] DHT: Detected (T=%.1f°C, H=%.1f%%)\n", t, h);
         #endif
-        
-        delay(100);
+        return true;
     }
-    
-    dht_read_errors++;
-    sensor_error_count++;
-    Serial.println("  [!] DHT: Not detected or reading failed");
+
+    #ifdef DEBUG_SENSORS
+    Serial.printf("[SENSORS] DHT initial read failed (H=%s, T=%s)\n",
+                  isnan(h) ? "NaN" : "OK", isnan(t) ? "NaN" : "OK");
+    #endif
+
+    ++dht_read_errors;
+    ++sensor_error_count;
+    Serial.println("  [!] DHT: Not detected or initial read failed");
     #ifdef DEBUG_SENSORS
     Serial.printf("[DEBUG] Total DHT errors: %lu\n", dht_read_errors);
     #endif
