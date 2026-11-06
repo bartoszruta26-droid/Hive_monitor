@@ -515,8 +515,8 @@
         <div id="sensors" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title">🔧 Zarządzanie Sensorami</h2>
-                    <button class="btn btn-primary" onclick="showAddSensorModal()">➕ Dodaj sensor</button>
+                    <h2 class="card-title">🔧 Stan sensorów</h2>
+                    <span class="metric-label">Dane odczytowe z kolektora</span>
                 </div>
                 <div class="table-responsive">
                     <table>
@@ -527,7 +527,7 @@
                                 <th>Ule</th>
                                 <th>Status</th>
                                 <th>Ostatni odczyt</th>
-                                <th>Akcje</th>
+                                <th>Tryb</th>
                             </tr>
                         </thead>
                         <tbody id="sensorsTable">
@@ -542,8 +542,8 @@
         <div id="effectors" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <h2 class="card-title">⚙️ Zarządzanie Efektorami</h2>
-                    <button class="btn btn-primary" onclick="showAddEffectorModal()">➕ Dodaj effektor</button>
+                    <h2 class="card-title">⚙️ Stan efektorów</h2>
+                    <span class="metric-label">Podgląd — sterowanie HTTP wyłączone</span>
                 </div>
                 <div class="table-responsive">
                     <table>
