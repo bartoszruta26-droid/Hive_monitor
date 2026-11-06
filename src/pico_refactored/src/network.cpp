@@ -246,7 +246,6 @@ void handleClients() {
                     client.print(temperature);
                     client.print(",\"hum\":");
                     client.print(humidity);
-                    client.print(",\"co2\":");
                     client.print(",\"co2_available\":");
                     client.print(co2_available ? "true" : "false");
                     client.print(",\"co2\":");
