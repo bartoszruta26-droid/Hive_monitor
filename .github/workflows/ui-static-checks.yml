@@ -50,3 +50,6 @@ jobs:
 
       - name: Run HTTP protocol regression tests
         run: make -C src/rpi_tui test-http
+
+      - name: Run SQLite safety and persistence regression tests
+        run: make -C src/rpi_tui test-database
