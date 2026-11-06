@@ -102,7 +102,7 @@ class ApiaryRepository(private val application: Application) {
     }
     
     private fun initializeApiService(ipAddress: String, port: Int) {
-        val baseUrl = "http://$ipAddress:$port/"
+        val baseUrl = RetrofitClient.buildBaseUrl(ipAddress, port)
         apiService = RetrofitClient.createApiService(baseUrl)
     }
     
@@ -131,7 +131,7 @@ class ApiaryRepository(private val application: Application) {
         
         return withContext(Dispatchers.IO) {
             try {
-                val baseUrl = "http://$ipAddress:$port/"
+                val baseUrl = RetrofitClient.buildBaseUrl(ipAddress, port)
                 
                 // Dodatkowa walidacja URL
                 try {
