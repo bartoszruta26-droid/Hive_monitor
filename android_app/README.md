@@ -89,8 +89,8 @@ Bieżący kolektor nie udostępnia zdalnego endpointu historii. Aplikacja zapisu
 ## Użycie
 
 1. **Pierwsze uruchomienie**:
-   - Aplikacja wyświetli dialog z prośbą o adres IP Raspberry Pi
-   - Domyślny port to 8080 (można zmienić)
+   - Aplikacja wyświetli dialog z prośbą o nazwę hosta DNS lub adres IPv4 Raspberry Pi
+   - Domyślny port HTTPS to 443 (można zmienić)
    - Kliknij "Połącz" aby zweryfikować połączenie
 
 2. **Połączenie zakończone sukcesem**:
@@ -99,7 +99,7 @@ Bieżący kolektor nie udostępnia zdalnego endpointu historii. Aplikacja zapisu
    - Dane są cache'owane w bazie lokalnej
 
 3. **Kolejne uruchomienia**:
-   - Aplikacja automatycznie łączy się z zapisanym adresem IP
+   - Aplikacja automatycznie łączy się z zapisanym hostem lub adresem IP
    - Pobiera aktualne dane z API; przy błędzie usuwa poprzednie pomiary z widoku, aby nie przedstawiać ich jako bieżących
 
 4. **Zmiana adresu IP**:
