@@ -195,6 +195,9 @@ void initW6100() {
  * - Invalid HTTP request format
  * - Socket errors
  */
+// HTML dashboard is implemented in the main sketch; it is read-only.
+extern void sendHtmlDashboard(EthernetClient& client);
+
 void handleClients() {
     EthernetClient client = server.available();
     if (!client) return;
@@ -214,6 +217,7 @@ void handleClients() {
     bool requestLineComplete = false;
     bool currentLineIsBlank = true;
     bool responseSent = false;
+    bool wantsDashboard = false;
     const unsigned long startTime = millis();
     const unsigned long timeout = 5000;
     const size_t maxHeaderBytes = 512;
@@ -253,6 +257,16 @@ void handleClients() {
                         client.println();
                         responseSent = true;
                         ++network_error_count;
+                    } else if (strncmp(requestLine, "GET / ", 6) == 0 ||
+                               strncmp(requestLine, "GET /index.html ", 16) == 0) {
+                        wantsDashboard = true;
+                    } else if (strncmp(requestLine, "GET /status ", 12) != 0 &&
+                               strncmp(requestLine, "GET /api/status ", 16) != 0) {
+                        client.println("HTTP/1.1 404 Not Found");
+                        client.println("Connection: close");
+                        client.println("Content-Length: 0");
+                        client.println();
+                        responseSent = true;
                     }
                 } else if (ch != '\r') {
                     if (requestLineLength >= sizeof(requestLine) - 1) {
@@ -270,26 +284,30 @@ void handleClients() {
             }
 
             if (ch == '\n' && currentLineIsBlank) {
-                client.println("HTTP/1.1 200 OK");
-                client.println("Content-Type: application/json");
-                client.println("Connection: close");
-                client.println();
+                if (wantsDashboard) {
+                    sendHtmlDashboard(client);
+                } else {
+                    client.println("HTTP/1.1 200 OK");
+                    client.println("Content-Type: application/json");
+                    client.println("Connection: close");
+                    client.println();
 
-                client.print("{\"temp\":");
-                client.print(temperature);
-                client.print(",\"hum\":");
-                client.print(humidity);
-                client.print(",\"co2_available\":");
-                client.print(co2_available ? "true" : "false");
-                client.print(",\"co2\":");
-                if (co2_available) client.print(co2_eq); else client.print("null");
-                client.print(",\"voc\":");
-                client.print(voc_idx);
-                client.print(",\"nox\":");
-                client.print(nox_idx);
-                client.print(",\"weight\":");
-                client.print(hx711_value);
-                client.println("}");
+                    client.print("{\"temp\":");
+                    client.print(temperature);
+                    client.print(",\"hum\":");
+                    client.print(humidity);
+                    client.print(",\"co2_available\":");
+                    client.print(co2_available ? "true" : "false");
+                    client.print(",\"co2\":");
+                    if (co2_available) client.print(co2_eq); else client.print("null");
+                    client.print(",\"voc\":");
+                    client.print(voc_idx);
+                    client.print(",\"nox\":");
+                    client.print(nox_idx);
+                    client.print(",\"weight\":");
+                    client.print(hx711_value);
+                    client.println("}");
+                }
 
                 responseSent = true;
                 break;
