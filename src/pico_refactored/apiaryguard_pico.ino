@@ -264,7 +264,10 @@ void processCommand(String cmd) {
             Serial.println("ERROR: Tryb bezpieczny Flowing Hive aktywny.");
             return;
         }
-        setServoAngle(static_cast<uint16_t>(value));
+        if (!setServoAngle(static_cast<uint16_t>(value))) {
+            Serial.println("ERROR: Sterownik serwa nie jest gotowy; polecenie odrzucone.");
+            return;
+        }
         Serial.println("OK: Serwo ustawione na " + String(value) + " stopni.");
     }
     else if (cmd == "SERVO_EMPTY" ||
@@ -275,7 +278,10 @@ void processCommand(String cmd) {
         }
         const unsigned long duration = (cmd == "SERVO_EMPTY")
             ? 1800000UL : value * 1000UL;
-        executeAutoEmptySequence(duration);
+        if (!executeAutoEmptySequence(duration)) {
+            Serial.println("ERROR: Nie uruchomiono sekwencji; sprawdź sterownik, tryb bezpieczny i czas.");
+            return;
+        }
         Serial.println("OK: Rozpoczęto sekwencję opróżniania (" +
                        String(duration / 1000UL) + "s).");
     }
