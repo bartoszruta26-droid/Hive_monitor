@@ -7,6 +7,7 @@ import com.apiguard.apiary.data.local.ApiaryDao
 import com.apiguard.apiary.data.local.ApiaryDatabase
 import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.data.remote.ApiaryApiService
+import com.apiguard.apiary.data.remote.ApiaryPayloadMapper
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.network.RetrofitClient
 import com.apiguard.apiary.util.AppConstants
@@ -181,29 +182,7 @@ class ApiaryRepository(private val application: Application) {
                 
                 if (response.isSuccessful) {
                     response.body()?.let { payload ->
-                        val hiveMap = payload.getAsJsonObject("hives")
-                            ?: return@withContext Result.failure(Exception("Brak pola hives w odpowiedzi kolektora"))
-                        val responseTimestamp = payload.get("timestamp")?.asLong ?: 0L
-                        val apiaries = hiveMap.entrySet().map { entry ->
-                            val values = entry.value.asJsonObject
-                            val hasCoreMetrics = listOf("temp", "hum", "weight", "bat", "last_seen")
-                                .all { key -> values.has(key) && !values.get(key).isJsonNull }
-                            val lastSeenSeconds = values.get("last_seen")?.takeUnless { it.isJsonNull }?.asLong
-                                ?: responseTimestamp
-                            ApiaryData(
-                                id = entry.key,
-                                name = entry.key,
-                                temperature = values.get("temp")?.takeUnless { it.isJsonNull }?.asDouble ?: 0.0,
-                                humidity = values.get("hum")?.takeUnless { it.isJsonNull }?.asDouble ?: 0.0,
-                                weight = values.get("weight")?.takeUnless { it.isJsonNull }?.asDouble ?: 0.0,
-                                battery = values.get("bat")?.takeUnless { it.isJsonNull }?.asInt ?: 0,
-                                timestamp = lastSeenSeconds * 1000L,
-                                available = hasCoreMetrics,
-                                online = values.get("online")?.takeUnless { it.isJsonNull }?.asBoolean == true
-                                    && lastSeenSeconds > 0L
-                                    && (System.currentTimeMillis() / 1000L - lastSeenSeconds) in 0L..60L
-                            )
-                        }
+                        val apiaries = ApiaryPayloadMapper.map(payload)
                         cacheReadings(apiaries.filter { it.available && it.online })
                         return@withContext Result.success(apiaries)
                     } ?: Result.failure(Exception("Pusta odpowiedź z serwera"))
