@@ -75,6 +75,7 @@ int extractValue(String cmd);
 void printStatus(Print& out);
 void sendJsonResponse(EthernetClient& client);
 void sendHtmlDashboard(EthernetClient& client);
+void checkActuatorSafety(unsigned long now);
 
 // Actuator settings
 int heaterDuty = 0;
@@ -322,6 +323,24 @@ void sendHtmlDashboard(EthernetClient& client) {
     client.println("</body></html>");
 }
 
+// Heater interlock: a heater request is permitted only while the
+// temperature sensor is present and producing fresh, valid measurements.
+// This is a software fault interlock, not an independent thermal cutoff.
+void checkActuatorSafety(unsigned long now) {
+    if (isSafeModeActive() || heaterDuty <= 0) return;
+
+    const bool sensorUnavailable = !sensors.tempHum.detected || !sensors.tempHum.active;
+    const bool tooManyInvalidSamples =
+        sensors.tempHum.critical_error_count >= HEATER_SENSOR_MAX_ERRORS;
+    const bool noValidSampleYet = sensors.tempHum.last_read_time == 0;
+    const bool sampleStale = noValidSampleYet ||
+        (now - sensors.tempHum.last_read_time > HEATER_SENSOR_MAX_AGE_MS);
+
+    if (sensorUnavailable || tooManyInvalidSamples || sampleStale) {
+        activateSafeMode("Heater interlock: temperature sensor unavailable, invalid or stale");
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     while(!Serial && (millis() < 3000));
@@ -371,6 +390,9 @@ void loop() {
     
     // Read sensors conditionally (only if detected)
     readSensors(now);
+
+    // Evaluate heater safety after refreshing sensor measurements.
+    checkActuatorSafety(now);
     
     // Process audio analysis periodically
     processAudioPeriodically(now);
