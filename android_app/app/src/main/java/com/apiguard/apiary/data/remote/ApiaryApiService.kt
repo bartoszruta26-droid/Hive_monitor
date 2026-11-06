@@ -6,7 +6,7 @@ import retrofit2.http.GET
 
 interface ApiaryApiService {
     @GET("health")
-    suspend fun checkHealth(): Response<Unit>
+    suspend fun checkHealth(): Response<JsonObject>
     
     @GET("api/hives")
     suspend fun getApiaries(): Response<JsonObject>
