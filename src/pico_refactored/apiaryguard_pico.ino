@@ -18,6 +18,7 @@
 #include <Adafruit_SGP41.h>
 #include <HardwareSerial.h>
 #include <RP2040Watchdog.h>
+#include <string.h>
 
 // Include module headers
 #include "config.h"
@@ -71,7 +72,6 @@ void detectConnectionMode();
 void initEthernet();
 void handleUSBCommand();
 void processCommand(String cmd);
-int extractValue(String cmd);
 void printStatus(Print& out);
 void sendJsonResponse(EthernetClient& client);
 void sendHtmlDashboard(EthernetClient& client);
@@ -147,20 +147,6 @@ void handleUSBCommand() {
     }
 }
 
-/**
- * @brief Extract numeric value from command string
- */
-int extractValue(String cmd) {
-    int spaceIndex = cmd.indexOf(' ');
-    if (spaceIndex != -1) {
-        return cmd.substring(spaceIndex + 1).toInt();
-    }
-    return 0;
-}
-
-/**
- * @brief Process text commands from USB or Ethernet
- */
 // Accept only a complete command name followed by one unsigned integer.
 // Reject trailing characters, signs, empty arguments and out-of-range values.
 static bool parseUnsignedArgument(const String& command, const char* name,
