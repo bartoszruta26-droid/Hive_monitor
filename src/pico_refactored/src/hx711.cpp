@@ -57,7 +57,7 @@ static unsigned long last_error_log_time = 0;
  */
 long readHX711() {
     TRACE_ENTER(HX711);
-    PERF_START(readHX711);
+    APIARY_PERF_START(readHX711);
     
     long count = 0;
     unsigned long read_start = millis();
@@ -96,7 +96,7 @@ long readHX711() {
             Serial.println("[HX711] DEBUG: SCK pin state: " + String(digitalRead(HX711_SCK)));
             #endif
             
-            PERF_END(readHX711);
+            APIARY_PERF_END(readHX711);
             TRACE_EXIT(HX711);
             return 0; // Return error code
         }
@@ -147,7 +147,7 @@ long readHX711() {
             last_error_log_time = millis();
         }
         
-        PERF_END(readHX711);
+        APIARY_PERF_END(readHX711);
         TRACE_EXIT(HX711);
         return 0;
     }
@@ -174,7 +174,7 @@ long readHX711() {
     }
     #endif
     
-    PERF_END(readHX711);
+    APIARY_PERF_END(readHX711);
     TRACE_EXIT(HX711);
     return count;
 }
