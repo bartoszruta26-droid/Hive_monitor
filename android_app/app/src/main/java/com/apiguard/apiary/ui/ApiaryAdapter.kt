@@ -27,11 +27,11 @@ class ApiaryAdapter(
 ) : RecyclerView.Adapter<ApiaryAdapter.ApiaryViewHolder>() {
 
     // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
-    private const val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
-    private const val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
-    private const val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
-    private const val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
-    private const val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
+    private val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
+    private val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
+    private val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
+    private val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
+    private val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
 
     private var apiaryList = emptyList<ApiaryData>()
 
