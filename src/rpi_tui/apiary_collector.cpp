@@ -1552,16 +1552,39 @@ int main(int argc, char* argv[]) {
                 }
                 
                 char buffer[4096] = {0};
-                ssize_t recv_result = recv(client_fd, buffer, sizeof(buffer)-1, 0);
-                
-                // Zabezpieczenie przed bledem recv
-                if (recv_result < 0) {
-                    Logger::getInstance().warning("Blad recv w HTTP: " + std::string(strerror(errno)), "HTTP");
-                    close(client_fd);
-                    continue;
+                size_t received_bytes = 0;
+                bool request_line_complete = false;
+                // Ogranicz czas blokowania glownej petli przez klienta HTTP.
+                struct timeval client_receive_timeout;
+                client_receive_timeout.tv_sec = 2;
+                client_receive_timeout.tv_usec = 0;
+                setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO,
+                           &client_receive_timeout, sizeof(client_receive_timeout));
+
+                // TCP jest strumieniem: jedna operacja recv() nie gwarantuje
+                // odebrania calej linii zadania. Czytaj do CRLF lub limitu bufora.
+                while (received_bytes < sizeof(buffer) - 1) {
+                    const ssize_t recv_result = recv(client_fd, buffer + received_bytes,
+                        sizeof(buffer) - 1 - received_bytes, 0);
+                    if (recv_result < 0) {
+                        if (errno == EINTR) continue;
+                        Logger::getInstance().warning(
+                            "Blad/timeout recv w HTTP: " + std::string(strerror(errno)), "HTTP");
+                        break;
+                    }
+                    if (recv_result == 0) break;
+                    received_bytes += static_cast<size_t>(recv_result);
+                    buffer[received_bytes] = '\0';
+                    if (std::strstr(buffer, "\\r\\n") != nullptr) {
+                        request_line_complete = true;
+                        break;
+                    }
                 }
-                
-                buffer[recv_result] = '\0';
+
+                if (!request_line_complete) {
+                    Logger::getInstance().warning(
+                        "Niekompletna lub zbyt dluga linia zadania HTTP", "HTTP");
+                }
                 std::string request(buffer);
                 std::string response;
                 std::string content_type = "application/json";
