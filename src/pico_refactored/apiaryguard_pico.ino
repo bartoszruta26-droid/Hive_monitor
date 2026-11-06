@@ -36,7 +36,7 @@ EthernetServer server(8080);
 EthernetUDP udp;
 DHT dht(DHT_PIN, DHT22);
 Adafruit_SGP41 sgp;
-HardwareSerial& radarSerial = Serial2; // RP2040 UART1 on GPIO4 RX / GPIO5 TX
+SerialUART& radarSerial = Serial2; // RP2040 UART1 on GPIO4 RX / GPIO5 TX
 
 // Global sensor state
 SensorState sensors;
