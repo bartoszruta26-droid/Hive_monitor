@@ -104,6 +104,15 @@ PR #107 został scalony metodą squash do `main`. Kontrole uruchomione dla PR za
 - **Obserwacja:** handler lokalny zwraca treść wyjątku bez sprawdzenia środowiska, a handler globalny dopuszcza szczegóły tylko przy debug. Polityki są niespójne.
 - **Zalecenie:** jeden wspólny serializer błędów i testy dla debug/production.
 
+
+
+### HVM-014 — zatrzaski safe mode nie mają jawnej procedury odzyskiwania
+- **Priorytet:** średni/wysoki.
+- **Pliki:** `src/pico_refactored/apiaryguard_pico.ino`, `src/pico_refactored/src/effectors.cpp`, `src/pico_refactored/src/effectors_flowing_hive.cpp`.
+- **Obserwacja:** istnieją funkcje `deactivateSafeMode()` i `deactivateFlowingHiveSafeMode()`, ale interfejs komend USB w `processCommand()` nie udostępnia komendy kontrolowanego odblokowania. Zatrzaski są zmiennymi RAM i po restarcie MCU wracają do wartości początkowej.
+- **Ryzyko:** operator nie ma jawnej, audytowalnej procedury potwierdzenia usunięcia przyczyny awarii i kontrolowanego odblokowania. Restart kasuje stan zatrzasku bez potwierdzenia przyczyny; po restarcie system może przyjąć nowe komendy.
+- **Zalecenie:** zdefiniować procedurę odzyskiwania z autoryzacją lokalną, warunkami wstępnymi, diagnostyką przyczyny, rejestrem zdarzeń i ponownym sprawdzeniem czujników. Zdecydować, czy krytyczne zatrzaski mają przetrwać restart (np. zapis trwały z kontrolą integralności), czy restart ma wymagać ręcznego potwierdzenia. Nie dodawać prostego polecenia „SAFE_OFF” bez sprawdzenia warunków.
+
 ## 3. Przegląd komponentów
 
 | Komponent | Zakres sprawdzony | Ocena |
