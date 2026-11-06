@@ -1,0 +1,48 @@
+name: RP2040 firmware build
+
+on:
+  push:
+    branches: [main, "fix/**"]
+    paths:
+      - "src/pico_refactored/**"
+      - ".github/workflows/firmware-build.yml"
+  pull_request:
+    paths:
+      - "src/pico_refactored/**"
+      - ".github/workflows/firmware-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pico-firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Configure Raspberry Pi Pico core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+
+      - name: Install firmware libraries
+        run: |
+          arduino-cli lib update-index
+          arduino-cli lib install "Ethernet"
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli lib install "Adafruit SGP41 Sensor"
+
+      - name: Compile Raspberry Pi Pico firmware
+        run: |
+          arduino-cli compile \
+            --fqbn rp2040:rp2040:rpipico \
+            --warnings all \
+            --build-property compiler.cpp.extra_flags="-Isrc/pico_refactored/include" \
+            src/pico_refactored
