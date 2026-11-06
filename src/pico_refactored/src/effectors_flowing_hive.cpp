@@ -633,14 +633,14 @@ void printFlowingHiveEffectorStatus() {
     
     // Flow sensor status
     Serial.printf("  Flow Sensor:\n");
-    Serial.printf("    Interrupt ready: %s\n", flowSensorInterruptConfigured ? "YES" : "NO");
+    Serial.printf("    Interrupt configured: %s\n", flowSensorInterruptConfigured ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", flowSensorInitialized ? "YES" : "NO");
     if (flowSensorInterruptConfigured && flowSensorInitialized) {
         Serial.printf("    Flow rate: %.3f L/min\n", currentFlowRate);
         Serial.printf("    Total volume: %.3f L\n", totalVolume);
         Serial.printf("    Honey flowing: %s\n", isHoneyFlowing() ? "YES" : "NO");
     } else {
-        Serial.println("    (Sensor not detected - skipping readings)");
+        Serial.println("    (Interrupt not configured - readings unavailable)");
     }
     Serial.printf("    Updates: %lu, Errors: %lu\n", flow_read_count, flow_error_count);
     
