@@ -262,34 +262,48 @@ async function fetchHiveData() {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
         const payload = await response.json();
-        // Kolektor zwraca { timestamp, hive_count, hives: { "UL-1": { temp, hum, ... } } }.
-        const source = payload && payload.hives ? payload.hives : payload;
+        let source;
+        if (Array.isArray(payload)) {
+            source = payload;
+        } else if (payload && typeof payload === 'object' &&
+                   payload.hives && typeof payload.hives === 'object' && !Array.isArray(payload.hives)) {
+            source = payload.hives;
+        } else {
+            throw new Error('Nieprawidłowa odpowiedź kolektora: brak mapy hives');
+        }
+
+        const toFiniteNumber = value => {
+            if (value === null || value === undefined || value === '') return null;
+            const number = Number(value);
+            return Number.isFinite(number) ? number : null;
+        };
+
         if (Array.isArray(source)) {
             AppState.hives = source;
-        } else if (source && typeof source === 'object') {
+        } else {
             AppState.hives = Object.entries(source).map(([id, hive]) => {
-                const lastSeen = Number(hive.last_seen || payload.timestamp || 0);
-                const online = hive.online === true && lastSeen > 0 &&
-                    (Date.now() / 1000 - lastSeen) >= 0 && (Date.now() / 1000 - lastSeen) <= 60;
+                const hasPerHiveTimestamp = hive.last_seen !== null && hive.last_seen !== undefined;
+                const lastSeen = Number(hasPerHiveTimestamp ? hive.last_seen : (payload.timestamp || 0));
+                const ageSeconds = Date.now() / 1000 - lastSeen;
+                const online = hive.online === true && hasPerHiveTimestamp &&
+                    lastSeen > 0 && ageSeconds >= 0 && ageSeconds <= 60;
                 return {
                     hive_id: id,
-                    temperature: Number.isFinite(Number(hive.temp)) ? Number(hive.temp) : null,
-                    humidity: Number.isFinite(Number(hive.hum)) ? Number(hive.hum) : null,
-                    weight: Number.isFinite(Number(hive.weight)) ? Number(hive.weight) : null,
-                    battery_level: Number.isFinite(Number(hive.bat)) ? Number(hive.bat) : null,
+                    temperature: toFiniteNumber(hive.temp),
+                    humidity: toFiniteNumber(hive.hum),
+                    weight: toFiniteNumber(hive.weight),
+                    battery_level: toFiniteNumber(hive.bat),
                     // SGP41 nie mierzy CO2/eCO2; nie prezentuj tej wartości jako pomiaru.
                     co2_eq: null,
                     co2_available: false,
-                    voc_idx: hive.voc ?? null,
+                    voc_idx: toFiniteNumber(hive.voc),
                     motion_detected: hive.motion ?? null,
                     is_online: online,
-                    audio_dominant_freq: hive.audio?.freq ?? null,
-                    swarm_probability: hive.audio?.swarm_prob ?? null,
+                    audio_dominant_freq: toFiniteNumber(hive.audio?.freq),
+                    swarm_probability: toFiniteNumber(hive.audio?.swarm_prob),
                     timestamp: lastSeen
                 };
             });
-        } else {
-            throw new Error('Nieprawidłowy format odpowiedzi /api/hives');
         }
         AppState.isConnected = true;
         AppState.lastRefresh = new Date();
