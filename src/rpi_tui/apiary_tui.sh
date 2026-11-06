@@ -208,7 +208,7 @@ fetch_hive_data() {
             if [ -n "$csv_data" ] && [ "$csv_data" != "{\"error"* ]; then
                 # Parsuj CSV (pomijaj nagłówek)
                 local first_line=true
-                while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+                while IFS=',' read -r id status timestamp temp hum weight bat co2 voc motion online audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq; do
                     if $first_line; then
                         first_line=false
                         continue
@@ -275,7 +275,7 @@ fetch_hive_data() {
         
         if [ -n "$csv_data" ]; then
             local first_line=true
-            while IFS=',' read -r id status temp hum weight bat co2 voc motion audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq timestamp; do
+            while IFS=',' read -r id status timestamp temp hum weight bat co2 voc motion online audio_rms audio_freq swarm_prob radar_dist radar_energy radar_act wag_rate wag_trend air_iaq; do
                 if $first_line; then
                     first_line=false
                     continue
@@ -330,8 +330,8 @@ fetch_hive_data() {
     fi
     
     # Jeśli nadal brak danych, użyj przykładowych (fallback/demo mode)
-    if ! $data_fetched; then
-        # Symulacja danych - tryb demo gdy kolektor nie działa
+    if ! $data_fetched && [[ "${APIARY_TUI_DEMO:-0}" == "1" ]]; then
+        # Symulacja danych wyłącznie po jawnym włączeniu APIARY_TUI_DEMO=1
         HIVES=("UL-001" "UL-002" "UL-003")
         HIVE_STATUS=("ONLINE" "ONLINE" "STALE")
         HIVE_TEMP=("24.5" "26.1" "23.8")
