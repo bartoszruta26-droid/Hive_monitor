@@ -27,7 +27,7 @@ jobs:
       - name: Install Qt 6 development packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ qt6-base-dev qt6-webengine-dev qt6-webengine-dev-tools
+          sudo apt-get install -y cmake ninja-build g++ libgl1-mesa-dev qt6-base-dev qt6-webengine-dev qt6-webengine-dev-tools
       - name: Configure
         run: cmake -S src/desktop_gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
