@@ -6,6 +6,7 @@ on:
     paths:
       - "src/pico_refactored/**"
       - "src/arduino_nano_dual_mode/**"
+      - "src/shared/**"
       - "tests/**"
       - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
@@ -60,6 +61,11 @@ jobs:
         run: |
           g++ -std=c++11 -Wall -Wextra -Werror tests/safe_mode_policy_test.cpp -o /tmp/safe_mode_policy_test
           /tmp/safe_mode_policy_test
+
+      - name: Run embedded command authentication reference tests
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror src/rpi_tui/tests/test_effector_auth.cpp -o /tmp/test_effector_auth
+          /tmp/test_effector_auth
 
       - name: Compile Raspberry Pi Pico firmware
         run: |
