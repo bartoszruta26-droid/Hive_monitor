@@ -74,18 +74,11 @@ void updateOutputs() {
     analogWrite(FAN_PWM, constrain(fanDuty, 0, 255));
     // PUMP_RELAY is a digital relay, not PWM - use digitalWrite
     digitalWrite(PUMP_RELAY, pumpDuty > 0 ? HIGH : LOW);
-    // Apply the complete relay map on every update. Otherwise channels that
-    // were switched through setRelay() could retain stale states indefinitely.
-    digitalWrite(VALVE_1, LOW);
-    digitalWrite(VALVE_2, LOW);
+    // Relay channels 1/2 are mirrored by the main command setpoints.
+    // Channels 3-8 and valves are controlled through their dedicated setters;
+    // do not overwrite those independent outputs on every loop iteration.
     digitalWrite(RELAY_CH1, relay1State ? HIGH : LOW);
     digitalWrite(RELAY_CH2, relay2State ? HIGH : LOW);
-    digitalWrite(RELAY_CH3, LOW);
-    digitalWrite(RELAY_CH4, LOW);
-    digitalWrite(RELAY_CH5, LOW);
-    digitalWrite(RELAY_CH6, LOW);
-    digitalWrite(RELAY_CH7, LOW);
-    digitalWrite(RELAY_CH8, LOW);
 }
 
 /**
