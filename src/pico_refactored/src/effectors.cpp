@@ -148,8 +148,11 @@ const char* getSafeModeReason() {
     return safe_mode_reason;
 }
 
-bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy) {
-    if (!safeModePolicy::mayReleaseMain(safe_mode_active, operatorConfirmed, heaterSensorHealthy)) {
+bool releaseSafeMode(bool operatorConfirmed) {
+    // Evaluate the live sensor state inside the actuator boundary. A caller
+    // cannot release the latch by supplying a forged `heaterSensorHealthy=true`.
+    if (!safeModePolicy::mayReleaseMain(
+            safe_mode_active, operatorConfirmed, isHeaterSensorReadyForActuation())) {
         return false;
     }
     deactivateSafeMode();
