@@ -26,13 +26,6 @@ class ApiaryAdapter(
     private val onItemClick: (ApiaryData) -> Unit
 ) : RecyclerView.Adapter<ApiaryAdapter.ApiaryViewHolder>() {
 
-    // Stałe dla progów statusu - używamy centralnych stałych z AppConstants
-    private val TEMP_MIN_THRESHOLD = AppConstants.TEMP_MIN_THRESHOLD
-    private val TEMP_MAX_THRESHOLD = AppConstants.TEMP_MAX_THRESHOLD
-    private val HUMIDITY_MIN_THRESHOLD = AppConstants.HUMIDITY_MIN_THRESHOLD
-    private val HUMIDITY_MAX_THRESHOLD = AppConstants.HUMIDITY_MAX_THRESHOLD
-    private val BATTERY_LOW_THRESHOLD = AppConstants.BATTERY_LOW_THRESHOLD
-
     private var apiaryList = emptyList<ApiaryData>()
 
     inner class ApiaryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -53,52 +46,25 @@ class ApiaryAdapter(
             cardBattery.text = if (apiaryData.available) "${apiaryData.battery}%" else "--%"
             
             // Bezpieczne formatowanie timestamp z walidacją
-            cardTimestamp.text = "Ostatnia aktualizacja: ${formatTimestamp(apiaryData.timestamp)}"
+            cardTimestamp.text = "Ostatnia aktualizacja: ${ApiaryUiFormatter.formatTimestamp(apiaryData.timestamp)}"
             
             // Status kolorystyczny
-            val (statusText, statusColor) = determineStatus(apiaryData)
+            val statusText = ApiaryUiFormatter.determineStatus(apiaryData)
+            val statusColor = when (statusText) {
+                "OFFLINE", "ALERT" -> R.color.status_alert
+                "BRAK DANYCH", "UWAGA" -> R.color.status_warning
+                else -> R.color.status_ok
+            }
             cardStatus.text = statusText
-            cardStatus.setTextColor(statusColor)
+            cardStatus.setTextColor(ContextCompat.getColor(itemView.context, statusColor))
             
             cardView.setOnClickListener {
                 onItemClick(apiaryData)
             }
         }
 
-        private fun formatTimestamp(timestamp: Long): String {
-            // Walidacja timestamp
-            if (timestamp <= 0) {
-                return "brak danych"
-            }
-            
-            // Tworzenie formattera z aktualnym Locale dla obsługi zmiany języka systemu
-            val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-            
-            try {
-                return dateFormat.format(Date(timestamp))
-            } catch (e: Exception) {
-                // W przypadku błędu formatowania zwracamy surowy timestamp
-                return "błąd daty"
-            }
-        }
-
-        private fun determineStatus(data: ApiaryData): Pair<String, Int> {
-            return when {
-                !data.online ->
-                    "OFFLINE" to ContextCompat.getColor(itemView.context, R.color.status_alert)
-                !data.available ->
-                    "BRAK DANYCH" to ContextCompat.getColor(itemView.context, R.color.status_warning)
-                data.temperature < TEMP_MIN_THRESHOLD || data.temperature > TEMP_MAX_THRESHOLD -> 
-                    "ALERT" to ContextCompat.getColor(itemView.context, R.color.status_alert)
-                data.humidity < HUMIDITY_MIN_THRESHOLD || data.humidity > HUMIDITY_MAX_THRESHOLD -> 
-                    "UWAGA" to ContextCompat.getColor(itemView.context, R.color.status_warning)
-                data.battery < BATTERY_LOW_THRESHOLD -> 
-                    "UWAGA" to ContextCompat.getColor(itemView.context, R.color.status_warning)
-                else -> 
-                    "OK" to ContextCompat.getColor(itemView.context, R.color.status_ok)
-            }
-        }
     }
+
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ApiaryViewHolder {
         val view = LayoutInflater.from(parent.context)
