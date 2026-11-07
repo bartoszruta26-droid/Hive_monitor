@@ -43,7 +43,7 @@ NumericMetricMap extractNumericMetrics(const std::string& payload) {
         else {
             char* number_end = nullptr;
             value = std::strtod(item.second.c_str(), &number_end);
-            if (number_end == item.second.c_str() || *number_end != '\\0' || !std::isfinite(value)) continue;
+            if (number_end == item.second.c_str() || *number_end != '\0' || !std::isfinite(value)) continue;
         }
         metrics.emplace(item.first, value);
     }
@@ -386,6 +386,13 @@ void ApiaryDatabase::createTables() {
         sqlite3_free(migration_error);
     }
     char* index_error = nullptr;
+    if (sqlite3_exec(db_, "DELETE FROM raw_metric_values WHERE raw_id IS NULL;", nullptr, nullptr, &index_error) != SQLITE_OK) {
+        const std::string detail = index_error ? index_error : sqlite3_errmsg(db_);
+        sqlite3_free(index_error);
+        throw DatabaseInitException("Cannot rebuild raw metric source index: " + detail);
+    }
+    sqlite3_free(index_error);
+    index_error = nullptr;
     if (sqlite3_exec(db_,
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_raw_metric_source ON raw_metric_values(raw_id,metric_name);",
         nullptr, nullptr, &index_error) != SQLITE_OK) {
@@ -543,7 +550,7 @@ bool ApiaryDatabase::flushBuffer() {
     }
 
     sqlite3_stmt* metric_stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, "INSERT INTO raw_metric_values(timestamp,hive_id,metric_name,metric_value) VALUES(?,?,?,?)", -1, &metric_stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db_, "INSERT OR IGNORE INTO raw_metric_values(raw_id,timestamp,hive_id,metric_name,metric_value) VALUES(?,?,?,?,?)", -1, &metric_stmt, nullptr) != SQLITE_OK) {
         ++write_errors_;
         LOG_ERROR(std::string("Nie można przygotować zapisu metryk dynamicznych: ") + sqlite3_errmsg(db_));
         sqlite3_finalize(stmt);
@@ -595,37 +602,29 @@ bool ApiaryDatabase::flushBuffer() {
             break;
         }
 
+        const sqlite3_int64 raw_id = sqlite3_last_insert_rowid(db_);
         const std::string& metric_payload = data.metric_payload_json.empty()
             ? data.raw_payload_json : data.metric_payload_json;
-        if (!metric_payload.empty()) {
-            std::map<std::string, std::string> values;
-            if (parseJsonObjectScalars(metric_payload, values)) {
-                for (const auto& item : values) {
-                    if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
-                        item.first == "timestamp" || item.first == "time" || item.first == "ts" ||
-                        item.first == "id" || item.first == "hive_id" || item.first == "apiary_id" ||
-                        item.second == "__JSON_NULL__") continue;
-                    double value = 0.0;
-                    if (item.second == "__JSON_BOOL_TRUE__") value = 1.0;
-                    else if (item.second == "__JSON_BOOL_FALSE__") value = 0.0;
-                    else {
-                        char* number_end = nullptr;
-                        value = std::strtod(item.second.c_str(), &number_end);
-                        if (number_end == item.second.c_str() || *number_end != '\0' || !std::isfinite(value)) continue;
-                    }
-                    int metric_rc = sqlite3_bind_int64(metric_stmt, 1, data.timestamp);
-                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 2, data.hive_id.c_str(), -1, SQLITE_TRANSIENT);
-                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 3, item.first.c_str(), -1, SQLITE_TRANSIENT);
-                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_double(metric_stmt, 4, value);
-                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_step(metric_stmt);
-                    if (metric_rc != SQLITE_DONE) {
-                        batch_ok = false;
-                        LOG_ERROR(std::string("Zapis metryki dynamicznej nie powiódł się: ") + sqlite3_errmsg(db_));
-                        break;
-                    }
-                    sqlite3_reset(metric_stmt);
-                    sqlite3_clear_bindings(metric_stmt);
-                }
+        NumericMetricMap metrics = extractNumericMetrics(metric_payload);
+        const std::pair<const char*, double> fixed_metrics[] = {
+            {"temperature", data.temperature}, {"humidity", data.humidity}, {"weight", data.weight},
+            {"battery_level", static_cast<double>(data.battery_level)}, {"co2_eq", static_cast<double>(data.co2_eq)},
+            {"voc_idx", static_cast<double>(data.voc_idx)}, {"motion_detected", static_cast<double>(data.motion_detected)},
+            {"audio_rms", data.audio_rms}, {"audio_dominant_freq", data.audio_dominant_freq},
+            {"audio_swarm_prob", data.audio_swarm_prob}, {"audio_bee_activity", data.audio_bee_activity},
+            {"radar_distance", data.radar_distance}, {"radar_energy", data.radar_energy},
+            {"radar_activity", data.radar_activity}, {"hx711_current", data.hx711_current},
+            {"hx711_slope_24h", data.hx711_slope_24h}, {"th_heat_index", data.th_heat_index},
+            {"th_dew_point", data.th_dew_point}, {"th_vpd", data.th_vpd}, {"aq_gas_idx", data.aq_gas_idx}
+        };
+        for (const auto& fixed : fixed_metrics) {
+            if (metrics.find(fixed.first) == metrics.end()) metrics.emplace(fixed.first, fixed.second);
+        }
+        for (const auto& metric : metrics) {
+            if (!insertMetricRow(metric_stmt, raw_id, data.timestamp, data.hive_id, metric.first, metric.second)) {
+                batch_ok = false;
+                LOG_ERROR(std::string("Zapis metryki dynamicznej nie powiódł się: ") + sqlite3_errmsg(db_));
+                break;
             }
         }
         if (!batch_ok) break;
