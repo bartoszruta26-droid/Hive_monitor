@@ -692,7 +692,7 @@ void sendUSBHeartbeat() {
 /**
  * Wysyłanie JSON przez Ethernet
  */
-void sendEthernetJSON(UIPEthernetClient& client) {
+void sendEthernetJSON(EthernetClient& client) {
   StaticJsonDocument<512> doc;
   
   doc["temp_raw"] = sensors.temp_raw;
@@ -727,7 +727,7 @@ void sendEthernetJSON(UIPEthernetClient& client) {
 /**
  * Wysyłanie odpowiedzi HTTP
  */
-void sendHTTPResponse(UIPEthernetClient& client, const char* contentType, const String& content) {
+void sendHTTPResponse(EthernetClient& client, const char* contentType, const String& content) {
   client.println("HTTP/1.1 200 OK");
   client.print("Content-Type: ");
   client.println(contentType);
@@ -766,7 +766,7 @@ void handleHTTPCommand(String cmd) {
  * Obsługa serwera HTTP
  */
 void handleEthernetServer() {
-  UIPEthernetClient client = server.available();
+  EthernetClient client = server.available();
   if (!client) return;
   
   unsigned long timeout = millis();
