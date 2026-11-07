@@ -102,16 +102,18 @@ sudo a2enconf apiaryguard-env
 # 4. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
-sudo install -d -o apiaryguard -g www-data -m 0750 /var/lib/apiaryguard
+# Setgid keeps every SQLite sidecar in the Apache-readable shared group.
+# The collector is the owner; Apache receives only group access.
+sudo install -d -o apiaryguard -g www-data -m 2770 /var/lib/apiaryguard
 sudo chown apiaryguard:www-data /var/lib/apiaryguard
-sudo chmod 0750 /var/lib/apiaryguard
+sudo chmod 2770 /var/lib/apiaryguard
 sudo touch "$DB_PATH"
 sudo chown apiaryguard:www-data "$DB_PATH"
-sudo chmod 0640 "$DB_PATH"
+sudo chmod 0660 "$DB_PATH"
 for sidecar in "$DB_PATH-wal" "$DB_PATH-shm" "$DB_PATH-journal"; do
     if sudo test -e "$sidecar"; then
         sudo chown apiaryguard:www-data "$sidecar"
-        sudo chmod 0640 "$sidecar"
+        sudo chmod 0660 "$sidecar"
     fi
 done
 sudo install -d -o apiaryguard -g apiaryguard -m 0750 /var/log/apiaryguard
@@ -350,12 +352,15 @@ Wants=network-online.target
 Type=simple
 User=apiaryguard
 Group=apiaryguard
+SupplementaryGroups=www-data
 ExecStart=${COLLECTOR_BIN}
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
 KillSignal=SIGTERM
-UMask=0027
+# SQLite creates WAL/SHM files dynamically. The shared setgid directory
+# and this mask keep those files group-readable/writable by Apache.
+UMask=0007
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
