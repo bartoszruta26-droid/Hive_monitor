@@ -264,6 +264,7 @@ bool setServoAngle(uint16_t angle) {
 
     currentServoAngle = angle;
     flowingHiveServo.writeMicroseconds(static_cast<int>(pulseWidth));
+    servoRestCommandAccepted = (angle == SERVO_REST_ANGLE);
 
     DBG_SERVO("[SERVO] Angle set to %d degrees (pulse=%lu us)\n",
               angle, static_cast<unsigned long>(pulseWidth));
@@ -684,7 +685,7 @@ void activateFlowingHiveSafeMode(const char* reason) {
     // setServoAngle() checks the flag and will ignore commands if already set
     if (servoInitialized) {
         DBG_SERVO("[SERVO] Moving to rest position before safe mode activation\n");
-        setServoRestPosition();
+        servoRestCommandAccepted = setServoRestPosition();
         autoEmptyActive = false;
     }
     
