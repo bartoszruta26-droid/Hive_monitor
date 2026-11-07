@@ -768,9 +768,11 @@ void handleEthernetServer() {
     client.println("HTTP/1.1 403 Forbidden");
     client.println("Content-Type: application/json");
     client.println("Connection: close");
-    client.println("Content-Length: 43");
+    const char* errorBody = "{\"error\":\"legacy_control_disabled\"}";
+    client.print("Content-Length: ");
+    client.println(strlen(errorBody));
     client.println();
-    client.print("{\"error\":\"legacy_control_disabled\"}");
+    client.print(errorBody);
     client.stop();
   }
   // API RAW
