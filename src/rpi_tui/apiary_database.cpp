@@ -567,6 +567,7 @@ void ApiaryDatabase::performAggregation() {
 
 int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType target_type) {
     if (source_type == target_type || target_type == AggregationType::RAW) return 0;
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
 
     const bool source_is_raw = source_type == AggregationType::RAW;
     if (!source_is_raw && source_type == AggregationType::RAW) return 0;
@@ -717,7 +718,6 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
     const int fixed_changes = sqlite3_changes(db_);
 
     const std::string metric_source = source_is_raw ? "raw_metric_values" : "aggregated_metric_values";
-    const std::string metric_time = "src." + std::string(source_is_raw ? "timestamp" : "timestamp_start");
     const std::string metric_avg = source_is_raw ? "AVG(src.metric_value)" :
         "SUM(src.value_avg * src.sample_count) / NULLIF(SUM(src.sample_count),0)";
     const std::string metric_min = source_is_raw ? "MIN(src.metric_value)" : "MIN(src.value_min)";
