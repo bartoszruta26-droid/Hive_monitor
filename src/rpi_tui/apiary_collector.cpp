@@ -1494,6 +1494,30 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
              << ",\"hx711_slope_24h_avg\":" << record.hx711_slope_24h_avg
              << ",\"record_count\":" << record.record_count << '}';
     }
+    json << "],\\"metrics\\":[";
+    const auto metrics = database.getHistoricalMetrics(hive_id, type, start_time, end_time);
+    bool first_metric = true;
+    for (const auto& metric : metrics) {
+        if (!first_metric) json << ',';
+        first_metric = false;
+        std::string escaped_name;
+        for (unsigned char ch : metric.metric_name) {
+            if (ch == '"' || ch == '\\\\') { escaped_name.push_back('\\\\'); escaped_name.push_back(static_cast<char>(ch)); }
+            else if (ch < 0x20) {
+                const char hex[] = "0123456789abcdef";
+                escaped_name += "\\\\u00";
+                escaped_name.push_back(hex[ch >> 4]);
+                escaped_name.push_back(hex[ch & 0x0f]);
+            } else escaped_name.push_back(static_cast<char>(ch));
+        }
+        json << "{\\"timestamp_start\\":" << metric.timestamp_start
+             << ",\\"timestamp_end\\":" << metric.timestamp_end
+             << ",\\"name\\":\\"" << escaped_name << "\\""
+             << ",\\"average\\":" << metric.average
+             << ",\\"minimum\\":" << metric.minimum
+             << ",\\"maximum\\":" << metric.maximum
+             << ",\\"sample_count\\":" << metric.sample_count << '}';
+    }
     json << "]}";
     status_code = 200;
     return json.str();
