@@ -396,7 +396,7 @@ bool isFlowingHiveSafeModeActive();
  * 
  * RECOVERY:
  * - Call deactivateFlowingHiveSafeMode() after resolving issue
- * - System resumes normal operation automatically
+ * - Normal operation remains inhibited until explicit operator confirmation
  * 
  * @param reason Description of why safe mode was activated
  *               Logged for diagnostic purposes
@@ -409,9 +409,9 @@ void activateFlowingHiveSafeMode(const char* reason);
  * @brief Deactivate safe mode for flowing hive effectors
  * 
  * RECOVERY PROCESS:
- * 1. Clear flowingHiveSafeMode flag
- * 2. Log deactivation event
- * 3. Resume normal effector operation
+ * 1. Require explicit operator confirmation
+ * 2. Reject release while the main safe-mode latch is active
+ * 3. Clear only the Flowing Hive latch; do not restart interrupted sequences
  * 
  * PREREQUISITES:
  * - Underlying issue must be resolved
@@ -420,6 +420,7 @@ void activateFlowingHiveSafeMode(const char* reason);
  * @note Does not automatically restart interrupted sequences
  *       Call executeAutoEmptySequence() again if needed
  */
-void deactivateFlowingHiveSafeMode();
+const char* getFlowingHiveSafeModeReason();
+bool deactivateFlowingHiveSafeMode(bool operatorConfirmed);
 
 #endif // EFFECTORS_FLOWING_HIVE_H
