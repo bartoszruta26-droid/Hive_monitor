@@ -12,9 +12,9 @@ public:
     explicit JsonObjectScalarParser(const std::string& input) : input_(input) {}
 
     bool parse(std::map<std::string, std::string>& values) {
-        if (input_.size() > 65536) return false;
+        if (input_.size() > 1048576) return false;
         skipWhitespace();
-        if (!parseObject(values, 0)) return false;
+        if (!parseObject(values, 0, "")) return false;
         skipWhitespace();
         return position_ == input_.size();
     }
@@ -128,7 +128,8 @@ private:
         return true;
     }
 
-    bool parseObject(std::map<std::string, std::string>& out, unsigned depth) {
+    bool parseObject(std::map<std::string, std::string>& out, unsigned depth,
+                     const std::string& prefix) {
         if (depth > 32 || position_ >= input_.size() || input_[position_++] != '{') return false;
         skipWhitespace();
         if (position_ < input_.size() && input_[position_] == '}') {
@@ -138,12 +139,13 @@ private:
         while (position_ < input_.size()) {
             std::string key;
             if (!parseString(key)) return false;
+            const std::string full_key = prefix.empty() ? key : prefix + "." + key;
             skipWhitespace();
             if (position_ >= input_.size() || input_[position_++] != ':') return false;
             skipWhitespace();
             std::string value;
-            if (!parseValue(value, depth + 1)) return false;
-            if (!out.emplace(key, value).second) return false;
+            if (!parseValue(value, depth + 1, full_key, out)) return false;
+            if (!out.emplace(full_key, value).second) return false;
             skipWhitespace();
             if (position_ < input_.size() && input_[position_] == '}') {
                 ++position_;
@@ -155,16 +157,20 @@ private:
         return false;
     }
 
-    bool parseArray(unsigned depth) {
+    bool parseArray(std::map<std::string, std::string>& out, unsigned depth,
+                    const std::string& prefix) {
         if (depth > 32 || position_ >= input_.size() || input_[position_++] != '[') return false;
         skipWhitespace();
         if (position_ < input_.size() && input_[position_] == ']') {
             ++position_;
             return true;
         }
+        size_t index = 0;
         while (position_ < input_.size()) {
-            std::string ignored;
-            if (!parseValue(ignored, depth + 1)) return false;
+            std::string value;
+            const std::string item_key = prefix + "[" + std::to_string(index++) + "]";
+            if (!parseValue(value, depth + 1, item_key, out)) return false;
+            if (!out.emplace(item_key, value).second) return false;
             skipWhitespace();
             if (position_ < input_.size() && input_[position_] == ']') {
                 ++position_;
@@ -176,18 +182,18 @@ private:
         return false;
     }
 
-    bool parseValue(std::string& out, unsigned depth) {
+    bool parseValue(std::string& out, unsigned depth, const std::string& path,
+                    std::map<std::string, std::string>& values) {
         if (depth > 32 || position_ >= input_.size()) return false;
         const char c = input_[position_];
         if (c == '"') return parseString(out);
         if (c == '{') {
-            std::map<std::string, std::string> nested;
-            if (!parseObject(nested, depth + 1)) return false;
+            if (!parseObject(values, depth + 1, path)) return false;
             out.clear();
             return true;
         }
         if (c == '[') {
-            if (!parseArray(depth + 1)) return false;
+            if (!parseArray(values, depth + 1, path)) return false;
             out.clear();
             return true;
         }
@@ -202,6 +208,7 @@ private:
         }
         return false;
     }
+
 };
 
 inline bool parseJsonObjectScalars(const std::string& input,

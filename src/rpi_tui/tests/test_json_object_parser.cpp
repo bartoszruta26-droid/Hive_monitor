@@ -12,9 +12,12 @@ int main() {
     assert(values.at("hive_id") == "UL-1");
     assert(values.at("temp") == "23.75");
     assert(values.at("nested").empty());
+    assert(values.at("nested.temp") == "99");
     assert(values.at("escaped") == "UL\\\"-2");
     assert(values.at("unicode") == "Pasłeka");
     assert(values.at("items").empty());
+    assert(values.at("items[0]") == "1");
+    assert(values.at("items[1].x") == "2");
     assert(values.at("enabled") == "true");
 
     assert(!apiary::parseJsonObjectScalars(R"({"temp":1,})", values));
