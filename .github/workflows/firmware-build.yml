@@ -103,7 +103,9 @@ jobs:
 
       - name: Compile Arduino Nano firmware
         run: |
+          mkdir -p build/nano_sketch
+          cp src/arduino_nano_dual_mode/apiaryguard_nano_dual.ino build/nano_sketch/nano_sketch.ino
           arduino-cli compile \
             --fqbn arduino:avr:nano \
             --warnings all \
-            src/arduino_nano_dual_mode
+            build/nano_sketch
