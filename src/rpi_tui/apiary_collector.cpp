@@ -1002,7 +1002,17 @@ public:
                     hives_data[hive_id].weight_rate = weight_rate;
                     hives_data[hive_id].weight_trend = weight_trend;
                     hives_data[hive_id].air_iaq = air_iaq;
-                    
+                    hives_data[hive_id].raw_payload_json = raw_data;
+
+                    // Każdy odebrany rekord CSV trafia do archiwum, nie tylko
+                    // pierwszy rekord po wykryciu nowego ula.
+                    try {
+                        ApiaryDatabase::getInstance().storeRawData(hives_data[hive_id]);
+                    } catch (const std::exception& e) {
+                        Logger::getInstance().warning(
+                            "Nie udało się zarchiwizować rekordu CSV dla " + hive_id + ": " + e.what(), "DB");
+                    }
+
                     Logger::getInstance().debug("CSV: Zaktualizowano " + hive_id + " z " + source_ip);
                 } else {
                     Logger::getInstance().info("Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
