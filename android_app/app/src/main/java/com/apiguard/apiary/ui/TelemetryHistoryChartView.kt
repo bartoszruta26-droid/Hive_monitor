@@ -45,9 +45,11 @@ class TelemetryHistoryChartView @JvmOverloads constructor(
     )
     private var samples: List<ApiaryMetricAggregate> = emptyList()
     private var metricName: String = ""
+    private var aggregation: String = "DAY"
 
-    fun submit(metric: String, values: List<ApiaryMetricAggregate>) {
+    fun submit(metric: String, aggregationType: String, values: List<ApiaryMetricAggregate>) {
         metricName = metric
+        aggregation = aggregationType
         samples = values.filter { it.name == metric && it.average.isFinite() }
         contentDescription = "Wykres archiwalny parametru $metric, porównanie lat"
         invalidate()
@@ -81,6 +83,30 @@ class TelemetryHistoryChartView @JvmOverloads constructor(
         }
         canvas.drawLine(left, top, left, bottom, axisPaint)
         canvas.drawLine(left, bottom, right, bottom, axisPaint)
+        if (aggregation == "YEAR") {
+            val ordered = samples.sortedBy { it.timestampStart }
+            val firstYear = utcCalendar(ordered.first().timestampStart).get(Calendar.YEAR)
+            val lastYear = utcCalendar(ordered.last().timestampStart).get(Calendar.YEAR)
+            val yearRange = max(1, lastYear - firstYear)
+            val path = Path()
+            ordered.forEachIndexed { index, item ->
+                val year = utcCalendar(item.timestampStart).get(Calendar.YEAR)
+                val x = left + plotWidth * (year - firstYear).toFloat() / yearRange
+                val y = bottom - (((item.average - yMin) / (yMax - yMin)) * plotHeight).toFloat()
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                canvas.drawCircle(x, y, 3f * density, linePaint.apply { color = palette[0] })
+            }
+            linePaint.color = palette[0]
+            canvas.drawPath(path, linePaint)
+            ordered.forEach { item ->
+                val year = utcCalendar(item.timestampStart).get(Calendar.YEAR)
+                val x = left + plotWidth * (year - firstYear).toFloat() / yearRange
+                canvas.drawText(year.toString(), x - 12f * density, bottom + 18f * density, textPaint)
+            }
+            canvas.drawText(metricName, left, 12f * density, textPaint)
+            return
+        }
+
         val monthLabels = arrayOf("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
         for (month in 0..11) {
             val x = left + plotWidth * month / 11f

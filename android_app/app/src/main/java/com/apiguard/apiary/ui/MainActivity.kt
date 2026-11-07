@@ -305,7 +305,7 @@ class MainActivity : AppCompatActivity() {
     private fun showHistoryMetricChart(history: com.apiguard.apiary.data.model.ApiaryHistoryResponse) {
         val metricName = history.metrics.firstOrNull()?.name ?: return
         val chart = TelemetryHistoryChartView(this).apply {
-            submit(metricName, history.metrics)
+            submit(metricName, history.aggregation, history.metrics)
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 (300 * resources.displayMetrics.density).toInt()
