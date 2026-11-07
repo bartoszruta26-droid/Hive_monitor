@@ -471,7 +471,7 @@ bool ApiaryDatabase::flushBuffer() {
                         item.second == "null") continue;
                     char* number_end = nullptr;
                     const double value = std::strtod(item.second.c_str(), &number_end);
-                    if (number_end == item.second.c_str() || *number_end != '\\0' || !std::isfinite(value)) continue;
+                    if (number_end == item.second.c_str() || *number_end != '\0' || !std::isfinite(value)) continue;
                     int metric_rc = sqlite3_bind_int64(metric_stmt, 1, data.timestamp);
                     if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 2, data.hive_id.c_str(), -1, SQLITE_TRANSIENT);
                     if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 3, item.first.c_str(), -1, SQLITE_TRANSIENT);
