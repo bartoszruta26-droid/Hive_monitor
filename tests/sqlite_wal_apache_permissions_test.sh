@@ -55,7 +55,11 @@ import sqlite3
 import time
 
 path = os.environ["DB_PATH"]
+os.umask(0o007)
 db = sqlite3.connect(path)
+# Match the installer: the database file itself receives an explicit 0660
+# mode, while WAL/SHM inherit the service umask and setgid directory group.
+os.chmod(path, 0o660)
 mode = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
 assert mode.lower() == "wal", mode
 db.execute("CREATE TABLE IF NOT EXISTS probe (value TEXT NOT NULL)")
