@@ -1699,7 +1699,7 @@ int main(int argc, char* argv[]) {
                         response = "{\"error\":\"operation_not_implemented\",\"operation\":\"effectors\"}";
                         break;
                     case HttpRoute::History:
-                        response = "{\"error\":\"operation_not_implemented\",\"operation\":\"history\"}";
+                        response = buildHistoryJson(request_line, status_code);
                         break;
                     case HttpRoute::Logs:
                         response = "{\"error\":\"operation_not_implemented\",\"operation\":\"logs\"}";
