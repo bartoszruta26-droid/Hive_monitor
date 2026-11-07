@@ -24,5 +24,5 @@ assert "function saveConfigToBackend()" not in APP
 
 print("WebUI same-origin API proxy contract: PASS")
 
-assert "foreach (['hive_id', 'aggregation', 'start', 'end'] as $key)" in api
+assert "foreach (['hive_id', 'aggregation', 'start', 'end'] as $key)" in PROXY
 assert "http_build_query($historyParams, '', '&', PHP_QUERY_RFC3986)" in api
