@@ -14,7 +14,7 @@ Natywny klient desktopowy C++ oparty na Qt 6. Nie używa PySide, PyQt, Pythona a
 
 - CMake 3.21+
 - kompilator C++17
-- Qt 6.4+ z modułami Widgets, Network i WebEngineWidgets
+- Qt 6.2+ z modułami Widgets, Network i WebEngineWidgets
 
 ### Linux (Ubuntu 22.04+)
 
