@@ -405,6 +405,14 @@ void ApiaryDatabase::createTables() {
     // Backfill starszych pomiarów: odtwarzaj metryki dynamiczne z zachowanego
     // payloadu i zawsze uzupełnij znane kolumny źródłowe. Nie dotykaj rekordów,
     // dla których istnieje już zestaw metryk.
+    char* backfill_begin_error = nullptr;
+    if (sqlite3_exec(db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &backfill_begin_error) != SQLITE_OK) {
+        const std::string detail = backfill_begin_error ? backfill_begin_error : sqlite3_errmsg(db_);
+        sqlite3_free(backfill_begin_error);
+        throw DatabaseInitException("Cannot begin raw metric backfill: " + detail);
+    }
+    sqlite3_free(backfill_begin_error);
+
     sqlite3_stmt* raw_rows = nullptr;
     const char* raw_rows_sql =
         "SELECT r.id,r.timestamp,r.hive_id,r.temperature,r.humidity,r.weight,r.battery_level,"
@@ -456,8 +464,17 @@ void ApiaryDatabase::createTables() {
     sqlite3_finalize(backfill_metric);
     sqlite3_finalize(raw_rows);
     if (backfill_rc != SQLITE_DONE) {
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
         throw DatabaseInitException(std::string("Raw metric backfill scan failed: ") + sqlite3_errmsg(db_));
     }
+    char* backfill_commit_error = nullptr;
+    if (sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, &backfill_commit_error) != SQLITE_OK) {
+        const std::string detail = backfill_commit_error ? backfill_commit_error : sqlite3_errmsg(db_);
+        sqlite3_free(backfill_commit_error);
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        throw DatabaseInitException("Cannot commit raw metric backfill: " + detail);
+    }
+    sqlite3_free(backfill_commit_error);
 
     LOG_DEBUG("Tabele bazy danych utworzone pomyślnie");
 }

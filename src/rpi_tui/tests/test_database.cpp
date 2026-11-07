@@ -34,14 +34,30 @@ int main() {
     // RAW history older than seven days must remain available for full
     // multi-year retention and future re-aggregation.
     assert(sqlite3_exec(seed_db,
-        "INSERT INTO raw_data (timestamp,hive_id,temperature,humidity,weight,battery_level) "
-        "VALUES (100,'UL-RAW-HISTORY',31.5,55.0,42.0,95)",
+        "INSERT INTO raw_data (timestamp,hive_id,temperature,humidity,weight,battery_level,payload_json) "
+        "VALUES (100,'UL-RAW-HISTORY',31.5,55.0,42.0,95,"
+        "'{\\"temperature\\":31.5,\\"humidity\\":55.0,\\"future_metric\\":99.25}')",
         nullptr, nullptr, nullptr) == SQLITE_OK);
     const char* seed_sql =
         "INSERT INTO aggregated_data (timestamp_start,timestamp_end,hive_id,agg_type,"
         "temperature_avg,record_count) VALUES (100,160,'UL-1',3,34.5,6)";
     assert(sqlite3_exec(seed_db, seed_sql, nullptr, nullptr, nullptr) == SQLITE_OK);
     sqlite3_close(seed_db);
+
+    // Restart runs a one-time, idempotent backfill from retained raw payloads.
+    database.shutdown();
+    database.initialize(config);
+    sqlite3* backfill_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &backfill_db) == SQLITE_OK);
+    sqlite3_stmt* backfill_stmt = nullptr;
+    assert(sqlite3_prepare_v2(backfill_db,
+        "SELECT metric_value FROM raw_metric_values "
+        "WHERE hive_id='UL-RAW-HISTORY' AND metric_name='future_metric'",
+        -1, &backfill_stmt, nullptr) == SQLITE_OK);
+    assert(sqlite3_step(backfill_stmt) == SQLITE_ROW);
+    assert(sqlite3_column_double(backfill_stmt, 0) == 99.25);
+    sqlite3_finalize(backfill_stmt);
+    sqlite3_close(backfill_db);
 
     assert(database.cleanupOldData() == 0);
     sqlite3* retention_db = nullptr;
