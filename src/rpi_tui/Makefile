@@ -22,6 +22,7 @@ JSON_TEST_TARGET = json_object_parser_test
 VALIDATION_TEST_TARGET = measurement_validation_test
 PICO_UDP_TEST_TARGET = pico_udp_contract_test
 EFFECTOR_COMMAND_TEST_TARGET = effector_command_test
+EFFECTOR_AUTH_TEST_TARGET = effector_auth_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -97,9 +98,16 @@ $(EFFECTOR_COMMAND_TEST_TARGET): tests/test_effector_command.cpp effector_comman
 test-effectors: $(EFFECTOR_COMMAND_TEST_TARGET)
 	./$(EFFECTOR_COMMAND_TEST_TARGET)
 
+# SipHash-2-4: referencyjne wektory zgodności dla autoryzacji poleceń embedded.
+$(EFFECTOR_AUTH_TEST_TARGET): tests/test_effector_auth.cpp ../shared/effector_auth.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_effector_auth.cpp -o $@
+
+test-effector-auth: $(EFFECTOR_AUTH_TEST_TARGET)
+	./$(EFFECTOR_AUTH_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) $(VALIDATION_TEST_TARGET) $(PICO_UDP_TEST_TARGET) $(EFFECTOR_COMMAND_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) $(VALIDATION_TEST_TARGET) $(PICO_UDP_TEST_TARGET) $(EFFECTOR_COMMAND_TEST_TARGET) $(EFFECTOR_AUTH_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
@@ -161,4 +169,4 @@ help:
 	@echo "  make test-collector # Testuj kolektor (symulacja)"
 	@echo "  sudo make install # Instaluj"
 
-.PHONY: all clean install uninstall test test-http test-database test-network test-json test-validation test-effectors test-collector debug help
+.PHONY: all clean install uninstall test test-http test-database test-network test-json test-validation test-effectors test-effector-auth test-collector debug help
