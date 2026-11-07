@@ -25,8 +25,8 @@
 #include <SPI.h>
 #include <UIPEthernet.h>
 #include <DHT.h>
-#include <ArduinoJson.h>
 #include <Wire.h>
+#include <string.h>
 
 // ==================== KONFIGURACJA PINÓW ====================
 // Ethernet SPI
@@ -57,7 +57,7 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 100);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-UIPEthernetServer server(8080);
+UIPServer server(8080);
 
 // ==================== OBIEKTY ====================
 DHT dht(DHT_PIN, DHT22);
@@ -95,6 +95,10 @@ const uint8_t MAX_CONSECUTIVE_FAILURES = 5;  // Reset sensor after this many fai
 
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 1000;  // 1 sekunda
+// Heater interlock: a positive duty requires a recent, valid DHT22 sample.
+bool dhtTemperatureValid = false;
+unsigned long lastDhtGoodAt = 0;
+const unsigned long DHT_MAX_AGE_MS = 5000;
 unsigned long lastHeartbeat = 0;
 const unsigned long HEARTBEAT_INTERVAL = 10000;  // 10 sekund
 
@@ -137,7 +141,8 @@ int cmdIndex = 0;
 // ============================================================================
 
 uint16_t getFreeRam() {
-  extern int __heap_start, *__brkval;\n  int v;
+  extern int __heap_start, *__brkval;
+  int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 
@@ -250,14 +255,17 @@ bool initEthernet() {
   
   // UIPEthernet nie wymaga Ethernet.init() - CS jest ustawiany w begin()
   
-  int ret = Ethernet.begin(mac, ip, gateway, subnet);
+  Ethernet.begin(mac, ip, gateway, subnet);
   delay(1500);
-  
-  if (ret == 0) {
-    logError("ETH", "Nie wykryto sprzetu lub brak polaczenia!");
+
+  // UIPEthernet w trybie statycznego IP zwraca void z begin().
+  // Weryfikujemy konfigurację adresu i stan łącza zamiast sprawdzać kod zwrotny.
+  IPAddress assignedIP = Ethernet.localIP();
+  if (assignedIP != ip) {
+    logError("ETH", "Nie udalo sie ustawic statycznego adresu IP");
     return false;
   }
-  
+
   // Sprawdzenie linku przez odczyt statusu
   uint8_t linkStatus = Ethernet.linkStatus();
   if (linkStatus == 0) {
@@ -351,6 +359,16 @@ int readPiezo() {
  */
 void setPWM(int pin, int value, int pwmType) {
   uint8_t constrainedValue = constrain(value, 0, 255);
+  // Fail closed for heater energization if the temperature sensor is invalid
+  // or stale. A zero-duty command is always allowed as a de-energize action.
+  if (pwmType == 0 && constrainedValue > 0 &&
+      (!dhtTemperatureValid || (millis() - lastDhtGoodAt > DHT_MAX_AGE_MS))) {
+    analogWrite(HEATER_PWM, 0);
+    pwm_state.heater = 0;
+    sensors.heater_pwm = 0;
+    logWarning("HEATER", "Command rejected: DHT22 sample invalid or stale");
+    return;
+  }
   analogWrite(pin, constrainedValue);
   
   if (pwmType == 0) {
@@ -442,15 +460,31 @@ bool readDHT22() {
     if (checkSensorHealth(sensorErrors.dht_errors, "DHT22")) {
       logWarning("DHT22", "Read failed, retrying next cycle");
     }
+    dhtTemperatureValid = false;
     sensors.temp_raw = -99.9;
     sensors.hum_raw = -99.9;
     return false;
   }
   
   resetSensorError(sensorErrors.dht_errors);
+  dhtTemperatureValid = true;
+  lastDhtGoodAt = millis();
   sensors.temp_raw = t;
   sensors.hum_raw = h;
   return true;
+}
+
+// Independent runtime interlock: de-energize an already-running heater as
+// soon as DHT22 becomes invalid or its last valid sample expires.
+void enforceHeaterSafety() {
+  const bool sampleExpired = !dhtTemperatureValid ||
+      (millis() - lastDhtGoodAt > DHT_MAX_AGE_MS);
+  if (sampleExpired && pwm_state.heater > 0) {
+    analogWrite(HEATER_PWM, 0);
+    pwm_state.heater = 0;
+    sensors.heater_pwm = 0;
+    logWarning("HEATER", "Output forced OFF: DHT22 invalid or stale");
+  }
 }
 
 /**
@@ -551,25 +585,21 @@ void readAllSensors() {
  * Wysyłanie danych przez USB w formacie JSON
  */
 void sendUSBData() {
-  StaticJsonDocument<512> doc;
-  
-  doc["temp"] = sensors.temp_raw;
-  doc["hum"] = sensors.hum_raw;
-  doc["weight"] = sensors.weight_raw;
-  doc["audio"] = sensors.audio_raw;
-  doc["vibration"] = sensors.vibration_raw;
-  doc["co2"] = sensors.co2_raw;
-  doc["voc"] = sensors.voc_raw;
-  doc["heater"] = sensors.heater_pwm;
-  doc["fan"] = sensors.fan_pwm;
-  doc["pump"] = sensors.pump_pwm;
-  doc["relay1"] = sensors.relay1_state;
-  doc["relay2"] = sensors.relay2_state;
-  doc["ts"] = sensors.timestamp;
-  doc["ram"] = sensors.free_ram;
-  
-  serializeJson(doc, Serial);
-  Serial.println();
+  Serial.print(F("{\"temp\":")); Serial.print(sensors.temp_raw, 1);
+  Serial.print(F(",\"hum\":")); Serial.print(sensors.hum_raw, 1);
+  Serial.print(F(",\"weight\":")); Serial.print(sensors.weight_raw);
+  Serial.print(F(",\"audio\":")); Serial.print(sensors.audio_raw);
+  Serial.print(F(",\"vibration\":")); Serial.print(sensors.vibration_raw);
+  Serial.print(F(",\"co2\":")); Serial.print(sensors.co2_raw);
+  Serial.print(F(",\"voc\":")); Serial.print(sensors.voc_raw);
+  Serial.print(F(",\"heater\":")); Serial.print(sensors.heater_pwm);
+  Serial.print(F(",\"fan\":")); Serial.print(sensors.fan_pwm);
+  Serial.print(F(",\"pump\":")); Serial.print(sensors.pump_pwm);
+  Serial.print(F(",\"relay1\":")); Serial.print(sensors.relay1_state);
+  Serial.print(F(",\"relay2\":")); Serial.print(sensors.relay2_state);
+  Serial.print(F(",\"ts\":")); Serial.print(sensors.timestamp);
+  Serial.print(F(",\"ram\":")); Serial.print(sensors.free_ram);
+  Serial.println('}');
 }
 
 /**
@@ -674,81 +704,48 @@ void sendUSBHeartbeat() {
 /**
  * Wysyłanie JSON przez Ethernet
  */
-void sendEthernetJSON(UIPEthernetClient& client) {
-  StaticJsonDocument<512> doc;
-  
-  doc["temp_raw"] = sensors.temp_raw;
-  doc["hum_raw"] = sensors.hum_raw;
-  doc["weight_raw"] = sensors.weight_raw;
-  doc["audio_raw"] = sensors.audio_raw;
-  doc["vibration_raw"] = sensors.vibration_raw;
-  doc["co2_raw"] = sensors.co2_raw;
-  doc["voc_raw"] = sensors.voc_raw;
-  doc["heater_pwm"] = sensors.heater_pwm;
-  doc["fan_pwm"] = sensors.fan_pwm;
-  doc["pump_pwm"] = sensors.pump_pwm;
-  doc["relay1"] = sensors.relay1_state;
-  doc["relay2"] = sensors.relay2_state;
-  doc["timestamp"] = sensors.timestamp;
-  doc["free_ram"] = sensors.free_ram;
-  
-  String json;
-  serializeJson(doc, json);
-  
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: application/json");
-  client.println("Connection: close");
-  client.print("Content-Length: ");
-  client.println(json.length());
+void sendEthernetJSON(EthernetClient& client) {
+  char body[240];
+  int n = snprintf(body, sizeof(body),
+    "{\"temp_raw\":%.1f,\"hum_raw\":%.1f,\"weight_raw\":%ld,"
+    "\"audio_raw\":%d,\"vibration_raw\":%d,\"co2_raw\":%d,"
+    "\"voc_raw\":%d,\"heater_pwm\":%u,\"fan_pwm\":%u,"
+    "\"pump_pwm\":%u,\"relay1\":%u,\"relay2\":%u,"
+    "\"timestamp\":%lu,\"free_ram\":%u}",
+    sensors.temp_raw, sensors.hum_raw, sensors.weight_raw,
+    sensors.audio_raw, sensors.vibration_raw, sensors.co2_raw,
+    sensors.voc_raw, sensors.heater_pwm, sensors.fan_pwm,
+    sensors.pump_pwm, sensors.relay1_state, sensors.relay2_state,
+    sensors.timestamp, sensors.free_ram);
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: application/json"));
+  client.println(F("Connection: close"));
+  client.print(F("Content-Length: "));
+  client.println(n > 0 ? n : 0);
   client.println();
-  client.println(json);
-  delay(1);
+  if (n > 0 && n < (int)sizeof(body)) client.write((const uint8_t*)body, n);
   client.stop();
 }
 
 /**
  * Wysyłanie odpowiedzi HTTP
  */
-void sendHTTPResponse(UIPEthernetClient& client, const char* contentType, const String& content) {
-  client.println("HTTP/1.1 200 OK");
-  client.print("Content-Type: ");
-  client.println(contentType);
-  client.println("Connection: close");
-  client.print("Content-Length: ");
-  client.println(content.length());
+void sendHTTPResponse(EthernetClient& client, const char* contentType, const char* content) {
+  const size_t length = strlen_P(content);
+  client.println(F("HTTP/1.1 200 OK"));
+  client.print(F("Content-Type: ")); client.println(contentType);
+  client.println(F("Connection: close"));
+  client.print(F("Content-Length: ")); client.println(length);
   client.println();
-  client.println(content);
-  delay(1);
+  for (size_t i = 0; i < length; ++i) client.write(pgm_read_byte(content + i));
   client.stop();
-}
-
-/**
- * Obsługa komend HTTP
- */
-void handleHTTPCommand(String cmd) {
-  if (cmd.startsWith("SET_HEATER:")) {
-    int val = cmd.substring(11).toInt();
-    setPWM(HEATER_PWM, val, 0);
-  } else if (cmd.startsWith("SET_FAN:")) {
-    int val = cmd.substring(8).toInt();
-    setPWM(FAN_PWM, val, 1);
-  } else if (cmd.startsWith("SET_PUMP:")) {
-    int val = cmd.substring(9).toInt();
-    setPWM(PUMP_PWM, val, 2);
-  } else if (cmd.startsWith("SET_RELAY1:")) {
-    setRelay(RELAY_1, cmd.substring(11).toInt());
-  } else if (cmd.startsWith("SET_RELAY2:")) {
-    setRelay(RELAY_2, cmd.substring(11).toInt());
-  } else if (cmd.startsWith("CALIB_WEIGHT")) {
-    weightOffset = readHX711Raw();
-  }
 }
 
 /**
  * Obsługa serwera HTTP
  */
 void handleEthernetServer() {
-  UIPEthernetClient client = server.available();
+  EthernetClient client = server.available();
   if (!client) return;
   
   unsigned long timeout = millis();
@@ -758,56 +755,36 @@ void handleEthernetServer() {
   String request = client.readStringUntil('\r');
   client.readStringUntil('\n');
   
-  // Sterowanie
-  if (request.indexOf("/heater/on") >= 0) {
-    setPWM(HEATER_PWM, 255, 0);
-    sendHTTPResponse(client, "text/plain", "Heater ON");
-  } else if (request.indexOf("/heater/off") >= 0) {
-    setPWM(HEATER_PWM, 0, 0);
-    sendHTTPResponse(client, "text/plain", "Heater OFF");
-  } else if (request.indexOf("/fan/on") >= 0) {
-    setPWM(FAN_PWM, 255, 1);
-    sendHTTPResponse(client, "text/plain", "Fan ON");
-  } else if (request.indexOf("/fan/off") >= 0) {
-    setPWM(FAN_PWM, 0, 1);
-    sendHTTPResponse(client, "text/plain", "Fan OFF");
-  } else if (request.indexOf("/pump/on") >= 0) {
-    setPWM(PUMP_PWM, 255, 2);
-    sendHTTPResponse(client, "text/plain", "Pump ON");
-  } else if (request.indexOf("/pump/off") >= 0) {
-    setPWM(PUMP_PWM, 0, 2);
-    sendHTTPResponse(client, "text/plain", "Pump OFF");
+  // Legacy HTTP actuator routes were unauthenticated GET requests and had
+  // no Nano-side safety interlock. Fail closed until the authenticated command
+  // protocol and independent actuator safety checks are implemented.
+  if (request.startsWith("GET /heater/") ||
+      request.startsWith("GET /fan/") ||
+      request.startsWith("GET /pump/") ||
+      request.startsWith("GET /api/cmd?")) {
+    client.println("HTTP/1.1 403 Forbidden");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    const char* errorBody = "{\"error\":\"legacy_control_disabled\"}";
+    client.print("Content-Length: ");
+    client.println(strlen(errorBody));
+    client.println();
+    client.print(errorBody);
+    client.stop();
   }
   // API RAW
   else if (request.indexOf("/api/raw") >= 0 || request.indexOf("/status") >= 0) {
     readAllSensors();
     sendEthernetJSON(client);
   }
-  // Komendy
-  else if (request.indexOf("/api/cmd?") >= 0) {
-    int start = request.indexOf("?") + 1;
-    String cmd = request.substring(start);
-    cmd.trim();
-    handleHTTPCommand(cmd);
-    sendHTTPResponse(client, "text/plain", "OK");
-  }
   // Strona główna
   else if (request == "GET / HTTP/1.1" || request.indexOf("/index.html") >= 0) {
-    String html = "<!DOCTYPE html><html><head>";
-    html += "<title>ApiaryGuard Nano</title>";
-    html += "<meta http-equiv='refresh' content='5'>";
-    html += "</head><body><h1>ApiaryGuard - Arduino Nano</h1>";
-    html += "<h2>Dual Mode: USB + Ethernet</h2>";
-    html += "<div id='data'>Loading...</div>";
-    html += "<script>fetch('/api/raw').then(r=>r.json()).then(d=>{";
-    html += "document.getElementById('data').innerHTML=";
-    html += "'Temp: '+d.temp_raw+'C<br>Hum: '+d.hum_raw+'%<br>";
-    html += "Weight: '+d.weight_raw+'<br>Audio: '+d.audio_raw+'<br>";
-    html += "Vibration: '+d.vibration_raw+'<br>CO2: '+d.co2_raw+'ppm<br>";
-    html += "VOC: '+d.voc_raw+'<br>RAM: '+d.free_ram+'B<br>";
-    html += "Timestamp: '+d.timestamp;";
-    html += "});</script></body></html>";
-    sendHTTPResponse(client, "text/html", html);
+    static const char page[] PROGMEM =
+      "<!doctype html><meta charset=utf-8><title>ApiaryGuard Nano</title>"
+      "<h1>ApiaryGuard Nano</h1><pre id=d>Loading...</pre>"
+      "<script>setInterval(()=>fetch('/api/raw').then(r=>r.json())"
+      ".then(x=>d.textContent=JSON.stringify(x,null,2)),2000);</script>";
+    sendHTTPResponse(client, "text/html", page);
   }
   else {
     client.println("HTTP/1.1 404 Not Found");
@@ -874,6 +851,9 @@ void setup() {
   pinMode(PUMP_PWM, OUTPUT);
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
+  analogWrite(HEATER_PWM, 0);
+  analogWrite(FAN_PWM, 0);
+  analogWrite(PUMP_PWM, 0);
   digitalWrite(RELAY_1, LOW);
   digitalWrite(RELAY_2, LOW);
   
@@ -930,6 +910,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  enforceHeaterSafety();
   
   // Obsługa trybu USB (priorytet)
   if (currentMode == MODE_USB) {

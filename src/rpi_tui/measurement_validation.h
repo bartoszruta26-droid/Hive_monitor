@@ -30,6 +30,7 @@ inline const std::map<std::string, NumericRange>& measurementRanges() {
         {"co2_raw", {0, 100000, true}},
         {"aq_co2_mean", {0, 100000, true}},
         {"voc", {0, 500, true}},
+        {"nox", {0, 500, true}},
         {"voc_raw", {0, 500, true}},
         {"iaq_index", {0, 500, false}},
         {"air_iaq", {0, 500, true}},
@@ -446,11 +447,13 @@ inline bool validateHivePayloadFields(
         return false;
     }
 
-    for (const char* boolean_field : {"is_precomputed", "is_online"}) {
+    for (const char* boolean_field : {"is_precomputed", "is_online", "co2_available"}) {
         const auto boolean_value = values.find(boolean_field);
         if (boolean_value != values.end() &&
             boolean_value->second != "true" && boolean_value->second != "false" &&
-            boolean_value->second != "0" && boolean_value->second != "1") {
+            boolean_value->second != "0" && boolean_value->second != "1" &&
+            boolean_value->second != "__JSON_BOOL_TRUE__" &&
+            boolean_value->second != "__JSON_BOOL_FALSE__") {
             error = std::string(boolean_field) + " must be a boolean";
             return false;
         }

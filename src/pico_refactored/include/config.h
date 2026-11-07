@@ -317,6 +317,11 @@
 #define HTTP_PORT     8080
 #define UDP_PORT      5005
 
+// Stable identifier of this physical hive; override per device at build time.
+#ifndef APIARY_HIVE_ID
+#define APIARY_HIVE_ID  "UL-001"
+#endif
+
 // DHCP fallback configuration
 #define USE_DHCP_FALLBACK true
 

@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - "fix/**"
+      - "feature/**"
     paths:
       - "src/webui/**"
       - "src/rpi_tui/**"
@@ -94,6 +95,12 @@ jobs:
 
       - name: Run sensor measurement domain validation tests
         run: make -C src/rpi_tui test-validation
+
+      - name: Verify Pico UDP telemetry contract
+        run: make -C src/rpi_tui test-pico-udp
+
+      - name: Verify effector command validation contract
+        run: make -C src/rpi_tui test-effectors
 
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network

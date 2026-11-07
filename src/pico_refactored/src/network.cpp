@@ -348,65 +348,92 @@ void handleClients() {
  */
 void sendUDPData() {
     static unsigned long lastUdpSend = 0;
-    
-    // Rate limiting - send every 10 seconds
+
+    // Rate limiting - send every 10 seconds.
     if (millis() - lastUdpSend < 10000) return;
-    
-    // Check if network is ready
     if (Ethernet.linkStatus() != LinkON) {
-        #ifdef DEBUG_NETWORK
+#ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] WARNING: Cannot send UDP - no link");
-        #endif
+#endif
         return;
     }
-    
-    lastUdpSend = millis();
-    
-    // Prepare UDP packet using snprintf (String::format doesn't exist in Arduino)
-    char payload[128];
-    int payload_len = snprintf(payload, sizeof(payload),
-        "{\"t\":%.1f,\"h\":%.1f,\"ca\":%d,\"c\":%d,\"v\":%u,\"n\":%u,\"w\":%ld}",
-        temperature, humidity, co2_available ? 1 : 0,
-        co2_available ? static_cast<int>(co2_eq) : 0,
-        static_cast<unsigned int>(voc_idx), static_cast<unsigned int>(nox_idx), hx711_value
+
+    // Match ApiaryCollector::parseJSON(); regression coverage lives in
+    // src/rpi_tui/tests/test_pico_udp_contract.cpp. Optional measurements are omitted
+    // when unavailable instead of fabricating a zero-valued reading.
+    char payload[256];
+    int payload_len = snprintf(
+        payload, sizeof(payload),
+        "{\"hive_id\":\"%s\",\"data_source\":\"pico\","
+        "\"temp\":%.1f,\"hum\":%.1f,\"weight_raw\":%ld,"
+        "\"voc\":%u,\"nox\":%u,\"co2_available\":%s",
+        APIARY_HIVE_ID, temperature, humidity, hx711_value,
+        static_cast<unsigned int>(voc_idx),
+        static_cast<unsigned int>(nox_idx),
+        co2_available ? "true" : "false"
     );
 
-    if (payload_len < 0 || payload_len >= sizeof(payload)) {
-        #ifdef DEBUG_NETWORK
+    if (payload_len < 0 || static_cast<size_t>(payload_len) >= sizeof(payload)) {
+#ifdef DEBUG_NETWORK
         Serial.println("[NETWORK] ERROR: UDP payload formatting failed");
-        #endif
+#endif
         network_error_count++;
         return;
     }
-    
-    #ifdef DEBUG_NETWORK
+
+    size_t used = static_cast<size_t>(payload_len);
+    if (co2_available) {
+        const int appended = snprintf(
+            payload + used, sizeof(payload) - used, ",\"co2\":%u",
+            static_cast<unsigned int>(co2_eq)
+        );
+        if (appended < 0 || static_cast<size_t>(appended) >= sizeof(payload) - used) {
+#ifdef DEBUG_NETWORK
+            Serial.println("[NETWORK] ERROR: UDP CO2 field formatting failed");
+#endif
+            network_error_count++;
+            return;
+        }
+        used += static_cast<size_t>(appended);
+    }
+
+    if (used + 2 > sizeof(payload)) {
+        network_error_count++;
+        return;
+    }
+    payload[used++] = '}';
+    payload[used] = '\0';
+
+#ifdef DEBUG_NETWORK
     Serial.print("[NETWORK] Sending UDP packet to ");
     Serial.print(rpiIP.toString().c_str());
     Serial.print(":");
     Serial.print(UDP_PORT);
     Serial.print(" (");
-    Serial.print(payload_len);
+    Serial.print(used);
     Serial.println(" bytes)");
-    #endif
-    
+#endif
+
     udp.beginPacket(rpiIP, UDP_PORT);
-    size_t bytes_written = udp.print(payload);
-    int result = udp.endPacket();
-    
-    if (result == 1 && bytes_written > 0) {
+    const size_t bytes_written = udp.write(
+        reinterpret_cast<const uint8_t*>(payload), used
+    );
+    const int result = udp.endPacket();
+
+    if (result == 1 && bytes_written == used) {
+        lastUdpSend = millis();
         udp_packets_sent++;
-        #ifdef DEBUG_NETWORK
+#ifdef DEBUG_NETWORK
         Serial.printf("[NETWORK] UDP sent successfully (%zu bytes)\n", bytes_written);
         Serial.printf("[DEBUG] Total UDP packets: %lu\n", udp_packets_sent);
-        #endif
+#endif
     } else {
         network_error_count++;
-        #ifdef DEBUG_NETWORK
+#ifdef DEBUG_NETWORK
         Serial.print("[NETWORK] WARNING: UDP send failed (bytes=");
         Serial.print(bytes_written);
         Serial.print(", result=");
         Serial.println(result);
-        Serial.println("[NETWORK] Possible causes: network down, invalid IP, buffer full");
-        #endif
+#endif
     }
 }

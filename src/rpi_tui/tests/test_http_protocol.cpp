@@ -47,6 +47,12 @@ int main() {
     result = resolveHttpRequestLine("GET /api/effectors HTTP/1.1");
     assert(result.route == HttpRoute::Effectors && result.statusCode == 501);
 
+    result = resolveHttpRequestLine("POST /api/effectors HTTP/1.1");
+    assert(result.route == HttpRoute::EffectorsCommand && result.statusCode == 200);
+
+    result = resolveHttpRequestLine("POST /api/status HTTP/1.1");
+    assert(result.route == HttpRoute::MethodNotAllowed && result.statusCode == 405);
+
     result = resolveHttpRequestLine("GET /api/history HTTP/1.1");
     assert(result.route == HttpRoute::History && result.statusCode == 501);
 

@@ -5,12 +5,16 @@ on:
     branches: [main, "fix/**"]
     paths:
       - "src/pico_refactored/**"
+      - "src/arduino_nano_dual_mode/**"
+      - "src/shared/**"
       - "tests/**"
       - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
   pull_request:
     paths:
       - "src/pico_refactored/**"
+      - "src/arduino_nano_dual_mode/**"
+      - "src/shared/**"
       - "tests/**"
       - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
@@ -60,6 +64,11 @@ jobs:
           g++ -std=c++11 -Wall -Wextra -Werror tests/safe_mode_policy_test.cpp -o /tmp/safe_mode_policy_test
           /tmp/safe_mode_policy_test
 
+      - name: Run embedded command authentication reference tests
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror src/rpi_tui/tests/test_effector_auth.cpp -o /tmp/test_effector_auth
+          /tmp/test_effector_auth
+
       - name: Compile Raspberry Pi Pico firmware
         run: |
           arduino-cli compile \
@@ -67,3 +76,36 @@ jobs:
             --warnings all \
             --build-property compiler.cpp.extra_flags="-I${GITHUB_WORKSPACE}/.ci/pico-build/include" \
             .ci/pico-build
+
+  arduino-nano-firmware:
+    name: Arduino Nano ATmega328P firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@81d310742121c928ea9c8bbd407b4217b432ae02 # v2.0.0
+
+      - name: Install AVR core and Nano dependencies
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli lib update-index
+          arduino-cli lib install "UIPEthernet"
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli lib install "Adafruit Unified Sensor"
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Verify Nano HTTP actuator fail-closed behavior
+        run: python3 src/arduino_nano_dual_mode/tests/test_http_actuator_guard.py
+
+      - name: Compile Arduino Nano firmware
+        run: |
+          mkdir -p build/nano_sketch
+          cp src/arduino_nano_dual_mode/apiaryguard_nano_dual.ino build/nano_sketch/nano_sketch.ino
+          arduino-cli compile \
+            --fqbn arduino:avr:nano \
+            --warnings all \
+            build/nano_sketch
