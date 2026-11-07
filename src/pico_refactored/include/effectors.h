@@ -35,6 +35,6 @@ bool isHeaterSensorReadyForActuation();
 void activateSafeMode(const char* reason);
 bool isSafeModeActive();
 const char* getSafeModeReason();
-bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy);
+bool releaseSafeMode(bool operatorConfirmed);
 
 #endif // EFFECTORS_H
