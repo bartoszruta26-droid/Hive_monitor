@@ -41,6 +41,20 @@
                 android:clipToPadding="false" />
 
             <TextView
+                android:id="@+id/empty_state"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="Brak danych uli\nPołącz z Raspberry Pi aby zobaczyć dane"
+                android:textSize="16sp"
+                android:textColor="@color/text_secondary"
+                android:padding="32dp"
+                android:lineSpacingExtra="6dp"
+                android:background="@color/primary_light"
+                android:visibility="gone"
+                android:importantForAccessibility="yes" />
+
+            <TextView
                 android:id="@+id/connection_banner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -55,20 +69,6 @@
                 android:textSize="13sp"
                 android:visibility="gone"
                 android:accessibilityLiveRegion="polite" />
-
-            <TextView
-                android:id="@+id/empty_state"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="Brak danych uli\nPołącz z Raspberry Pi aby zobaczyć dane"
-                android:textSize="16sp"
-                android:textColor="@color/text_secondary"
-                android:padding="32dp"
-                android:lineSpacingExtra="6dp"
-                android:background="@color/primary_light"
-                android:visibility="gone"
-                android:importantForAccessibility="yes" />
 
         </FrameLayout>
 
