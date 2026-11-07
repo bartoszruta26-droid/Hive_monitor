@@ -17,6 +17,7 @@ interface ApiaryApiService {
         @Query("hive_id") hiveId: String,
         @Query("aggregation") aggregation: String,
         @Query("start") startTimestamp: Long,
-        @Query("end") endTimestamp: Long
+        @Query("end") endTimestamp: Long,
+        @Query("metric") metric: String? = null
     ): Response<com.apiguard.apiary.data.model.ApiaryHistoryResponse>
 }

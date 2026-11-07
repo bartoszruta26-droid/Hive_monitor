@@ -9,7 +9,8 @@ data class ApiaryHistoryResponse(
     val end: Long,
     @SerializedName("data_quality") val dataQuality: String,
     val records: List<ApiaryHistoryRecord>,
-    val metrics: List<ApiaryMetricAggregate> = emptyList()
+    val metrics: List<ApiaryMetricAggregate> = emptyList(),
+    @SerializedName("metrics_catalog") val metricsCatalog: List<String> = emptyList()
 )
 
 data class ApiaryHistoryRecord(

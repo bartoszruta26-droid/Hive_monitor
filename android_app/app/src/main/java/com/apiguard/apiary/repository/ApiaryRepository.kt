@@ -200,7 +200,8 @@ class ApiaryRepository(private val application: Application) {
         apiaryId: String,
         aggregation: String,
         startTimestamp: Long,
-        endTimestamp: Long
+        endTimestamp: Long,
+        metric: String? = null
     ): Result<ApiaryHistoryResponse> = withContext(Dispatchers.IO) {
         if (apiaryId.isBlank() || startTimestamp < 0L || endTimestamp < startTimestamp) {
             return@withContext Result.failure(IllegalArgumentException("Nieprawidłowy zakres historii"))
@@ -212,7 +213,7 @@ class ApiaryRepository(private val application: Application) {
         val service = getApiService()
             ?: return@withContext Result.failure(Exception("Brak zapisanego adresu API"))
         try {
-            val response = service.getHistory(apiaryId, aggregation, startTimestamp, endTimestamp)
+            val response = service.getHistory(apiaryId, aggregation, startTimestamp, endTimestamp, metric)
             if (response.isSuccessful) {
                 response.body()?.let { Result.success(it) }
                     ?: Result.failure(Exception("Pusta odpowiedź historii"))
