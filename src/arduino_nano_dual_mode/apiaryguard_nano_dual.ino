@@ -58,7 +58,7 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 IPAddress ip(192, 168, 1, 100);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
-UIPEthernetServer server(8080);
+UIPServer server(8080);
 
 // ==================== OBIEKTY ====================
 DHT dht(DHT_PIN, DHT22);
@@ -142,7 +142,8 @@ int cmdIndex = 0;
 // ============================================================================
 
 uint16_t getFreeRam() {
-  extern int __heap_start, *__brkval;\n  int v;
+  extern int __heap_start, *__brkval;
+  int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 
@@ -255,14 +256,17 @@ bool initEthernet() {
   
   // UIPEthernet nie wymaga Ethernet.init() - CS jest ustawiany w begin()
   
-  int ret = Ethernet.begin(mac, ip, gateway, subnet);
+  Ethernet.begin(mac, ip, gateway, subnet);
   delay(1500);
-  
-  if (ret == 0) {
-    logError("ETH", "Nie wykryto sprzetu lub brak polaczenia!");
+
+  // UIPEthernet w trybie statycznego IP zwraca void z begin().
+  // Weryfikujemy konfigurację adresu i stan łącza zamiast sprawdzać kod zwrotny.
+  IPAddress assignedIP = Ethernet.localIP();
+  if (assignedIP != ip) {
+    logError("ETH", "Nie udalo sie ustawic statycznego adresu IP");
     return false;
   }
-  
+
   // Sprawdzenie linku przez odczyt statusu
   uint8_t linkStatus = Ethernet.linkStatus();
   if (linkStatus == 0) {
