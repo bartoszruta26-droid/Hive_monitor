@@ -11,9 +11,12 @@ int main() {
     assert(!heaterSensorReady(true,true,0,1000,7001,6000,3));
     assert(heaterSensorReady(true,true,0,0xFFFFFF00u,0x00000100u,600u,3));
     assert(mayEnergizeHeater(0,false,false));
+    assert(!mayEnergizeHeater(-1,false,true));
+    assert(!mayEnergizeHeater(256,false,true));
     assert(mayEnergizeHeater(128,false,true));
     assert(!mayEnergizeHeater(128,false,false));
     assert(!mayEnergizeHeater(128,true,true));
+    assert(mayEnergizeHeater(255,false,true));
     assert(mayReleaseMain(true,true,true));
     assert(!mayReleaseMain(false,true,true));
     assert(!mayReleaseMain(true,false,true));
