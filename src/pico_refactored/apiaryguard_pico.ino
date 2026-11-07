@@ -321,11 +321,11 @@ void processCommand(String cmd) {
             Serial.println("OK: Glowna blokada zwolniona. Wszystkie nastawy pozostaja wyzerowane; Flowing Hive nadal zablokowany.");
         }
     }
-    else if (isExactCommand(cmd, "FLOW_SAFE_MODE_RELEASE CONFIRM")) {
+    else if (isExactCommand(cmd, "FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM")) {
         if (!deactivateFlowingHiveSafeMode(true)) {
-            Serial.println("ERROR: Zwolnienie blokady Flowing Hive odrzucone; wymagana jest aktywna blokada, potwierdzenie operatora i zwolniona blokada glowna.");
+            Serial.println("ERROR: Zwolnienie Flowing Hive odrzucone; wymagane sa aktywna blokada, fizyczna kontrola pozycji spoczynkowej i zwolniona blokada glowna.");
         } else {
-            Serial.println("OK: Blokada Flowing Hive zwolniona. Przerwana sekwencja nie zostala wznowiona.");
+            Serial.println("OK: Blokada Flowing Hive zwolniona po potwierdzonej kontroli fizycznej. Przerwana sekwencja nie zostala wznowiona.");
         }
     }
     else if (isExactCommand(cmd, "STATUS_FLOWING")) {
@@ -349,7 +349,7 @@ void processCommand(String cmd) {
         Serial.println("  STATUS_FLOWING");
         Serial.println("  SAFE_MODE_STATUS");
         Serial.println("  SAFE_MODE_RELEASE CONFIRM");
-        Serial.println("  FLOW_SAFE_MODE_RELEASE CONFIRM");
+        Serial.println("  FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM  (po fizycznej kontroli pozycji spoczynkowej)");
         Serial.println("  STATUS");
     }
     else {
