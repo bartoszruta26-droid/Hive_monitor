@@ -4,9 +4,9 @@
 
 Firmware wysyła datagram UDP na adres RPI_IP i port UDP_PORT z src/pico_refactored/include/config.h. Payload ma jawny identyfikator ula i nazwy pól zgodne z kolektorem:
 
-    {"hive_id":"UL-001","data_source":"pico","temp":24.5,"hum":65.2,"weight":45,"voc":35,"nox":12,"co2_available":true,"co2":450}
+    {"hive_id":"UL-001","data_source":"pico","temp":24.5,"hum":65.2,"weight_raw":450000,"voc":35,"nox":12,"co2_available":true,"co2":450}
 
-Liczby są przykładowe i opisują wyłącznie format. Firmware pomija pole co2, gdy pomiar CO2 jest niedostępny; nie wpisuje fikcyjnego zera. Pole nox jest zachowywane w surowym JSON i walidowane; nie jest obecnie osobną kolumną podstawowej struktury HiveData.
+Liczby są przykładowe i opisują wyłącznie format. Firmware pomija pole co2, gdy pomiar CO2 jest niedostępny; nie wpisuje fikcyjnego zera. Pole nox jest zachowywane w surowym JSON i walidowane; nie jest obecnie osobną kolumną podstawowej struktury HiveData. HX711 w obecnym firmware zwraca surowe zliczenia ADC, dlatego wysyłane jest weight_raw, a nie weight w kilogramach. Do prezentacji masy w kg potrzebna jest rzeczywista kalibracja i jawne przeliczenie.
 
 Dla każdego fizycznego ula ustaw unikalne APIARY_HIVE_ID w konfiguracji firmware. Domyślna wartość to UL-001.
 
