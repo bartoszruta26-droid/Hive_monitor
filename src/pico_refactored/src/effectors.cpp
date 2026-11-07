@@ -190,7 +190,7 @@ bool setHeaterPWM(int duty) {
         ++effector_error_count;
         LOG_ERROR("EFFECTORS", "Rejected heater activation: temperature sensor is unavailable, invalid or stale");
         activateSafeMode("Heater command rejected: temperature sensor unavailable, invalid or stale");
-        return;
+        return false;
     }
 
     heaterDuty = duty;
