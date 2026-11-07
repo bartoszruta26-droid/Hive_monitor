@@ -358,7 +358,8 @@ void sendUDPData() {
         return;
     }
 
-    // Match ApiaryCollector::parseJSON(). Optional measurements are omitted
+    // Match ApiaryCollector::parseJSON(); regression coverage lives in
+    // src/rpi_tui/tests/test_pico_udp_contract.cpp. Optional measurements are omitted
     // when unavailable instead of fabricating a zero-valued reading.
     char payload[256];
     int payload_len = snprintf(
