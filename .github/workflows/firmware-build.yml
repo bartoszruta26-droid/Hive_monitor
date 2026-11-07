@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - "src/pico_refactored/**"
+      - "tests/**"
+      - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
 
 concurrency:
