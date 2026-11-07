@@ -27,7 +27,7 @@ jobs:
       - name: Install Qt 6 development packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ libgl1-mesa-dev qt6-base-dev qt6-webchannel-dev qt6-positioning-dev qt6-webengine-dev qt6-webengine-dev-tools
+          sudo apt-get install -y cmake ninja-build g++ libgl1-mesa-dev qt6-base-dev qt6-positioning-dev qt6-webengine-dev qt6-webengine-dev-tools
       - name: Configure
         run: cmake -S src/desktop_gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -58,7 +58,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check --upgrade aqtinstall
           aqt list-qt windows desktop --modules 6.8.3 win64_msvc2022_64
-          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O C:\Qt -m qtwebengine qtwebchannel qtpositioning
+          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O C:\Qt -m qtwebengine qtpositioning
           "CMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Configure
         run: cmake -S src/desktop_gui -B build -A x64 -DCMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH"
