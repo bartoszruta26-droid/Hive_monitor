@@ -748,6 +748,10 @@ draw_hive_panel() {
     fi
     
     # Dane uli pochodzą z kolektora lub jawnie włączonego trybu demo.
+    if [ ${#HIVES[@]} -eq 0 ]; then
+        tput cup $content_start $((start_x + 2))
+        echo -ne "${COLOR_YELLOW}BRAK DANYCH — oczekiwanie na kolektor lub poprawny odczyt CSV${COLOR_RESET}"
+    fi
     for i in "${!HIVES[@]}"; do
         local hive="${HIVES[$i]}"
         local status="${HIVE_STATUS[$i]:-UNKNOWN}"
