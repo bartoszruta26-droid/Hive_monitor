@@ -10,6 +10,9 @@ inline bool heaterSensorReady(bool detected, bool active, uint8_t consecutiveErr
            lastValidSample != 0 &&
            static_cast<uint32_t>(now - lastValidSample) <= maxAgeMs;
 }
+inline bool mayEnergizeHeater(int duty, bool mainLatchActive, bool heaterSensorHealthy) {
+    return duty == 0 || (!mainLatchActive && heaterSensorHealthy);
+}
 inline bool mayReleaseMain(bool mainLatchActive, bool operatorConfirmed,
                            bool heaterSensorHealthy) {
     return mainLatchActive && operatorConfirmed && heaterSensorHealthy;
