@@ -5,10 +5,14 @@ on:
     branches: [main, "fix/**"]
     paths:
       - "src/pico_refactored/**"
+      - "tests/**"
+      - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
   pull_request:
     paths:
       - "src/pico_refactored/**"
+      - "tests/**"
+      - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
 
 concurrency:
@@ -50,6 +54,11 @@ jobs:
           cp src/pico_refactored/apiaryguard_pico.ino .ci/pico-build/pico-build.ino
           cp -R src/pico_refactored/include .ci/pico-build/include
           cp -R src/pico_refactored/src .ci/pico-build/src
+
+      - name: Run host-side safe-mode policy tests
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror tests/safe_mode_policy_test.cpp -o /tmp/safe_mode_policy_test
+          /tmp/safe_mode_policy_test
 
       - name: Compile Raspberry Pi Pico firmware
         run: |

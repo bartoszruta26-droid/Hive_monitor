@@ -49,7 +49,7 @@ System Flowing Hive implementuje filozofię **Gentle Code** - kodu odpornego na 
 
 2. **Input Validation with Graceful Degradation**
    - Wszystkie parametry wejściowe są walidowane
-   - Nieprawidłowe wartości są automatycznie korygowane (constrain)
+   - Nieprawidłowe wartości są odrzucane, jeżeli mogłyby spowodować niebezpieczne sterowanie
    - Zamiast exceptionów - logowanie warningów
 
 3. **No Exceptions, Only Return Codes**
@@ -58,24 +58,24 @@ System Flowing Hive implementuje filozofię **Gentle Code** - kodu odpornego na 
    - Error counters do monitorowania zdrowia systemu
 
 4. **Safe Mode Automatic Activation**
-   - Przy krytycznych błędach aktywuje się tryb bezpieczny
-   - Serwo wraca do pozycji REST
-   - Sekwencje automatyczne są przerywane
+   - Przy krytycznych błędach aktywuje się zatrzask trybu bezpiecznego
+   - Sterownik otrzymuje polecenie pozycji REST, o ile jest gotowy; brak sprzężenia zwrotnego oznacza, że ruch mechaniczny nie jest potwierdzony
+   - Sekwencje automatyczne są przerywane i nie są automatycznie wznawiane
 
 ### Przykład: Sprawdzenie Hardware Before Operation
 
 ```cpp
-void setServoAngle(uint16_t angle) {
+bool setServoAngle(uint16_t angle) {
     // GENTLE CODE: Check hardware presence before operation
-    if (!servoDetected || !servoInitialized) {
-        DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
-        return;  // Graceful exit - no error thrown
+    if (!servoControllerReady || !servoInitialized) {
+        DBG_SERVO("[SERVO] Command ignored - servo controller unavailable\n");
+        return false;  // Graceful exit - no error thrown
     }
     
     // GENTLE CODE: Respect safe mode
     if (flowingHiveSafeMode) {
         DBG_SERVO("[SERVO] Command ignored - safe mode active\n");
-        return;  // Blocked for safety
+        return false;  // Blocked for safety
     }
     
     // ... rest of operation
@@ -356,7 +356,7 @@ Uruchamia sekwencję automatycznego opróżniania:
 1. Sprawdza tryb bezpieczny i dozwolony czas pracy.
 2. Przechodzi do pozycji EMPTY (160°).
 3. Oczekuje przez określony czas.
-4. Wraca do pozycji REST (10°).
+4. Wysyła polecenie powrotu do pozycji REST (10°); brak czujnika położenia oznacza, że wykonanie ruchu trzeba sprawdzić fizycznie.
 
 **Ograniczenie czasu:** od 1 do 1800 sekund (maksymalnie 30 minut). Wartości spoza zakresu są odrzucane bez uruchomienia serwa.
 
@@ -491,24 +491,23 @@ void testServo() {
 
 ### Komendy Serial/USB
 
-Dostępne przez interfejs USB lub Ethernet:
+Dostępne komendy sterujące i diagnostyczne są przyjmowane przez lokalny port USB Serial. Panel HTTP/Ethernet w tej wersji udostępnia wyłącznie odczyt statusu; nie należy traktować go jako interfejsu sterowania.
 
 | Komenda | Opis | Przykład |
 |---------|------|----------|
-| `SERVO_ANGLE [0-180]` | Ustaw kąt serwa | `SERVO_ANGLE 160` |
-| `SERVO_REST` | Pozycja spoczynkowa | `SERVO_REST` |
-| `SERVO_EMPTY` | Pozycja opróżniania | `SERVO_EMPTY` |
-| `AUTO_EMPTY [ms]` | Start sekwencji | `AUTO_EMPTY 1800000` |
-| `TARE_WEIGHT2` | Zeruj HX711 #2 | `TARE_WEIGHT2` |
-| `WEIGHT2` | Odczytaj wagę #2 | `WEIGHT2` |
-| `FLOW_RESET` | Reset licznika | `FLOW_RESET` |
-| `FLOW_STATUS` | Status przepływu | `FLOW_STATUS` |
-| `STATUS_ALL` | Pełny status | `STATUS_ALL` |
+| `SERVO_ANGLE [0-180]` | Ustaw kąt serwa, jeśli blokada Flowing Hive jest zwolniona | `SERVO_ANGLE 160` |
+| `SERVO_EMPTY [1-1800]` | Uruchom sekwencję opróżniania na podaną liczbę sekund; bez argumentu 1800 s | `SERVO_EMPTY 600` |
+| `FLOW_RESET` | Reset licznika przepływu | `FLOW_RESET` |
+| `STATUS_FLOWING` | Status sterownika, sekwencji i przepływu | `STATUS_FLOWING` |
+| `SAFE_MODE_STATUS` | Status obu zatrzasków i przyczyny ostatnich błędów | `SAFE_MODE_STATUS` |
+| `SAFE_MODE_RELEASE CONFIRM` | Zwolnij główną blokadę po potwierdzeniu operatora i sprawdzeniu czujnika temperatury | `SAFE_MODE_RELEASE CONFIRM` |
+| `FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM` | Zwolnij blokadę Flowing Hive po fizycznej kontroli pozycji REST i zwolnieniu głównej blokady | `FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM` |
+| `HELP` | Lista aktualnych komend | `HELP` |
 
 ### Przykładowa Sesja
 
 ```
-> STATUS_ALL
+> STATUS_FLOWING
 
 >> Flowing Hive Effector Status:
   Servo:
@@ -528,11 +527,12 @@ Dostępne przez interfejs USB lub Ethernet:
     Updates: 125, Errors: 0
   Safe mode: inactive
 
-> AUTO_EMPTY 600000
-OK: Started auto-empty sequence (600000 ms)
+> SERVO_EMPTY 600
+OK: Rozpoczęto sekwencję opróżniania (600s).
 
-> FLOW_STATUS
-Flow: 0.420 L/min, Total: 2.870 L
+> SAFE_MODE_STATUS
+MAIN_SAFE_MODE=INACTIVE
+FLOWING_HIVE_SAFE_MODE=INACTIVE
 ```
 
 ---
@@ -647,3 +647,12 @@ Projekt ApiaryGuard - Open Source Beekeeping Monitoring System
 **Repozytorium**: GitHub  
 **Dokumentacja**: `/workspace/doc/`
 
+
+
+### Ograniczenia odzyskiwania i potwierdzania stanu
+
+Sterownik serwa nie ma czujnika położenia. `Controller ready`, `Initialized`, `Rest command accepted by driver` oraz `Current angle` opisują stan sterownika i ostatnie polecenie, a nie zmierzone położenie mechanizmu. Przed wydaniem `FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM` operator musi fizycznie sprawdzić, czy mechanizm znajduje się w bezpiecznej, dostępnej dla pszczół pozycji REST. Potwierdzenie jest oświadczeniem operatora, nie wynikiem automatycznego pomiaru.
+
+Główna blokada i blokada Flowing Hive są niezależne. Zwolnienie głównej blokady nie zwalnia blokady Flowing Hive. Zwolnienie Flowing Hive jest odrzucane, gdy główna blokada pozostaje aktywna. Po odzyskaniu systemu wcześniejsze polecenia i przerwane sekwencje nie są automatycznie odtwarzane.
+
+Przed wdrożeniem wymagane są testy na docelowym sprzęcie: polaryzacji przekaźników, zachowania wyjść po resecie i utracie zasilania, kalibracji zakresu serwa bez obciążenia, rzeczywistego położenia REST oraz niezależnych zabezpieczeń termicznych. Testy hostowe i kompilacja firmware nie potwierdzają bezpieczeństwa mechanicznego ani elektrycznego.

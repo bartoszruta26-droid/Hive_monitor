@@ -29,7 +29,14 @@ Poziom wentylatora w trybie bezpiecznym pozostaje wartością konfiguracyjną `S
 - Serwo korzysta z wbudowanej w rdzeń Arduino-Pico biblioteki `Servo`, generującej impulsy w tle przez PIO. Poprawne przyłączenie sterownika nie potwierdza obecności fizycznego serwa ani bezpieczeństwa mechaniki.
 - Licznik impulsów czujnika przepływu jest odczytywany i zerowany w sekcji krytycznej, aby nie gubić impulsów z przerwania podczas próbkowania.
 
-Zatrzask Flowing Hive pozostaje niezależny po skasowaniu głównego trybu bezpiecznego. Nie ma automatycznego wznowienia ruchu serwa po odzyskaniu komunikacji lub pomiarów.
+Zatrzask Flowing Hive pozostaje niezależny po skasowaniu głównego trybu bezpiecznego. Zwolnienie wymaga komendy `FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM`, którą operator może wydać dopiero po fizycznym sprawdzeniu, że mechanizm znajduje się w pozycji REST (dostęp pszczół do ramek). Sterownik serwa nie ma czujnika położenia; przyjęcie polecenia PWM ani ostatni zadany kąt nie potwierdzają rzeczywistej pozycji mechanizmu. `STATUS_FLOWING` pokazuje stan sterownika i wyraźnie informuje o braku sprzężenia zwrotnego. Nie ma automatycznego wznowienia ruchu serwa po odzyskaniu komunikacji lub pomiarów.
+
+## Odzyskiwanie Safe Mode
+
+- `SAFE_MODE_STATUS` — odczyt głównego zatrzasku, zatrzasku Flowing Hive i zapamiętanych przyczyn.
+- `SAFE_MODE_RELEASE CONFIRM` — zwolnienie głównej blokady po wykryciu aktywnego czujnika temperatury i świeżej, poprawnej próbce. Nastawy efektorów pozostają wyzerowane.
+- `FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM` — zwolnienie wyłącznie blokady Flowing Hive, po uprzednim zwolnieniu blokady głównej i fizycznym sprawdzeniu pozycji REST przez operatora. Sekwencja opróżniania pozostaje przerwana.
+- `STATUS_FLOWING` — odczyt stanu sterownika serwa, ostatniego zadanego kąta i informacji o braku fizycznego sprzężenia zwrotnego.
 
 ## Testy wymagane przed wdrożeniem
 
