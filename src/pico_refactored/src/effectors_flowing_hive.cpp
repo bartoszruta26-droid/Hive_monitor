@@ -39,6 +39,8 @@
 #include "effectors_flowing_hive.h"
 #include "effectors.h"
 #include <Arduino.h>
+#include <string.h>
+#include "safe_mode_policy.h"
 #include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
 #endif
@@ -81,6 +83,7 @@ static bool flowSensorInterruptConfigured = false; ///< Interrupt setup state; n
 // Safe Mode State
 // ----------------------------------------------------------------------------
 static bool flowingHiveSafeMode = false;                    ///< Safe mode active flag
+static char flowingHiveSafeModeReason[96] = "No latched fault";
 
 // ----------------------------------------------------------------------------
 // Diagnostic Counters - For Health Monitoring
@@ -678,25 +681,31 @@ void activateFlowingHiveSafeMode(const char* reason) {
         autoEmptyActive = false;
     }
     
-    // Now set safe mode flag
+    if (!flowingHiveSafeMode) {
+        strncpy(flowingHiveSafeModeReason, reason ? reason : "Unspecified fault",
+                sizeof(flowingHiveSafeModeReason) - 1);
+        flowingHiveSafeModeReason[sizeof(flowingHiveSafeModeReason) - 1] = '\0';
+    }
     flowingHiveSafeMode = true;
     
-    LOG_ERROR("FLOWING_HIVE", reason);
+    LOG_ERROR("FLOWING_HIVE", reason ? reason : "Unspecified fault");
     DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason);
 }
 
 /**
  * @brief Deactivate safe mode
  */
-void deactivateFlowingHiveSafeMode() {
-    // The subsystem latch may be released only after the main interlock has
-    // been cleared deliberately. This prevents one subsystem from bypassing
-    // a still-active system-wide emergency stop.
-    if (isSafeModeActive()) {
-        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected while main safe mode is active");
-        return;
-    }
+const char* getFlowingHiveSafeModeReason() {
+    return flowingHiveSafeModeReason;
+}
 
+bool deactivateFlowingHiveSafeMode(bool operatorConfirmed) {
+    if (!safeModePolicy::mayReleaseFlowingHive(
+            flowingHiveSafeMode, isSafeModeActive(), operatorConfirmed)) {
+        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected: latch, operator acknowledgement or main interlock state invalid");
+        return false;
+    }
     flowingHiveSafeMode = false;
     DBG_SERVO("[SERVO] Safe mode deactivated\n");
+    return true;
 }
