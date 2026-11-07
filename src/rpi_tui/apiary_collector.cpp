@@ -977,10 +977,10 @@ public:
                 ? known_csv_fields[field] : "csv_field_" + std::to_string(field);
             char* number_end = nullptr;
             const double number = std::strtod(parts[field].c_str(), &number_end);
-            if (number_end == parts[field].c_str() || *number_end != '\\0' || !std::isfinite(number)) continue;
+            if (number_end == parts[field].c_str() || *number_end != '\0' || !std::isfinite(number)) continue;
             if (!first_metric_field) metric_json << ',';
             first_metric_field = false;
-            metric_json << '"' << name << "\\":" << std::setprecision(17) << number;
+            metric_json << '"' << name << "\":" << std::setprecision(17) << number;
         }
         metric_json << "}";
         const std::string normalized_metric_payload = metric_json.str();
