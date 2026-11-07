@@ -123,13 +123,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.history.observe(this) { history ->
-            if (history != null) {
-                AlertDialog.Builder(this)
-                    .setTitle(getString(R.string.history_comparison_title, history.hiveId))
-                    .setMessage(ApiaryUiFormatter.formatHistoryYearComparison(history))
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
-            }
+            if (history != null) showHistoryMetricPicker(history)
         }
     }
 
@@ -302,6 +296,40 @@ class MainActivity : AppCompatActivity() {
                 showHistoryComparison(apiaryData.id)
             }
             .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun showHistoryMetricPicker(history: com.apiguard.apiary.data.model.ApiaryHistoryResponse) {
+        if (history.dataQuality != "ARCHIVE") {
+            Toast.makeText(this, "Źródło nie jest archiwum", Toast.LENGTH_LONG).show()
+            return
+        }
+        val metricNames = ApiaryUiFormatter.historyMetricNames(history)
+        if (metricNames.isEmpty()) {
+            Toast.makeText(this, "Brak zagregowanych parametrów w tym okresie", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.history_comparison_title, history.hiveId))
+            .setItems(metricNames.toTypedArray()) { _, index ->
+                val metricName = metricNames[index]
+                val chart = TelemetryHistoryChartView(this).apply {
+                    submit(metricName, history.metrics)
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        (300 * resources.displayMetrics.density).toInt()
+                    )
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(metricName)
+                    .setView(chart)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .setNeutralButton(R.string.history_choose_metric) { _, _ ->
+                        showHistoryMetricPicker(history)
+                    }
+                    .show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 

@@ -46,6 +46,10 @@ internal object ApiaryUiFormatter {
         .take(100)
         .toList()
 
+    fun historyMetricNames(
+        response: com.apiguard.apiary.data.model.ApiaryHistoryResponse
+    ): List<String> = response.metrics.map { it.name }.distinct().sorted()
+
     fun formatHistoryYearComparison(
         response: com.apiguard.apiary.data.model.ApiaryHistoryResponse
     ): String {

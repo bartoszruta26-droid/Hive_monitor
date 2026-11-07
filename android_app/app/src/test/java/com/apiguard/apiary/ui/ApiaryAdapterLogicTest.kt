@@ -122,6 +122,19 @@ class ApiaryAdapterLogicTest {
         assertTrue(comparison.contains("55.0%"))
     }
 
+    @Test fun historyMetricNamesAreDistinctAndSorted() {
+        val response = com.apiguard.apiary.data.model.ApiaryHistoryResponse(
+            hiveId = "hive-1", aggregation = "DAY", start = 1L, end = 2L,
+            dataQuality = "ARCHIVE", records = emptyList(),
+            metrics = listOf(
+                com.apiguard.apiary.data.model.ApiaryMetricAggregate(1L,2L,"temperature",1.0,0.0,2.0,1L),
+                com.apiguard.apiary.data.model.ApiaryMetricAggregate(2L,3L,"humidity",50.0,40.0,60.0,1L),
+                com.apiguard.apiary.data.model.ApiaryMetricAggregate(3L,4L,"temperature",2.0,1.0,3.0,1L)
+            )
+        )
+        assertEquals(listOf("humidity", "temperature"), ApiaryUiFormatter.historyMetricNames(response))
+    }
+
     @Test fun missingTimestampIsExplicit() {
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(0L))
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(-100L))

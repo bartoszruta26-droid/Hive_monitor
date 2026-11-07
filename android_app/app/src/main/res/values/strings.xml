@@ -66,4 +66,5 @@
     <string name="history_monthly">Miesięczne</string>
     <string name="history_quarterly">Kwartalne</string>
     <string name="history_yearly">Roczne</string>
+    <string name="history_choose_metric">Wybierz inny parametr</string>
 </resources>
