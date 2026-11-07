@@ -28,6 +28,9 @@ else
 fi
 
 tmp_dir="$(mktemp -d)"
+# apiaryguard must traverse the root-owned temporary parent; the database
+# subdirectory below remains restricted by its own 2770 mode.
+chmod 0711 "$tmp_dir"
 writer_pid=""
 cleanup() {
     if [[ -n "$writer_pid" ]]; then
