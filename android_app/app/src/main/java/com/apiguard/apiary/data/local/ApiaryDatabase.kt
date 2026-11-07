@@ -21,7 +21,8 @@ abstract class ApiaryDatabase : RoomDatabase() {
                     ApiaryDatabase::class.java,
                     "apiary_database"
                 )
-                .fallbackToDestructiveMigration()
+                // Never erase a multi-year archive automatically on schema mismatch.
+                // Add explicit Room migrations before changing the database version.
                 .build()
                 INSTANCE = instance
                 instance
