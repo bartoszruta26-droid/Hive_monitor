@@ -34,6 +34,11 @@ assert "sudo install -d -o apiaryguard -g www-data -m 0750 /var/lib/apiaryguard"
 assert "sudo install -d -o www-data -g www-data -m 0700 /var/log/apiaryguard-web" in installer
 assert "chmod 777" not in installer and "User=root" not in installer
 assert 'chmod 0600 "$BACKUP_FILE"' in root_installer
+assert 'chmod 0600 "$DB_PATH"' in root_installer
+assert 'chmod 0700 "$db_dir"' in root_installer
+assert 'chown root:root "$DB_PATH"' not in root_installer
+assert 'chmod 644 "$db_dir"' not in root_installer
+assert '"${CONFIG_DIR}/data/hive_monitor.db"' in root_installer
 assert 'install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"' in root_installer
 assert "pull --ff-only" in root_installer
 assert "core.hooksPath=/dev/null" in root_installer
