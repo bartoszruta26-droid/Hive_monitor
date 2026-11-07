@@ -1494,29 +1494,40 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
              << ",\"hx711_slope_24h_avg\":" << record.hx711_slope_24h_avg
              << ",\"record_count\":" << record.record_count << '}';
     }
-    json << "],\\"metrics\\":[";
-    const auto metrics = database.getHistoricalMetrics(hive_id, type, start_time, end_time);
-    bool first_metric = true;
-    for (const auto& metric : metrics) {
-        if (!first_metric) json << ',';
-        first_metric = false;
-        std::string escaped_name;
-        for (unsigned char ch : metric.metric_name) {
-            if (ch == '"' || ch == '\\') { escaped_name.push_back('\\'); escaped_name.push_back(static_cast<char>(ch)); }
+    const auto metric_names = database.getHistoricalMetricNames(hive_id, type, start_time, end_time);
+    const auto escape_json = [](const std::string& value) {
+        std::string escaped;
+        for (unsigned char ch : value) {
+            if (ch == '"' || ch == '\\') { escaped.push_back('\\'); escaped.push_back(static_cast<char>(ch)); }
             else if (ch < 0x20) {
                 const char hex[] = "0123456789abcdef";
-                escaped_name += "\\u00";
-                escaped_name.push_back(hex[ch >> 4]);
-                escaped_name.push_back(hex[ch & 0x0f]);
-            } else escaped_name.push_back(static_cast<char>(ch));
+                escaped += "\\u00";
+                escaped.push_back(hex[ch >> 4]);
+                escaped.push_back(hex[ch & 0x0f]);
+            } else escaped.push_back(static_cast<char>(ch));
         }
-        json << "{\\"timestamp_start\\":" << metric.timestamp_start
-             << ",\\"timestamp_end\\":" << metric.timestamp_end
-             << ",\\"name\\":\\"" << escaped_name << "\\""
-             << ",\\"average\\":" << metric.average
-             << ",\\"minimum\\":" << metric.minimum
-             << ",\\"maximum\\":" << metric.maximum
-             << ",\\"sample_count\\":" << metric.sample_count << '}';
+        return escaped;
+    };
+    json << "],\"metrics_catalog\":[";
+    for (size_t i = 0; i < metric_names.size(); ++i) {
+        if (i) json << ',';
+        json << '"' << escape_json(metric_names[i]) << '"';
+    }
+    json << "],\"metrics\":[";
+    if (!metric_filter.empty()) {
+        const auto metrics = database.getHistoricalMetrics(hive_id, type, start_time, end_time, metric_filter);
+        bool first_metric = true;
+        for (const auto& metric : metrics) {
+            if (!first_metric) json << ',';
+            first_metric = false;
+            json << "{\"timestamp_start\":" << metric.timestamp_start
+                 << ",\"timestamp_end\":" << metric.timestamp_end
+                 << ",\"name\":\"" << escape_json(metric.metric_name) << "\""
+                 << ",\"average\":" << metric.average
+                 << ",\"minimum\":" << metric.minimum
+                 << ",\"maximum\":" << metric.maximum
+                 << ",\"sample_count\":" << metric.sample_count << '}';
+        }
     }
     json << "]}";
     status_code = 200;

@@ -872,7 +872,7 @@ std::vector<AggregatedRecord> ApiaryDatabase::getHistoricalData(
 
 std::vector<MetricAggregateRecord> ApiaryDatabase::getHistoricalMetrics(
     const std::string& hive_id, AggregationType agg_type,
-    long long start_time, long long end_time
+    long long start_time, long long end_time, const std::string& metric_name
 ) {
     std::vector<MetricAggregateRecord> result;
     if (start_time > end_time) return result;
@@ -880,14 +880,15 @@ std::vector<MetricAggregateRecord> ApiaryDatabase::getHistoricalMetrics(
     if (!db_) return result;
     const char* sql = "SELECT timestamp_start,timestamp_end,metric_name,value_avg,value_min,value_max,sample_count "
         "FROM aggregated_metric_values WHERE hive_id=? AND agg_type=? "
-        "AND timestamp_start>=? AND timestamp_start<=? ORDER BY timestamp_start,metric_name";
+        "AND timestamp_start>=? AND timestamp_start<=? AND metric_name=? ORDER BY timestamp_start";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return result;
     int rc = sqlite3_bind_text(stmt,1,hive_id.c_str(),-1,SQLITE_TRANSIENT);
     if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt,2,static_cast<int>(agg_type));
     if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,3,start_time);
     if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,4,end_time);
-    while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    if (rc == SQLITE_OK) rc = sqlite3_bind_text(stmt,5,metric_name.c_str(),-1,SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         MetricAggregateRecord record;
         record.timestamp_start = sqlite3_column_int64(stmt,0);
         record.timestamp_end = sqlite3_column_int64(stmt,1);
@@ -898,6 +899,30 @@ std::vector<MetricAggregateRecord> ApiaryDatabase::getHistoricalMetrics(
         record.maximum = sqlite3_column_double(stmt,5);
         record.sample_count = sqlite3_column_int64(stmt,6);
         result.push_back(record);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<std::string> ApiaryDatabase::getHistoricalMetricNames(
+    const std::string& hive_id, AggregationType agg_type,
+    long long start_time, long long end_time
+) {
+    std::vector<std::string> result;
+    if (start_time > end_time) return result;
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!db_) return result;
+    const char* sql = "SELECT DISTINCT metric_name FROM aggregated_metric_values "
+        "WHERE hive_id=? AND agg_type=? AND timestamp_start>=? AND timestamp_start<=? ORDER BY metric_name";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,sql,-1,&stmt,nullptr) != SQLITE_OK) return result;
+    int rc = sqlite3_bind_text(stmt,1,hive_id.c_str(),-1,SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt,2,static_cast<int>(agg_type));
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,3,start_time);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,4,end_time);
+    if (rc == SQLITE_OK) while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const auto* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt,0));
+        if (name) result.emplace_back(name);
     }
     sqlite3_finalize(stmt);
     return result;

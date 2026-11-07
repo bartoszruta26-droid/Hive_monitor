@@ -192,6 +192,10 @@ public:
     
     std::vector<MetricAggregateRecord> getHistoricalMetrics(
         const std::string& hive_id, AggregationType agg_type,
+        long long start_time, long long end_time, const std::string& metric_name
+    );
+    std::vector<std::string> getHistoricalMetricNames(
+        const std::string& hive_id, AggregationType agg_type,
         long long start_time, long long end_time
     );
 
