@@ -16,4 +16,16 @@ assert 'request.startsWith("GET /api/cmd?")' in handler
 for forbidden in ("setPWM(", "setRelay(", "handleHTTPCommand("):
     assert forbidden not in handler, f"unauthenticated HTTP handler calls {forbidden}"
 
-print("Arduino Nano HTTP actuator guard: PASS")
+
+# The heater must remain de-energized at boot and reject positive duty unless
+# a valid DHT22 sample is no older than the configured freshness window.
+assert "bool dhtTemperatureValid = false;" in text
+assert "const unsigned long DHT_MAX_AGE_MS = 5000;" in text
+assert "dhtTemperatureValid = false;" in text
+assert "dhtTemperatureValid = true;" in text
+assert "millis() - lastDhtGoodAt > DHT_MAX_AGE_MS" in text
+assert 'logWarning("HEATER", "Command rejected: DHT22 sample invalid or stale")' in text
+setup = text[text.index("void setup() {"):]
+assert setup.index("analogWrite(HEATER_PWM, 0);") < setup.index("// DHT22")
+
+print("Arduino Nano HTTP actuator guard and heater interlock: PASS")
