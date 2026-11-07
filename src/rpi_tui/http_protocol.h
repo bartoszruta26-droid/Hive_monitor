@@ -14,6 +14,7 @@ enum class HttpRoute {
     Csv,
     Sensors,
     Effectors,
+    EffectorsCommand,
     History,
     Logs
 };
@@ -44,6 +45,10 @@ inline HttpRouteResult resolveHttpRequestLine(const std::string& requestLine) {
     const auto query = target.find('?');
     const std::string path = target.substr(0, query);
 
+    if (method == "POST") {
+        if (path == "/api/effectors") return {HttpRoute::EffectorsCommand, 200};
+        return {HttpRoute::MethodNotAllowed, 405};
+    }
     if (method != "GET") {
         return {HttpRoute::MethodNotAllowed, 405};
     }
