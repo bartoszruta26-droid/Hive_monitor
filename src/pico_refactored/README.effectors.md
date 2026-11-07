@@ -67,8 +67,8 @@ System Flowing Hive implementuje filozofię **Gentle Code** - kodu odpornego na 
 ```cpp
 bool setServoAngle(uint16_t angle) {
     // GENTLE CODE: Check hardware presence before operation
-    if (!servoDetected || !servoInitialized) {
-        DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
+    if (!servoControllerReady || !servoInitialized) {
+        DBG_SERVO("[SERVO] Command ignored - servo controller unavailable\n");
         return false;  // Graceful exit - no error thrown
     }
     
