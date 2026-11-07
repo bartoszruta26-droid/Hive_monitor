@@ -211,7 +211,7 @@ int main() {
     // A partial batch must be persisted on orderly shutdown.
     HiveData reading;
     reading.hive_id = "UL-2";
-    reading.raw_payload_json = "{\\"hive_id\\":\\"UL-2\\",\\"extended_metric\\":12.5}";
+    reading.raw_payload_json = "{\"hive_id\":\"UL-2\",\"extended_metric\":12.5}";
     reading.timestamp = 200;
     reading.temperature = 35.0f;
     reading.humidity = 60.0f;
