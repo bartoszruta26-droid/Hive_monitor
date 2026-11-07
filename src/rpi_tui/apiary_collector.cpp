@@ -1373,6 +1373,112 @@ public:
 };
 
 // Funkcja glowna do samodzielnego uruchomienia jako demon
+
+namespace {
+
+std::string queryParameter(const std::string& target, const std::string& name) {
+    const auto query_pos = target.find('?');
+    if (query_pos == std::string::npos) return {};
+    std::istringstream query(target.substr(query_pos + 1));
+    std::string pair;
+    while (std::getline(query, pair, '&')) {
+        const auto equals = pair.find('=');
+        const std::string key = pair.substr(0, equals);
+        if (key == name && equals != std::string::npos) return pair.substr(equals + 1);
+    }
+    return {};
+}
+
+bool parseEpoch(const std::string& value, long long& result) {
+    if (value.empty() || value.size() > 12) return false;
+    try {
+        size_t parsed = 0;
+        const long long candidate = std::stoll(value, &parsed, 10);
+        if (parsed != value.size() || candidate < 0) return false;
+        result = candidate;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::string buildHistoryJson(const std::string& request_line, int& status_code) {
+    std::istringstream request(request_line);
+    std::string method, target, version;
+    request >> method >> target >> version;
+
+    const std::string hive_id = queryParameter(target, "hive_id");
+    const std::string aggregation = queryParameter(target, "aggregation");
+    const std::string start_value = queryParameter(target, "start");
+    const std::string end_value = queryParameter(target, "end");
+    long long start_time = 0;
+    long long end_time = 0;
+
+    const bool valid_hive = !hive_id.empty() && hive_id.size() <= 64 &&
+        std::all_of(hive_id.begin(), hive_id.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '-' || c == '_';
+        });
+    if (!valid_hive || !parseEpoch(start_value, start_time) ||
+        !parseEpoch(end_value, end_time) || start_time > end_time ||
+        end_time > static_cast<long long>(std::time(nullptr)) + 3600) {
+        status_code = 400;
+        return "{\\"error\\":\\"invalid_history_query\\",\\"required\\":[\\"hive_id\\",\\"aggregation\\",\\"start\\",\\"end\\"]}";
+    }
+
+    apiary::AggregationType type;
+    if (aggregation == "MINUTE") type = apiary::AggregationType::MINUTE;
+    else if (aggregation == "HOUR") type = apiary::AggregationType::HOUR;
+    else if (aggregation == "DAY") type = apiary::AggregationType::DAY;
+    else if (aggregation == "WEEK") type = apiary::AggregationType::WEEK;
+    else if (aggregation == "MONTH") type = apiary::AggregationType::MONTH;
+    else if (aggregation == "QUARTER") type = apiary::AggregationType::QUARTER;
+    else if (aggregation == "YEAR") type = apiary::AggregationType::YEAR;
+    else {
+        status_code = 400;
+        return "{\\"error\\":\\"invalid_aggregation\\",\\"allowed\\":[\\"MINUTE\\",\\"HOUR\\",\\"DAY\\",\\"WEEK\\",\\"MONTH\\",\\"QUARTER\\",\\"YEAR\\"]}";
+    }
+
+    auto& database = apiary::ApiaryDatabase::getInstance();
+    if (!database.isInitialized()) {
+        status_code = 503;
+        return "{\\"error\\":\\"history_database_unavailable\\"}";
+    }
+
+    const auto records = database.getHistoricalData(hive_id, type, start_time, end_time);
+    std::ostringstream json;
+    json << std::setprecision(8)
+         << "{\\"hive_id\\":\\"" << hive_id
+         << "\\",\\"aggregation\\":\\"" << aggregation
+         << "\\",\\"start\\":" << start_time
+         << ",\\"end\\":" << end_time
+         << ",\\"data_quality\\":\\"ARCHIVE\\",\\"records\\":[";
+    bool first = true;
+    for (const auto& record : records) {
+        if (!first) json << ',';
+        first = false;
+        json << "{\\"timestamp_start\\":" << record.timestamp_start
+             << ",\\"timestamp_end\\":" << record.timestamp_end
+             << ",\\"temperature_avg\\":" << record.temperature_avg
+             << ",\\"temperature_min\\":" << record.temperature_min
+             << ",\\"temperature_max\\":" << record.temperature_max
+             << ",\\"humidity_avg\\":" << record.humidity_avg
+             << ",\\"humidity_min\\":" << record.humidity_min
+             << ",\\"humidity_max\\":" << record.humidity_max
+             << ",\\"weight_avg\\":" << record.weight_avg
+             << ",\\"weight_min\\":" << record.weight_min
+             << ",\\"weight_max\\":" << record.weight_max
+             << ",\\"battery_avg\\":" << record.battery_avg
+             << ",\\"co2_avg\\":" << record.co2_avg
+             << ",\\"voc_avg\\":" << record.voc_avg
+             << ",\\"record_count\\":" << record.record_count << '}';
+    }
+    json << "]}";
+    status_code = 200;
+    return json.str();
+}
+
+} // namespace
+
 int main(int argc, char* argv[]) {
     DEBUG_FUNC_ENTER();
     
@@ -1571,7 +1677,7 @@ int main(int argc, char* argv[]) {
                 const std::string request_line = request_line_end == std::string::npos
                     ? std::string() : request.substr(0, request_line_end);
                 const auto route = resolveHttpRequestLine(request_line);
-                const int status_code = route.statusCode;
+                int status_code = route.statusCode;
 
                 // Routing opiera sie na pelnej linii zadania i dokladnej sciezce.
                 // Nie dopasowujemy fragmentow tekstu z naglowkow ani prefiksow URL.
