@@ -1807,6 +1807,12 @@ int main(int argc, char* argv[]) {
                     case HttpRoute::Effectors:
                         response = "{\"error\":\"operation_not_implemented\",\"operation\":\"effectors\"}";
                         break;
+                    case HttpRoute::EffectorsCommand:
+                        // The route is reserved, but commands stay fail-closed until
+                        // authenticated UDP dispatch and Pico acknowledgements are active.
+                        status_code = 503;
+                        response = "{\"error\":\"effector_transport_not_ready\",\"message\":\"Sterowanie jest chwilowo zablokowane; kanał UDP i potwierdzenia Pico nie są jeszcze aktywne.\"}";
+                        break;
                     case HttpRoute::History:
                         response = buildHistoryJson(request_line, status_code);
                         break;
