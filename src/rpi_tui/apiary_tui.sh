@@ -909,9 +909,9 @@ handle_input() {
                 case "$key3" in
                     'A') # Strzałka w górę
                         if [ $CURRENT_TAB -eq 0 ]; then
-                            [ $SCROLL_OFFSET_LOG -gt 0 ] && ((SCROLL_OFFSET_LOG--))
+                            [ $SCROLL_OFFSET_LOG -gt 0 ] && SCROLL_OFFSET_LOG=$((SCROLL_OFFSET_LOG - 1))
                         elif [ $CURRENT_TAB -eq 1 ]; then
-                            [ $SCROLL_OFFSET_DEBUG -gt 0 ] && ((SCROLL_OFFSET_DEBUG--))
+                            [ $SCROLL_OFFSET_DEBUG -gt 0 ] && SCROLL_OFFSET_DEBUG=$((SCROLL_OFFSET_DEBUG - 1))
                         fi
                         ;;
                     'B') # Strzałka w dół
