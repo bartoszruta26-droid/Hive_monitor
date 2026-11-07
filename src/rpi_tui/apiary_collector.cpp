@@ -965,7 +965,7 @@ public:
         // dzięki czemu również przyszłe/rozszerzone kolumny są archiwizowane.
         static const std::vector<std::string> known_csv_fields = {
             "", "temperature", "humidity", "weight", "battery_level", "co2_eq",
-            "voc_idx", "motion_detected", "source_timestamp", "audio_rms",
+            "voc_idx", "motion_detected", "timestamp", "audio_rms",
             "audio_dominant_freq", "audio_swarm_prob", "radar_distance",
             "radar_energy", "radar_activity", "hx711_rate", "hx711_trend", "air_iaq"
         };
