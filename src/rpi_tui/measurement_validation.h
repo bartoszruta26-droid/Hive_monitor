@@ -451,7 +451,9 @@ inline bool validateHivePayloadFields(
         const auto boolean_value = values.find(boolean_field);
         if (boolean_value != values.end() &&
             boolean_value->second != "true" && boolean_value->second != "false" &&
-            boolean_value->second != "0" && boolean_value->second != "1") {
+            boolean_value->second != "0" && boolean_value->second != "1" &&
+            boolean_value->second != "__JSON_BOOL_TRUE__" &&
+            boolean_value->second != "__JSON_BOOL_FALSE__") {
             error = std::string(boolean_field) + " must be a boolean";
             return false;
         }
