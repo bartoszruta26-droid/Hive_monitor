@@ -20,6 +20,12 @@ assert 'return "https://$host:$port/"' in retrofit
 assert 'return "http://' not in retrofit
 assert "legacy_api.php" in installer and "apiary_api_key" in installer
 assert "User=apiaryguard" in installer and "Group=apiaryguard" in installer and "ProtectSystem=strict" in installer
+assert "SupplementaryGroups=www-data" in installer
+assert "UMask=0007" in installer
+assert "UMask=0027" not in installer
+assert "sudo chmod 2770 /var/lib/apiaryguard" in installer
+assert "sudo chmod 0660 \"$DB_PATH\"" in installer
+assert "sudo chmod 0640 \"$DB_PATH\"" not in installer
 assert "ReadWritePaths=/var/lib/apiaryguard /var/log/apiaryguard" in installer
 assert "sudo systemctl restart apiary-collector" in installer
 assert "for sidecar in \"$DB_PATH-wal\" \"$DB_PATH-shm\" \"$DB_PATH-journal\";" in installer
