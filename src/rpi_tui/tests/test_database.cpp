@@ -203,6 +203,10 @@ int main() {
     assert(dynamic_metrics.front().minimum == 7.0);
     assert(dynamic_metrics.front().maximum == 14.0);
     assert(dynamic_metrics.front().sample_count == 8);
+    const auto dynamic_metric_names = database.getHistoricalMetricNames(
+        "UL-DYNAMIC", apiary::AggregationType::MINUTE, 1699999980, 1700000040);
+    assert(dynamic_metric_names.size() == 1);
+    assert(dynamic_metric_names.front() == "future_sensor_index");
 
     // Concurrent producers and concurrent statistics reads must not race
     // with buffer updates or database lifecycle transitions.

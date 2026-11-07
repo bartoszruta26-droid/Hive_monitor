@@ -296,3 +296,24 @@ GET /api/history?hive_id=UL-001&aggregation=DAY&start=1704067200&end=1735689600
 Parametry `start` i `end` są znacznikami czasu Unix w sekundach (UTC). Odpowiedź zawiera tablicę `records`, przedziały czasu, średnie, minima, maksima oraz liczbę pomiarów źródłowych. Odpowiedź jest oznaczona jako `data_quality: ARCHIVE`; nie należy jej prezentować jako bieżącego pomiaru. Nieprawidłowe parametry zwracają HTTP 400, a niedostępna baza historii HTTP 503.
 
 Przykładowe użycie do porównania sezonów: pobrać ten sam zakres kalendarzowy dla kolejnych lat, używając poziomu `DAY` lub `WEEK`; dla zestawień długookresowych użyć `MONTH`, `QUARTER` lub `YEAR`.
+
+
+### Pełna historia parametrów telemetrycznych
+
+Oryginalny payload każdego pomiaru jest zachowywany w kolumnie `raw_data.payload_json`. Równolegle kolektor wydobywa liczbowe pola z JSON (również z obiektów zagnieżdżonych i tablic) oraz z rozszerzonych rekordów CSV i zapisuje je w archiwum metryk niezależnym od bieżącej struktury `HiveData`. Nowe parametry nie wymagają zmiany schematu tabeli.
+
+Dla każdego pola liczbowego agregaty przechowują średnią, minimum, maksimum i liczbę próbek. W przypadku agregacji agregatów średnie są ważone liczbą próbek źródłowych. Wartości RAW oraz oryginalny payload pozostają zachowane; agregaty można ponownie wyliczać z historii źródłowej.
+
+Zapytanie katalogu parametrów (bez parametru `metric`):
+
+```http
+GET /api/history?hive_id=UL-001&aggregation=DAY&start=1704067200&end=1735689600
+```
+
+Odpowiedź zawiera `metrics_catalog` — listę dostępnych pól liczbowych. Po wyborze pola należy pobrać jego serię, przekazując nazwę przez `metric`:
+
+```http
+GET /api/history?hive_id=UL-001&aggregation=DAY&start=1704067200&end=1735689600&metric=audio_rms
+```
+
+Pole `metrics` zawiera znaczniki początku/końca okresu, średnią, minimum, maksimum i liczbę próbek. Ograniczenie pobierania do jednego parametru zapobiega przesyłaniu setek tysięcy punktów naraz przy porównaniach wieloletnich. Granice okresów kalendarzowych są liczone w UTC.
