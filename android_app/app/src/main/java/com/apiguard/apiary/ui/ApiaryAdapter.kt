@@ -10,11 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.apiguard.apiary.R
 import com.apiguard.apiary.model.ApiaryData
-import com.apiguard.apiary.util.AppConstants
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 /**
  * Adapter dla RecyclerView wyświetlający listę apiary (pasiek).
@@ -62,9 +58,7 @@ class ApiaryAdapter(
                 onItemClick(apiaryData)
             }
         }
-
     }
-
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ApiaryViewHolder {
         val view = LayoutInflater.from(parent.context)
