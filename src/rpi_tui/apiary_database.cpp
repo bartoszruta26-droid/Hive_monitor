@@ -471,11 +471,16 @@ bool ApiaryDatabase::flushBuffer() {
                 for (const auto& item : values) {
                     if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
                         item.first == "timestamp" || item.first == "time" || item.first == "ts" ||
-                        item.first == "id" || item.second == "true" || item.second == "false" ||
-                        item.second == "null") continue;
-                    char* number_end = nullptr;
-                    const double value = std::strtod(item.second.c_str(), &number_end);
-                    if (number_end == item.second.c_str() || *number_end != '\0' || !std::isfinite(value)) continue;
+                        item.first == "id" || item.first == "hive_id" || item.first == "apiary_id" ||
+                        item.second == "__JSON_NULL__") continue;
+                    double value = 0.0;
+                    if (item.second == "__JSON_BOOL_TRUE__") value = 1.0;
+                    else if (item.second == "__JSON_BOOL_FALSE__") value = 0.0;
+                    else {
+                        char* number_end = nullptr;
+                        value = std::strtod(item.second.c_str(), &number_end);
+                        if (number_end == item.second.c_str() || *number_end != '\0' || !std::isfinite(value)) continue;
+                    }
                     int metric_rc = sqlite3_bind_int64(metric_stmt, 1, data.timestamp);
                     if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 2, data.hive_id.c_str(), -1, SQLITE_TRANSIENT);
                     if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 3, item.first.c_str(), -1, SQLITE_TRANSIENT);

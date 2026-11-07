@@ -18,7 +18,7 @@ int main() {
     assert(values.at("items").empty());
     assert(values.at("items[0]") == "1");
     assert(values.at("items[1].x") == "2");
-    assert(values.at("enabled") == "true");
+    assert(values.at("enabled") == "__JSON_BOOL_TRUE__");
 
     assert(!apiary::parseJsonObjectScalars(R"({"temp":1,})", values));
     assert(!apiary::parseJsonObjectScalars(R"({"temp":1,"temp":2})", values));

@@ -202,7 +202,8 @@ private:
             const std::string token(literal);
             if (input_.compare(position_, token.size(), token) == 0) {
                 position_ += token.size();
-                out = token;
+                out = token == "true" ? "__JSON_BOOL_TRUE__" :
+                      token == "false" ? "__JSON_BOOL_FALSE__" : "__JSON_NULL__";
                 return true;
             }
         }
