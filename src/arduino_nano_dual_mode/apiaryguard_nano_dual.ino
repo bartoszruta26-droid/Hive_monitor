@@ -781,14 +781,6 @@ void handleEthernetServer() {
     readAllSensors();
     sendEthernetJSON(client);
   }
-  // Komendy
-  else if (request.indexOf("/api/cmd?") >= 0) {
-    int start = request.indexOf("?") + 1;
-    String cmd = request.substring(start);
-    cmd.trim();
-    handleHTTPCommand(cmd);
-    sendHTTPResponse(client, "text/plain", "OK");
-  }
   // Strona główna
   else if (request == "GET / HTTP/1.1" || request.indexOf("/index.html") >= 0) {
     String html = "<!DOCTYPE html><html><head>";
