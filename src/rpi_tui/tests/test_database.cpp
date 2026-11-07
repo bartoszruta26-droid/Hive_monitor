@@ -36,7 +36,7 @@ int main() {
     assert(sqlite3_exec(seed_db,
         "INSERT INTO raw_data (timestamp,hive_id,temperature,humidity,weight,battery_level,payload_json) "
         "VALUES (100,'UL-RAW-HISTORY',31.5,55.0,42.0,95,"
-        "'{\\"temperature\\":31.5,\\"humidity\\":55.0,\\"future_metric\\":99.25}')",
+        "'{\"temperature\":31.5,\"humidity\":55.0,\"future_metric\":99.25}')",
         nullptr, nullptr, nullptr) == SQLITE_OK);
     const char* seed_sql =
         "INSERT INTO aggregated_data (timestamp_start,timestamp_end,hive_id,agg_type,"
