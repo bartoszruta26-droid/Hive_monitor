@@ -91,7 +91,10 @@ class MainActivity : AppCompatActivity() {
         )[MainViewModel::class.java]
 
         viewModel.connectionState.observe(this) { isConnected ->
-            if (!isConnected && viewModel.getSavedIpAddress() == null) {
+            val hasSavedHost = viewModel.getSavedIpAddress() != null
+            binding.connectionBanner.visibility =
+                if (isConnected == false && hasSavedHost) View.VISIBLE else View.GONE
+            if (!isConnected && !hasSavedHost) {
                 showIpInputDialog()
             }
         }

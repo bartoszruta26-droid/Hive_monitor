@@ -44,4 +44,5 @@
     <string name="desc_status_ok">Wszystkie parametry w normie</string>
     <string name="desc_status_warning">Uwaga: parametr poza zakresem</string>
     <string name="desc_status_alert">Alert: krytyczny parametr</string>
+    <string name="connection_offline_banner">Brak połączenia z API. Bieżące pomiary są niedostępne.</string>
 </resources>

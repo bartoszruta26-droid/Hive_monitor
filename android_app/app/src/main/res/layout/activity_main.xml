@@ -41,6 +41,22 @@
                 android:clipToPadding="false" />
 
             <TextView
+                android:id="@+id/connection_banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top"
+                android:background="#FFF3E0"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:text="@string/connection_offline_banner"
+                android:textColor="#8A4B08"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:accessibilityLiveRegion="polite" />
+
+            <TextView
                 android:id="@+id/empty_state"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
