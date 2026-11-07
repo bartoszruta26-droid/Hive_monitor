@@ -39,6 +39,8 @@
 #include "effectors_flowing_hive.h"
 #include "effectors.h"
 #include <Arduino.h>
+#include <string.h>
+#include "safe_mode_policy.h"
 #include <Servo.h>
 #ifdef ARDUINO_ARCH_RP2040
 #endif
@@ -54,6 +56,7 @@ static Servo flowingHiveServo;                         ///< RP2040 PIO-backed se
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
 static bool servoInitialized = false;                       ///< Servo PIO attachment succeeded
 static bool servoControllerReady = false;                  ///< Controller attached; no physical feedback
+static bool servoRestCommandAccepted = false;              ///< Rest command accepted by driver; not physical position feedback
 static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
 static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
 static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
@@ -81,6 +84,7 @@ static bool flowSensorInterruptConfigured = false; ///< Interrupt setup state; n
 // Safe Mode State
 // ----------------------------------------------------------------------------
 static bool flowingHiveSafeMode = false;                    ///< Safe mode active flag
+static char flowingHiveSafeModeReason[96] = "No latched fault";
 
 // ----------------------------------------------------------------------------
 // Diagnostic Counters - For Health Monitoring
@@ -154,6 +158,7 @@ void initServoControl() {
 
     servoInitialized = (servoAttachResult >= 0);
     servoControllerReady = servoInitialized; // Physical servo presence is not sensed.
+    servoRestCommandAccepted = false;
     currentServoAngle = SERVO_REST_ANGLE;
     autoEmptyActive = false;
 
@@ -171,6 +176,7 @@ void initServoControl() {
         SERVO_PULSE_WIDTH_MAX
     );
     flowingHiveServo.writeMicroseconds(static_cast<int>(restPulse));
+    servoRestCommandAccepted = true;
 
     DBG_SERVO("[SERVO] Initialized on GPIO %d using RP2040 PIO servo driver\n",
               SERVO_EMPTY_PIN);
@@ -258,6 +264,7 @@ bool setServoAngle(uint16_t angle) {
 
     currentServoAngle = angle;
     flowingHiveServo.writeMicroseconds(static_cast<int>(pulseWidth));
+    servoRestCommandAccepted = (angle == SERVO_REST_ANGLE);
 
     DBG_SERVO("[SERVO] Angle set to %d degrees (pulse=%lu us)\n",
               angle, static_cast<unsigned long>(pulseWidth));
@@ -333,8 +340,10 @@ void updateServoLoop() {
     
     if (elapsed >= autoEmptyDuration) {
         DBG_SERVO("[SERVO] Auto-empty sequence complete - returning to rest\n");
-        setServoRestPosition();
+        servoRestCommandAccepted = setServoRestPosition();
         autoEmptyActive = false;
+    } else {
+        servoRestCommandAccepted = false;
     }
 }
 
@@ -614,6 +623,8 @@ void printFlowingHiveEffectorStatus() {
     Serial.printf("  Servo:\n");
     Serial.printf("    Controller ready: %s\n", servoControllerReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", servoInitialized ? "YES" : "NO");
+    Serial.printf("    Rest command accepted by driver: %s\n", servoRestCommandAccepted ? "YES" : "NO");
+    Serial.println("    Physical position feedback: UNAVAILABLE (manual inspection required)");
     if (servoControllerReady) {
         Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
         Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
@@ -674,29 +685,38 @@ void activateFlowingHiveSafeMode(const char* reason) {
     // setServoAngle() checks the flag and will ignore commands if already set
     if (servoInitialized) {
         DBG_SERVO("[SERVO] Moving to rest position before safe mode activation\n");
-        setServoRestPosition();
+        servoRestCommandAccepted = setServoRestPosition();
         autoEmptyActive = false;
     }
     
-    // Now set safe mode flag
+    if (!flowingHiveSafeMode) {
+        strncpy(flowingHiveSafeModeReason, reason ? reason : "Unspecified fault",
+                sizeof(flowingHiveSafeModeReason) - 1);
+        flowingHiveSafeModeReason[sizeof(flowingHiveSafeModeReason) - 1] = '\0';
+    }
     flowingHiveSafeMode = true;
     
-    LOG_ERROR("FLOWING_HIVE", reason);
-    DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason);
+    LOG_ERROR("FLOWING_HIVE", reason ? reason : "Unspecified fault");
+    DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason ? reason : "Unspecified fault");
 }
 
 /**
  * @brief Deactivate safe mode
  */
-void deactivateFlowingHiveSafeMode() {
-    // The subsystem latch may be released only after the main interlock has
-    // been cleared deliberately. This prevents one subsystem from bypassing
-    // a still-active system-wide emergency stop.
-    if (isSafeModeActive()) {
-        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected while main safe mode is active");
-        return;
-    }
+const char* getFlowingHiveSafeModeReason() {
+    return flowingHiveSafeModeReason;
+}
 
+bool deactivateFlowingHiveSafeMode(bool operatorPhysicallyInspectedRestPosition) {
+    // The controller has no position sensor. The caller's explicit acknowledgement
+    // must mean that the operator physically inspected the mechanism and confirmed
+    // the bee-accessible rest position; a queued PWM command is not proof of position.
+    if (!safeModePolicy::mayReleaseFlowingHive(
+            flowingHiveSafeMode, isSafeModeActive(), operatorPhysicallyInspectedRestPosition)) {
+        LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected: latch, operator acknowledgement or main interlock state invalid");
+        return false;
+    }
     flowingHiveSafeMode = false;
     DBG_SERVO("[SERVO] Safe mode deactivated\n");
+    return true;
 }

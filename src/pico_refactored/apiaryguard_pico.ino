@@ -30,6 +30,7 @@
 #include "network.h"
 #include "effectors.h"
 #include "effectors_flowing_hive.h"  // Flowing Hive effectors (servo, HX711 #2, flow sensor)
+#include "safe_mode_policy.h"
 
 // Global objects
 EthernetServer server(8080);
@@ -182,6 +183,18 @@ static bool isExactCommand(const String& command, const char* name) {
     return command == name;
 }
 
+static bool isHeaterSensorReadyForRecovery(unsigned long now) {
+    return safeModePolicy::heaterSensorReady(
+        sensors.tempHum.detected, sensors.tempHum.active,
+        sensors.tempHum.critical_error_count, sensors.tempHum.last_read_time,
+        now, HEATER_SENSOR_MAX_AGE_MS, HEATER_SENSOR_MAX_ERRORS);
+}
+
+// Public guard used by the actuator layer before it writes non-zero heater PWM.
+bool isHeaterSensorReadyForActuation() {
+    return isHeaterSensorReadyForRecovery(millis());
+}
+
 /**
  * @brief Process strictly validated text commands from USB.
  */
@@ -196,7 +209,10 @@ void processCommand(String cmd) {
             Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie grzania odrzucone.");
             return;
         }
-        heaterDuty = static_cast<int>(value);
+        if (!setHeaterPWM(static_cast<int>(value))) {
+            Serial.println("ERROR: Polecenie grzania odrzucone przez zabezpieczenie wykonawcze.");
+            return;
+        }
         Serial.println("OK: Grzałka ustawiona na " + String(heaterDuty));
     }
     else if (parseUnsignedArgument(cmd, "SET_FAN", 0, 255, value)) {
@@ -204,7 +220,7 @@ void processCommand(String cmd) {
             Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie wentylatora odrzucone.");
             return;
         }
-        fanDuty = static_cast<int>(value);
+        setFanPWM(static_cast<int>(value));
         Serial.println("OK: Wentylator ustawiony na " + String(fanDuty));
     }
     else if (parseUnsignedArgument(cmd, "SET_PUMP", 0, 255, value)) {
@@ -290,6 +306,28 @@ void processCommand(String cmd) {
         resetFlowCounter();
         Serial.println("OK: Licznik przepływu zresetowany.");
     }
+    else if (isExactCommand(cmd, "SAFE_MODE_STATUS")) {
+        Serial.println(String("MAIN_SAFE_MODE=") + (isSafeModeActive() ? "ACTIVE" : "INACTIVE"));
+        Serial.println(String("MAIN_FAULT_REASON=") + getSafeModeReason());
+        Serial.println(String("FLOWING_HIVE_SAFE_MODE=") + (isFlowingHiveSafeModeActive() ? "ACTIVE" : "INACTIVE"));
+        Serial.println(String("FLOWING_HIVE_FAULT_REASON=") + getFlowingHiveSafeModeReason());
+    }
+    else if (isExactCommand(cmd, "SAFE_MODE_RELEASE CONFIRM")) {
+        if (!isHeaterSensorReadyForRecovery(millis())) {
+            Serial.println("ERROR: Zwolnienie blokady glownej odrzucone; czujnik temperatury musi byc wykryty, aktywny, aktualny i miec poprawne probki.");
+        } else if (!releaseSafeMode(true, true)) {
+            Serial.println("ERROR: Zwolnienie blokady glownej odrzucone; sprawdz stan blokady i potwierdzenie operatora.");
+        } else {
+            Serial.println("OK: Glowna blokada zwolniona. Wszystkie nastawy pozostaja wyzerowane; Flowing Hive nadal zablokowany.");
+        }
+    }
+    else if (isExactCommand(cmd, "FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM")) {
+        if (!deactivateFlowingHiveSafeMode(true)) {
+            Serial.println("ERROR: Zwolnienie Flowing Hive odrzucone; wymagane sa aktywna blokada, fizyczna kontrola pozycji spoczynkowej i zwolniona blokada glowna.");
+        } else {
+            Serial.println("OK: Blokada Flowing Hive zwolniona po potwierdzonej kontroli fizycznej. Przerwana sekwencja nie zostala wznowiona.");
+        }
+    }
     else if (isExactCommand(cmd, "STATUS_FLOWING")) {
         printFlowingHiveEffectorStatus();
     }
@@ -309,6 +347,9 @@ void processCommand(String cmd) {
         Serial.println("  SERVO_EMPTY [1-1800 sekund; domyślnie 1800]");
         Serial.println("  FLOW_RESET");
         Serial.println("  STATUS_FLOWING");
+        Serial.println("  SAFE_MODE_STATUS");
+        Serial.println("  SAFE_MODE_RELEASE CONFIRM");
+        Serial.println("  FLOW_SAFE_MODE_RELEASE INSPECTED CONFIRM  (po fizycznej kontroli pozycji spoczynkowej)");
         Serial.println("  STATUS");
     }
     else {
@@ -392,14 +433,7 @@ void sendHtmlDashboard(EthernetClient& client) {
 void checkActuatorSafety(unsigned long now) {
     if (isSafeModeActive() || heaterDuty <= 0) return;
 
-    const bool sensorUnavailable = !sensors.tempHum.detected || !sensors.tempHum.active;
-    const bool tooManyInvalidSamples =
-        sensors.tempHum.critical_error_count >= HEATER_SENSOR_MAX_ERRORS;
-    const bool noValidSampleYet = sensors.tempHum.last_read_time == 0;
-    const bool sampleStale = noValidSampleYet ||
-        (now - sensors.tempHum.last_read_time > HEATER_SENSOR_MAX_AGE_MS);
-
-    if (sensorUnavailable || tooManyInvalidSamples || sampleStale) {
+    if (!isHeaterSensorReadyForRecovery(now)) {
         activateSafeMode("Heater interlock: temperature sensor unavailable, invalid or stale");
     }
 }

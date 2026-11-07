@@ -17,7 +17,7 @@
 #include "config.h"
 
 // Function declarations - PWM control
-void setHeaterPWM(int duty);
+bool setHeaterPWM(int duty);
 void setFanPWM(int duty);
 
 // Function declarations - Relay control
@@ -31,8 +31,10 @@ void printEffectorStatus();
 void updateOutputs();
 
 // Safe mode functions
+bool isHeaterSensorReadyForActuation();
 void activateSafeMode(const char* reason);
-void deactivateSafeMode();
 bool isSafeModeActive();
+const char* getSafeModeReason();
+bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy);
 
 #endif // EFFECTORS_H
