@@ -172,12 +172,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadHistory(apiaryId: String, aggregation: String, startTimestamp: Long, endTimestamp: Long) {
+    fun loadHistory(apiaryId: String, aggregation: String, startTimestamp: Long, endTimestamp: Long, metric: String? = null) {
         if (_isLoading.value == true) return
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                repository.fetchHistory(apiaryId, aggregation, startTimestamp, endTimestamp)
+                repository.fetchHistory(apiaryId, aggregation, startTimestamp, endTimestamp, metric)
                     .onSuccess {
                         _history.value = it
                         _errorMessage.value = null

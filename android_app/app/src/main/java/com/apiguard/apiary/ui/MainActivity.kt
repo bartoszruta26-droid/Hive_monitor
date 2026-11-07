@@ -123,7 +123,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.history.observe(this) { history ->
-            if (history != null) showHistoryMetricPicker(history)
+            if (history != null) {
+                if (history.metrics.isNotEmpty()) showHistoryMetricChart(history)
+                else showHistoryMetricPicker(history)
+            }
         }
     }
 
@@ -299,12 +302,31 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showHistoryMetricChart(history: com.apiguard.apiary.data.model.ApiaryHistoryResponse) {
+        val metricName = history.metrics.firstOrNull()?.name ?: return
+        val chart = TelemetryHistoryChartView(this).apply {
+            submit(metricName, history.metrics)
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                (300 * resources.displayMetrics.density).toInt()
+            )
+        }
+        AlertDialog.Builder(this)
+            .setTitle(metricName)
+            .setView(chart)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNeutralButton(R.string.history_choose_metric) { _, _ ->
+                showHistoryMetricPicker(history.copy(metrics = emptyList()))
+            }
+            .show()
+    }
+
     private fun showHistoryMetricPicker(history: com.apiguard.apiary.data.model.ApiaryHistoryResponse) {
         if (history.dataQuality != "ARCHIVE") {
             Toast.makeText(this, "Źródło nie jest archiwum", Toast.LENGTH_LONG).show()
             return
         }
-        val metricNames = ApiaryUiFormatter.historyMetricNames(history)
+        val metricNames = history.metricsCatalog.ifEmpty { ApiaryUiFormatter.historyMetricNames(history) }
         if (metricNames.isEmpty()) {
             Toast.makeText(this, "Brak zagregowanych parametrów w tym okresie", Toast.LENGTH_LONG).show()
             return
@@ -313,21 +335,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(getString(R.string.history_comparison_title, history.hiveId))
             .setItems(metricNames.toTypedArray()) { _, index ->
                 val metricName = metricNames[index]
-                val chart = TelemetryHistoryChartView(this).apply {
-                    submit(metricName, history.metrics)
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        (300 * resources.displayMetrics.density).toInt()
-                    )
-                }
-                AlertDialog.Builder(this)
-                    .setTitle(metricName)
-                    .setView(chart)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .setNeutralButton(R.string.history_choose_metric) { _, _ ->
-                        showHistoryMetricPicker(history)
-                    }
-                    .show()
+                viewModel.loadHistory(history.hiveId, history.aggregation, history.start, history.end, metricName)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
