@@ -98,6 +98,9 @@ jobs:
           arduino-cli lib install "Adafruit Unified Sensor"
           arduino-cli lib install "ArduinoJson"
 
+      - name: Verify Nano HTTP actuator fail-closed behavior
+        run: python3 src/arduino_nano_dual_mode/tests/test_http_actuator_guard.py
+
       - name: Compile Arduino Nano firmware
         run: |
           arduino-cli compile \
