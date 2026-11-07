@@ -42,6 +42,9 @@ jobs:
       - name: Check WebUI JavaScript syntax
         run: node --check src/webui/app.js
 
+      - name: Verify WebUI same-origin API proxy contract
+        run: python3 src/webui/tests/test_api_proxy_contract.py
+
       - name: Check PHP API syntax
         run: |
           php -l src/webui/api.php
