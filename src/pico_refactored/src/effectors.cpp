@@ -92,7 +92,7 @@ void activateSafeMode(const char* reason) {
     }
     safe_mode_active = true;
     LOG_ERROR("EFFECTORS", reason ? reason : "Unspecified fault");
-    DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason);
+    DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason ? reason : "Unspecified fault");
     
     // Apply the complete safe output state immediately, not on the next loop.
     applySafeOutputState();
