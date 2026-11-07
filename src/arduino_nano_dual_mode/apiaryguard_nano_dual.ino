@@ -471,6 +471,19 @@ bool readDHT22() {
   return true;
 }
 
+// Independent runtime interlock: de-energize an already-running heater as
+// soon as DHT22 becomes invalid or its last valid sample expires.
+void enforceHeaterSafety() {
+  const bool sampleExpired = !dhtTemperatureValid ||
+      (millis() - lastDhtGoodAt > DHT_MAX_AGE_MS);
+  if (sampleExpired && pwm_state.heater > 0) {
+    analogWrite(HEATER_PWM, 0);
+    pwm_state.heater = 0;
+    sensors.heater_pwm = 0;
+    logWarning("HEATER", "Output forced OFF: DHT22 invalid or stale");
+  }
+}
+
 /**
  * Odczyt wszystkich sensorów z error handlingiem
  */
@@ -940,6 +953,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  enforceHeaterSafety();
   
   // Obsługa trybu USB (priorytet)
   if (currentMode == MODE_USB) {
