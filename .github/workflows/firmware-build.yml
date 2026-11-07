@@ -51,6 +51,11 @@ jobs:
           cp -R src/pico_refactored/include .ci/pico-build/include
           cp -R src/pico_refactored/src .ci/pico-build/src
 
+      - name: Run host-side safe-mode policy tests
+        run: |
+          g++ -std=c++11 -Wall -Wextra -Werror tests/safe_mode_policy_test.cpp -o /tmp/safe_mode_policy_test
+          /tmp/safe_mode_policy_test
+
       - name: Compile Raspberry Pi Pico firmware
         run: |
           arduino-cli compile \
