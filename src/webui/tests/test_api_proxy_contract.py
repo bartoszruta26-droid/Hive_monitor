@@ -16,6 +16,9 @@ assert "window.location.protocol}//${window.location.hostname}" not in APP
 assert "'hives' => '/api/hives'" in PROXY
 assert "'health' => '/health'" in PROXY
 assert "function callCollector(" in PROXY
+assert "data.collector === 'connected' && data.mode === 'live'" in APP
+assert "API działa, kolektor jest odłączony" in APP
+assert "Usługa API jest niedostępna" in APP
 assert "function saveLocalPreferences()" in APP
 assert "function saveConfigToBackend()" not in APP
 

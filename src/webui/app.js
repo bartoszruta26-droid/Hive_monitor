@@ -206,15 +206,24 @@ async function checkCollectorConnection() {
             signal: AbortSignal.timeout(5000)
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            statusEl.textContent = '✅ Połączono';
+        const data = await response.json();
+        const collectorConnected = response.ok &&
+            data && data.collector === 'connected' && data.mode === 'live';
+
+        if (collectorConnected) {
+            statusEl.textContent = '✅ Połączono z kolektorem';
             statusEl.style.color = '#28a745';
             AppState.isConnected = true;
             progressEl.style.width = '100%';
             updateConnectionStatus(true);
             return true;
         }
+
+        const collectorUnavailable = data && data.collector === 'disconnected';
+        statusEl.textContent = collectorUnavailable
+            ? '⚠️ API działa, kolektor jest odłączony'
+            : '⚠️ Usługa API jest niedostępna';
+        statusEl.style.color = '#fd7e14';
     } catch (error) {
         logMessage("warn", 'Brak połączenia z APIARY_COLLECTOR:', error.message);
     }
