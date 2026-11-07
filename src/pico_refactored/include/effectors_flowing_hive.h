@@ -409,9 +409,13 @@ void activateFlowingHiveSafeMode(const char* reason);
  * @brief Deactivate safe mode for flowing hive effectors
  * 
  * RECOVERY PROCESS:
- * 1. Require explicit operator confirmation
+ * 1. Require explicit operator confirmation that the mechanism was physically
+ *    inspected and is in the bee-accessible rest position
  * 2. Reject release while the main safe-mode latch is active
  * 3. Clear only the Flowing Hive latch; do not restart interrupted sequences
+ *
+ * NOTE: The servo driver has no physical position feedback. A successful PWM
+ *       command means only that the command was accepted by the driver.
  * 
  * PREREQUISITES:
  * - Underlying issue must be resolved
@@ -421,6 +425,6 @@ void activateFlowingHiveSafeMode(const char* reason);
  *       Call executeAutoEmptySequence() again if needed
  */
 const char* getFlowingHiveSafeModeReason();
-bool deactivateFlowingHiveSafeMode(bool operatorConfirmed);
+bool deactivateFlowingHiveSafeMode(bool operatorPhysicallyInspectedRestPosition);
 
 #endif // EFFECTORS_FLOWING_HIVE_H
