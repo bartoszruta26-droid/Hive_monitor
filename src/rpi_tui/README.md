@@ -281,3 +281,18 @@ APIARY Guard Team © 2024
 ## Tryb rzeczywisty a symulacja
 
 Kolektor uruchamia odbiór UDP przed wystawieniem HTTP. Domyślne uruchomienie (`./apiary_collector`) oznacza wyłącznie nasłuch rzeczywistych danych na UDP 5005. Błąd utworzenia lub zbindowania socketu kończy uruchomienie — nie przełącza automatycznie systemu na dane syntetyczne. Symulację uruchamia się wyłącznie jawnie przez `./apiary_collector --sim`. TUI nie uzupełnia już pustego odczytu przykładowymi wartościami; opcjonalne lokalne dane demonstracyjne wymagają `APIARY_TUI_DEMO=1`.
+
+
+## Wieloletnia historia i endpoint API
+
+Kolektor przechowuje pomiary źródłowe RAW bez automatycznego limitu wieku. Dane zagregowane są przechowywane równolegle, a agregacja wykorzystuje rzeczywiste granice kalendarzowe UTC (w tym długość miesięcy i lata przestępne). Dostępne poziomy: `MINUTE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR`.
+
+Historia pojedynczego ula jest dostępna przez:
+
+```http
+GET /api/history?hive_id=UL-001&aggregation=DAY&start=1704067200&end=1735689600
+```
+
+Parametry `start` i `end` są znacznikami czasu Unix w sekundach (UTC). Odpowiedź zawiera tablicę `records`, przedziały czasu, średnie, minima, maksima oraz liczbę pomiarów źródłowych. Odpowiedź jest oznaczona jako `data_quality: ARCHIVE`; nie należy jej prezentować jako bieżącego pomiaru. Nieprawidłowe parametry zwracają HTTP 400, a niedostępna baza historii HTTP 503.
+
+Przykładowe użycie do porównania sezonów: pobrać ten sam zakres kalendarzowy dla kolejnych lat, używając poziomu `DAY` lub `WEEK`; dla zestawień długookresowych użyć `MONTH`, `QUARTER` lub `YEAR`.
