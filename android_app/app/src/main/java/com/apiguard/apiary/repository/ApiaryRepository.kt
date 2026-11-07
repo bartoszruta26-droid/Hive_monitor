@@ -14,7 +14,6 @@ import com.apiguard.apiary.util.AppConstants
 import com.apiguard.apiary.util.isValidApiHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
 import com.google.gson.JsonObject
@@ -40,11 +39,11 @@ class ApiaryRepository(private val application: Application) {
             throw IllegalStateException("Brak uprawnień do SharedPreferences: ${e.message}", e)
         }
     }
-    private val database: ApiaryDatabase by lazy { 
-        ApiaryDatabase.getDatabase(application).also {
-            // Inicjalizacja czyszczenia starych danych z bazy (co 7 dni)
-            cleanupOldDatabaseEntries(it)
-        }
+    // Lokalna baza jest trwałym archiwum historii pobranych pomiarów.
+    // Nie usuwamy wpisów według wieku: historia wieloletnia jest potrzebna
+    // do porównań sezonowych i międzyrocznych.
+    private val database: ApiaryDatabase by lazy {
+        ApiaryDatabase.getDatabase(application)
     }
     private val dao: ApiaryDao by lazy { database.apiaryDao() }
     

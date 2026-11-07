@@ -618,58 +618,13 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
 }
 
 int ApiaryDatabase::cleanupOldData() {
-    std::lock_guard<std::mutex> lock(db_mutex_);
-    if (!db_) return 0;
-    
-    int total_deleted = 0;
-    
-    // UWAGA: Usuwamy TYLKO najstarsze dane surowe (RAW), aby zwolnić miejsce.
-    // Dane zagregowane (MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER, YEAR) NIE SĄ usuwane,
-    // aby umożliwić analizę trendów z kilkunastu lat.
-    
-    // Czyszczenie danych surowych - zachowaj ostatnie 7 dni (604800 sekund)
-    std::string sql_raw = "DELETE FROM raw_data WHERE timestamp < (strftime('%s', 'now') - 604800)";
-    char* error_message = nullptr;
-    const int delete_rc = sqlite3_exec(db_, sql_raw.c_str(), nullptr, nullptr, &error_message);
-    if (delete_rc != SQLITE_OK) {
-        const std::string detail = error_message ? error_message : sqlite3_errmsg(db_);
-        sqlite3_free(error_message);
-        LOG_ERROR("Czyszczenie SQLite nie powiodło się: " + detail);
-        return 0;
-    }
-    sqlite3_free(error_message);
-    int raw_deleted = sqlite3_changes(db_);
-    total_deleted += raw_deleted;
-    
-    if (raw_deleted > 0) {
-        LOG_INFO("Usunięto " + std::to_string(raw_deleted) + " starych rekordów surowych (>7 dni)");
-    }
-    
-    // Nie czyścimy danych zagregowanych - zachowujemy pełną historię!
-    // Dzięki temu użytkownik ma dostęp do:
-    // - kilkunastu lat danych rocznych
-    // - kilkudziesięciu kwartałów
-    // - kilkudziesięciu miesięcy
-    // - kilkudziesięciu tygodni
-    // - kilkudziesięciu godzin
-    // - kilkudziesięciu minut
-    
-    cleaned_records_ += total_deleted;
-    
-    // VACUUM tylko jeśli coś usunięto
-    if (total_deleted > 0) {
-        char* vacuum_error = nullptr;
-        const int vacuum_rc = sqlite3_exec(db_, "VACUUM;", nullptr, nullptr, &vacuum_error);
-        if (vacuum_rc != SQLITE_OK) {
-            const std::string detail = vacuum_error ? vacuum_error : sqlite3_errmsg(db_);
-            sqlite3_free(vacuum_error);
-            LOG_WARNING("VACUUM SQLite nie powiódł się po czyszczeniu: " + detail);
-        } else {
-            sqlite3_free(vacuum_error);
-        }
-    }
-    
-    return total_deleted;
+    // Retencja danych źródłowych jest bezterminowa. Dane RAW są podstawą
+    // audytu pomiarów i umożliwiają ponowne przeliczenie agregatów po zmianie
+    // algorytmu. Nie wolno ich usuwać automatycznie po 7 dniach.
+    //
+    // Agregaty pozostają przechowywane równolegle; ograniczenia rozmiaru
+    // bazy należy rozwiązywać archiwizacją/backupem, a nie utratą historii.
+    return 0;
 }
 
 void ApiaryDatabase::cleanupLoop() {

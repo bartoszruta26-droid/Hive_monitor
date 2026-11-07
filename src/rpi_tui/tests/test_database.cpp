@@ -31,11 +31,29 @@ int main() {
     // Seed one historical row through an independent SQLite connection.
     sqlite3* seed_db = nullptr;
     assert(sqlite3_open(path.c_str(), &seed_db) == SQLITE_OK);
+    // RAW history older than seven days must remain available for full
+    // multi-year retention and future re-aggregation.
+    assert(sqlite3_exec(seed_db,
+        "INSERT INTO raw_data (timestamp,hive_id,temperature,humidity,weight,battery_level) "
+        "VALUES (100,'UL-RAW-HISTORY',31.5,55.0,42.0,95)",
+        nullptr, nullptr, nullptr) == SQLITE_OK);
     const char* seed_sql =
         "INSERT INTO aggregated_data (timestamp_start,timestamp_end,hive_id,agg_type,"
         "temperature_avg,record_count) VALUES (100,160,'UL-1',3,34.5,6)";
     assert(sqlite3_exec(seed_db, seed_sql, nullptr, nullptr, nullptr) == SQLITE_OK);
     sqlite3_close(seed_db);
+
+    assert(database.cleanupOldData() == 0);
+    sqlite3* retention_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &retention_db) == SQLITE_OK);
+    sqlite3_stmt* retention_stmt = nullptr;
+    assert(sqlite3_prepare_v2(retention_db,
+        "SELECT COUNT(*) FROM raw_data WHERE hive_id='UL-RAW-HISTORY'",
+        -1, &retention_stmt, nullptr) == SQLITE_OK);
+    assert(sqlite3_step(retention_stmt) == SQLITE_ROW);
+    assert(sqlite3_column_int(retention_stmt, 0) == 1);
+    sqlite3_finalize(retention_stmt);
+    sqlite3_close(retention_db);
 
     const auto legitimate = database.getHistoricalData(
         "UL-1", apiary::AggregationType::DAY, 0, 1000);

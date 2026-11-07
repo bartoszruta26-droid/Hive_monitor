@@ -49,7 +49,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Archiwum jest niezależne od strumienia live i pozostaje oznaczone jako historyczne.
         viewModelScope.launch {
             repository.getAllCachedReadings().collect { readings ->
-                _archivedReadings.value = readings.take(500)
+                _archivedReadings.value = readings
                 _archivedReadingsInfo.value = readings.maxByOrNull { it.timestamp }?.let { latest ->
                     ArchivedReadingsInfo(readings.size, latest.timestamp)
                 }
