@@ -857,27 +857,23 @@ configure_database() {
 setup_database() {
     local config_file="${CONFIG_DIR}/database.conf"
     local DB_PATH
-    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "/var/lib/apiaryguard/apiary.db")
+    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "${CONFIG_DIR}/data/hive_monitor.db")
     
     echo "Database path: $DB_PATH"
     echo ""
     
-    # Create directory for database
+    # This installer manages the interactive user's private TUI database.
+    # The collector's shared /var/lib/apiaryguard database is provisioned only
+    # by src/rpi_tui/install_apiary.sh with its apiaryguard:www-data ACL model.
     local db_dir
     db_dir=$(dirname "$DB_PATH")
-    mkdir -p "$db_dir"
-    
-    if [[ $? -ne 0 ]]; then
+    if ! mkdir -p "$db_dir"; then
         echo -e "${RED}Failed to create database directory: $db_dir${NC}"
         log_message "ERROR" "Failed to create database directory: $db_dir"
         return 1
     fi
-    
-    echo "Created database directory: $db_dir"
-    
-    # Set proper permissions
-    chmod 755 "$db_dir"
-    chmod 644 "$db_dir" 2>/dev/null || true
+    chmod 0700 "$db_dir"
+    echo "Created private database directory: $db_dir"
     
     # Check if sqlite3 is available
     if ! command -v sqlite3 &> /dev/null; then
@@ -998,9 +994,10 @@ EOF
         echo "Skipping table creation."
     fi
     
-    # Set proper file permissions
-    chmod 664 "$DB_PATH" 2>/dev/null || true
-    chown root:root "$DB_PATH" 2>/dev/null || true
+    # Keep this per-user database private. Do not chown it to root:
+    # the interactive application must retain access as its invoking user.
+    chmod 0600 "$DB_PATH"
+    chmod 0700 "$db_dir"
     
     echo ""
     echo "Database setup completed!"
