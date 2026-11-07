@@ -313,10 +313,8 @@ void processCommand(String cmd) {
         Serial.println(String("FLOWING_HIVE_FAULT_REASON=") + getFlowingHiveSafeModeReason());
     }
     else if (isExactCommand(cmd, "SAFE_MODE_RELEASE CONFIRM")) {
-        if (!isHeaterSensorReadyForRecovery(millis())) {
-            Serial.println("ERROR: Zwolnienie blokady glownej odrzucone; czujnik temperatury musi byc wykryty, aktywny, aktualny i miec poprawne probki.");
-        } else if (!releaseSafeMode(true, true)) {
-            Serial.println("ERROR: Zwolnienie blokady glownej odrzucone; sprawdz stan blokady i potwierdzenie operatora.");
+        if (!releaseSafeMode(true)) {
+            Serial.println("ERROR: Zwolnienie blokady glownej odrzucone; wymagana jest aktywna blokada, potwierdzenie operatora i aktualny, poprawny pomiar czujnika temperatury.");
         } else {
             Serial.println("OK: Glowna blokada zwolniona. Wszystkie nastawy pozostaja wyzerowane; Flowing Hive nadal zablokowany.");
         }
