@@ -54,4 +54,31 @@ assert "AUTO_REFRESH=!$AUTO_REFRESH" not in source
 assert "AUTO_REFRESH=false" in source
 assert "AUTO_REFRESH=true" in source
 
+
+# Unsupported telemetry fields must remain visibly unavailable instead of
+# looking like legitimate zero-valued measurements.
+for field in (
+    "HIVE_BEE_ACTIVITY",
+    "HIVE_SPECTRAL_CENTROID",
+    "HIVE_AUDIO_HEALTH",
+    "HIVE_RADAR_HEALTH",
+    "HIVE_RADAR_ANOMALY",
+    "HIVE_NECTAR_INFLOW",
+    "HIVE_COLONY_GROWTH",
+    "HIVE_PRODUCTIVITY",
+    "HIVE_HEAT_INDEX",
+    "HIVE_COMFORT_INDEX",
+    "HIVE_BROOD_STRESS",
+    "HIVE_VENTILATION_NEED",
+    "HIVE_PIEZO_ACTIVITY",
+    "HIVE_PREDATOR_SCORE",
+    "HIVE_PRESSURE",
+    "HIVE_WEATHER_TREND",
+    "HIVE_FORAGING_COND",
+    "HIVE_LUX",
+    "HIVE_CIRCADIAN_SYNC",
+):
+    assert f'{field}+=("—")' in source, f"{field} must show unavailable"
+    assert f'{field}+=("0")' not in source, f"{field} must not fabricate zero"
+
 print("TUI behavior contract: PASS")
