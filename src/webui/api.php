@@ -738,7 +738,20 @@ try {
             break;
             
         case 'history':
-            $response = callCollector($endpoints['history']);
+            // Przekaż wyłącznie jawnie dozwolone parametry zapytania historii.
+            // Walidacja wartości (ID ula, agregacja i zakres czasu) odbywa się
+            // ponownie po stronie kolektora, przed zapytaniem SQLite.
+            $historyParams = [];
+            foreach (['hive_id', 'aggregation', 'start', 'end'] as $key) {
+                if (isset($_GET[$key]) && (is_string($_GET[$key]) || is_int($_GET[$key]))) {
+                    $historyParams[$key] = (string)$_GET[$key];
+                }
+            }
+            $historyEndpoint = $endpoints['history'];
+            if ($historyParams !== []) {
+                $historyEndpoint .= '?' . http_build_query($historyParams, '', '&', PHP_QUERY_RFC3986);
+            }
+            $response = callCollector($historyEndpoint);
             if ($response === null) {
                 http_response_code(503);
                 $response = ['error' => 'history_service_unavailable', 'data_quality' => 'UNAVAILABLE'];
