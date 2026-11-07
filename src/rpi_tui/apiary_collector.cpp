@@ -1397,7 +1397,28 @@ std::string queryParameter(const std::string& target, const std::string& name) {
     while (std::getline(query, pair, '&')) {
         const auto equals = pair.find('=');
         const std::string key = pair.substr(0, equals);
-        if (key == name && equals != std::string::npos) return pair.substr(equals + 1);
+        if (key == name && equals != std::string::npos) {
+            const std::string encoded = pair.substr(equals + 1);
+            std::string decoded;
+            for (size_t i = 0; i < encoded.size(); ++i) {
+                if (encoded[i] == '+' ) {
+                    decoded.push_back(' ');
+                } else if (encoded[i] == '%' && i + 2 < encoded.size() &&
+                           std::isxdigit(static_cast<unsigned char>(encoded[i + 1])) &&
+                           std::isxdigit(static_cast<unsigned char>(encoded[i + 2]))) {
+                    const auto hexValue = [](char c) {
+                        if (c >= '0' && c <= '9') return c - '0';
+                        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                        return c - 'A' + 10;
+                    };
+                    decoded.push_back(static_cast<char>((hexValue(encoded[i + 1]) << 4) | hexValue(encoded[i + 2])));
+                    i += 2;
+                } else {
+                    decoded.push_back(encoded[i]);
+                }
+            }
+            return decoded;
+        }
     }
     return {};
 }
