@@ -170,12 +170,12 @@ bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy) {
  * - Pin not configured as OUTPUT
  * - Safe mode override
  */
-void setHeaterPWM(int duty) {
+bool setHeaterPWM(int duty) {
     ++effector_op_count;
 
     if (safe_mode_active) {
         DBG_EFF("[EFFECTORS] Heater command ignored - safe mode active\n");
-        return;
+        return false;
     }
     if (duty < 0 || duty > 255) {
         ++effector_error_count;
@@ -196,6 +196,7 @@ void setHeaterPWM(int duty) {
     heaterDuty = duty;
     analogWrite(HEATER_PWM, duty);
     ++pwm_writes;
+    return true;
 }
 
 /**
