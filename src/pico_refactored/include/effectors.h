@@ -32,7 +32,8 @@ void updateOutputs();
 
 // Safe mode functions
 void activateSafeMode(const char* reason);
-void deactivateSafeMode();
 bool isSafeModeActive();
+const char* getSafeModeReason();
+bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy);
 
 #endif // EFFECTORS_H
