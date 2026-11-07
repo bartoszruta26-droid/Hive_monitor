@@ -1471,6 +1471,15 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
              << ",\"battery_avg\":" << record.battery_avg
              << ",\"co2_avg\":" << record.co2_avg
              << ",\"voc_avg\":" << record.voc_avg
+             << ",\"audio_rms_avg\":" << record.audio_rms_avg
+             << ",\"audio_dominant_freq_avg\":" << record.audio_dominant_freq_avg
+             << ",\"audio_swarm_prob_avg\":" << record.audio_swarm_prob_avg
+             << ",\"audio_bee_activity_avg\":" << record.audio_bee_activity_avg
+             << ",\"radar_distance_avg\":" << record.radar_distance_avg
+             << ",\"radar_energy_avg\":" << record.radar_energy_avg
+             << ",\"radar_activity_avg\":" << record.radar_activity_avg
+             << ",\"hx711_current_avg\":" << record.hx711_current_avg
+             << ",\"hx711_slope_24h_avg\":" << record.hx711_slope_24h_avg
              << ",\"record_count\":" << record.record_count << '}';
     }
     json << "]}";
