@@ -73,6 +73,18 @@ class ApiaryAdapterLogicTest {
         assertTrue(row.contains("88%"))
     }
 
+    @Test fun archivedReadingsCanBeFilteredByApiaryAndTimeAndAreNewestFirst() {
+        val readings = listOf(
+            ApiaryReading(apiaryId = "hive-a", timestamp = 300L, temperature = 20f, humidity = 50f, weight = 40f, batteryLevel = 90),
+            ApiaryReading(apiaryId = "hive-b", timestamp = 400L, temperature = 21f, humidity = 51f, weight = 41f, batteryLevel = 91),
+            ApiaryReading(apiaryId = "hive-a", timestamp = 100L, temperature = 19f, humidity = 49f, weight = 39f, batteryLevel = 89)
+        )
+        assertEquals(listOf("hive-a", "hive-b"), ApiaryUiFormatter.archivedApiaryIds(readings))
+        val filtered = ApiaryUiFormatter.filterArchivedReadings(readings, "hive-a", 150L)
+        assertEquals(1, filtered.size)
+        assertEquals(300L, filtered.first().timestamp)
+    }
+
     @Test fun missingTimestampIsExplicit() {
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(0L))
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(-100L))

@@ -215,6 +215,39 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.archive_empty, Toast.LENGTH_SHORT).show()
             return
         }
+        val apiaryIds = ApiaryUiFormatter.archivedApiaryIds(readings)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.archive_select_apiary)
+            .setItems(apiaryIds.map { getString(R.string.archive_apiary_item, it) }.toTypedArray()) { _, position ->
+                showArchivedTimeRange(readings, apiaryIds[position])
+            }
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showArchivedTimeRange(readings: List<ApiaryReading>, apiaryId: String) {
+        val ranges = listOf(1, 3, 7)
+        val labels = arrayOf(
+            getString(R.string.archive_range_24h),
+            getString(R.string.archive_range_3d),
+            getString(R.string.archive_range_7d)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.archive_range_title, apiaryId))
+            .setItems(labels) { _, position ->
+                val since = System.currentTimeMillis() - ranges[position] * 24L * 60L * 60L * 1000L
+                val filtered = ApiaryUiFormatter.filterArchivedReadings(readings, apiaryId, since)
+                showArchivedReadingList(filtered)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showArchivedReadingList(readings: List<ApiaryReading>) {
+        if (readings.isEmpty()) {
+            Toast.makeText(this, R.string.archive_range_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
         val rows = readings.map { ApiaryUiFormatter.formatArchivedReading(it) }
         AlertDialog.Builder(this)
             .setTitle(R.string.archive_dialog_title)

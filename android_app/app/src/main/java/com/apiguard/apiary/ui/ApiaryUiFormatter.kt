@@ -32,6 +32,20 @@ internal object ApiaryUiFormatter {
         reading.batteryLevel
     )
 
+    fun archivedApiaryIds(readings: List<ApiaryReading>): List<String> =
+        readings.map { it.apiaryId }.distinct().sorted()
+
+    fun filterArchivedReadings(
+        readings: List<ApiaryReading>,
+        apiaryId: String,
+        sinceTimestamp: Long
+    ): List<ApiaryReading> = readings
+        .asSequence()
+        .filter { it.apiaryId == apiaryId && it.timestamp >= sinceTimestamp }
+        .sortedByDescending { it.timestamp }
+        .take(100)
+        .toList()
+
     fun formatTimestamp(timestamp: Long): String {
         if (timestamp <= 0L) return "brak danych"
         return try {

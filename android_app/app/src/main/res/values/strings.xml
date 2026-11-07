@@ -47,6 +47,13 @@
     <string name="connection_offline_banner">Brak połączenia z API. Bieżące pomiary są niedostępne.</string>
     <string name="archive_dialog_title">Archiwum lokalne — dane historyczne</string>
     <string name="archive_empty">Brak zapisanych odczytów archiwalnych.</string>
+    <string name="archive_select_apiary">Wybierz ul — identyfikator lokalny</string>
+    <string name="archive_apiary_item">Ul: %1$s</string>
+    <string name="archive_range_title">Zakres historii: %1$s</string>
+    <string name="archive_range_24h">Ostatnie 24 godziny</string>
+    <string name="archive_range_3d">Ostatnie 3 dni</string>
+    <string name="archive_range_7d">Ostatnie 7 dni</string>
+    <string name="archive_range_empty">Brak odczytów w wybranym okresie.</string>
     <string name="archive_reading_details">Odczyt historyczny z %1$s\nTemperatura: %2$.1f°C\nWilgotność: %3$.1f%%\nWaga: %4$.2f kg\nBateria: %5$d%%\n\nDane pochodzą z lokalnego archiwum i nie opisują bieżącego stanu pasieki.</string>
     <string name="connection_offline_with_archive">Brak połączenia z API. Bieżące pomiary są niedostępne. Archiwum lokalne: %1$d zapisanych odczytów; najnowszy z %2$s. Dane archiwalne nie są pomiarami bieżącymi.</string>
 </resources>
