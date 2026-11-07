@@ -56,6 +56,7 @@ static Servo flowingHiveServo;                         ///< RP2040 PIO-backed se
 static int currentServoAngle = SERVO_REST_ANGLE;           ///< Current servo position in degrees
 static bool servoInitialized = false;                       ///< Servo PIO attachment succeeded
 static bool servoControllerReady = false;                  ///< Controller attached; no physical feedback
+static bool servoRestCommandAccepted = false;              ///< Rest command accepted by driver; not physical position feedback
 static bool autoEmptyActive = false;                        ///< Auto-empty sequence active flag
 static unsigned long autoEmptyStartTime = 0;                ///< Sequence start timestamp
 static unsigned long autoEmptyDuration = 0;                 ///< Sequence duration in ms
@@ -157,6 +158,7 @@ void initServoControl() {
 
     servoInitialized = (servoAttachResult >= 0);
     servoControllerReady = servoInitialized; // Physical servo presence is not sensed.
+    servoRestCommandAccepted = false;
     currentServoAngle = SERVO_REST_ANGLE;
     autoEmptyActive = false;
 
@@ -174,6 +176,7 @@ void initServoControl() {
         SERVO_PULSE_WIDTH_MAX
     );
     flowingHiveServo.writeMicroseconds(static_cast<int>(restPulse));
+    servoRestCommandAccepted = true;
 
     DBG_SERVO("[SERVO] Initialized on GPIO %d using RP2040 PIO servo driver\n",
               SERVO_EMPTY_PIN);
@@ -336,8 +339,10 @@ void updateServoLoop() {
     
     if (elapsed >= autoEmptyDuration) {
         DBG_SERVO("[SERVO] Auto-empty sequence complete - returning to rest\n");
-        setServoRestPosition();
+        servoRestCommandAccepted = setServoRestPosition();
         autoEmptyActive = false;
+    } else {
+        servoRestCommandAccepted = false;
     }
 }
 
@@ -699,9 +704,12 @@ const char* getFlowingHiveSafeModeReason() {
     return flowingHiveSafeModeReason;
 }
 
-bool deactivateFlowingHiveSafeMode(bool operatorConfirmed) {
+bool deactivateFlowingHiveSafeMode(bool operatorPhysicallyInspectedRestPosition) {
+    // The controller has no position sensor. The caller's explicit acknowledgement
+    // must mean that the operator physically inspected the mechanism and confirmed
+    // the bee-accessible rest position; a queued PWM command is not proof of position.
     if (!safeModePolicy::mayReleaseFlowingHive(
-            flowingHiveSafeMode, isSafeModeActive(), operatorConfirmed)) {
+            flowingHiveSafeMode, isSafeModeActive(), operatorPhysicallyInspectedRestPosition)) {
         LOG_WARN("FLOWING_HIVE", "Subsystem safe-mode release rejected: latch, operator acknowledgement or main interlock state invalid");
         return false;
     }
