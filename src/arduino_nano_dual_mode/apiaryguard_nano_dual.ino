@@ -758,25 +758,20 @@ void handleEthernetServer() {
   String request = client.readStringUntil('\r');
   client.readStringUntil('\n');
   
-  // Sterowanie
-  if (request.indexOf("/heater/on") >= 0) {
-    setPWM(HEATER_PWM, 255, 0);
-    sendHTTPResponse(client, "text/plain", "Heater ON");
-  } else if (request.indexOf("/heater/off") >= 0) {
-    setPWM(HEATER_PWM, 0, 0);
-    sendHTTPResponse(client, "text/plain", "Heater OFF");
-  } else if (request.indexOf("/fan/on") >= 0) {
-    setPWM(FAN_PWM, 255, 1);
-    sendHTTPResponse(client, "text/plain", "Fan ON");
-  } else if (request.indexOf("/fan/off") >= 0) {
-    setPWM(FAN_PWM, 0, 1);
-    sendHTTPResponse(client, "text/plain", "Fan OFF");
-  } else if (request.indexOf("/pump/on") >= 0) {
-    setPWM(PUMP_PWM, 255, 2);
-    sendHTTPResponse(client, "text/plain", "Pump ON");
-  } else if (request.indexOf("/pump/off") >= 0) {
-    setPWM(PUMP_PWM, 0, 2);
-    sendHTTPResponse(client, "text/plain", "Pump OFF");
+  // Legacy HTTP actuator routes were unauthenticated GET requests and had
+  // no Nano-side safety interlock. Fail closed until the authenticated command
+  // protocol and independent actuator safety checks are implemented.
+  if (request.startsWith("GET /heater/") ||
+      request.startsWith("GET /fan/") ||
+      request.startsWith("GET /pump/") ||
+      request.startsWith("GET /api/cmd?")) {
+    client.println("HTTP/1.1 403 Forbidden");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println("Content-Length: 43");
+    client.println();
+    client.print("{\"error\":\"legacy_control_disabled\"}");
+    client.stop();
   }
   // API RAW
   else if (request.indexOf("/api/raw") >= 0 || request.indexOf("/status") >= 0) {
