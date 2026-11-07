@@ -49,7 +49,7 @@ System Flowing Hive implementuje filozofię **Gentle Code** - kodu odpornego na 
 
 2. **Input Validation with Graceful Degradation**
    - Wszystkie parametry wejściowe są walidowane
-   - Nieprawidłowe wartości są automatycznie korygowane (constrain)
+   - Nieprawidłowe wartości są odrzucane, jeżeli mogłyby spowodować niebezpieczne sterowanie
    - Zamiast exceptionów - logowanie warningów
 
 3. **No Exceptions, Only Return Codes**
@@ -356,7 +356,7 @@ Uruchamia sekwencję automatycznego opróżniania:
 1. Sprawdza tryb bezpieczny i dozwolony czas pracy.
 2. Przechodzi do pozycji EMPTY (160°).
 3. Oczekuje przez określony czas.
-4. Wraca do pozycji REST (10°).
+4. Wysyła polecenie powrotu do pozycji REST (10°); brak czujnika położenia oznacza, że wykonanie ruchu trzeba sprawdzić fizycznie.
 
 **Ograniczenie czasu:** od 1 do 1800 sekund (maksymalnie 30 minut). Wartości spoza zakresu są odrzucane bez uruchomienia serwa.
 
