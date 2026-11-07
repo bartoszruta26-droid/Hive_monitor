@@ -220,7 +220,7 @@ void processCommand(String cmd) {
             Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie wentylatora odrzucone.");
             return;
         }
-        fanDuty = static_cast<int>(value);
+        setFanPWM(static_cast<int>(value));
         Serial.println("OK: Wentylator ustawiony na " + String(fanDuty));
     }
     else if (parseUnsignedArgument(cmd, "SET_PUMP", 0, 255, value)) {
