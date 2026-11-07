@@ -47,24 +47,6 @@ class ApiaryRepository(private val application: Application) {
     }
     private val dao: ApiaryDao by lazy { database.apiaryDao() }
     
-    /**
-     * Okresowe czyszczenie starych wpisów z bazy danych
-     * Zapobiega nieograniczonemu wzrostowi bazy
-     */
-    private fun cleanupOldDatabaseEntries(database: ApiaryDatabase) {
-        // Uruchom w tle aby nie blokować inicjalizacji
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                // Usuń wpisy starsze niż 7 dni (7 * 24 * 60 * 60 * 1000 = 604800000 ms)
-                val sevenDaysMillis = 7 * 24 * 60 * 60 * 1000L
-                val cutoffTimestamp = System.currentTimeMillis() - sevenDaysMillis
-                database.apiaryDao().deleteOldReadings(cutoffTimestamp)
-            } catch (e: Exception) {
-                // Ciche ignorowanie błędów czyszczenia - to operacja pomocnicza
-                android.util.Log.w("ApiaryRepository", "Błąd czyszczenia starych danych: ${e.message}")
-            }
-        }
-    }
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
         // Walidacja hosta i portu przed trwałym zapisem ustawień.
