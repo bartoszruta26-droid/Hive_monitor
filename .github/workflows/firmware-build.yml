@@ -5,6 +5,8 @@ on:
     branches: [main, "fix/**"]
     paths:
       - "src/pico_refactored/**"
+      - "tests/**"
+      - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
   pull_request:
     paths:
