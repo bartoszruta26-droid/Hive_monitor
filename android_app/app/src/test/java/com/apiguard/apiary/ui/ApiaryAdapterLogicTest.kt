@@ -1,5 +1,6 @@
 package com.apiguard.apiary.ui
 
+import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.model.ApiaryData
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -53,6 +54,23 @@ class ApiaryAdapterLogicTest {
 
     @Test fun temperatureAlertHasPriorityOverHumidityWarning() {
         assertEquals("ALERT", ApiaryUiFormatter.determineStatus(apiary(temperature = 45.0, humidity = 85.0)))
+    }
+
+    @Test fun archivedReadingShowsTimestampAndAllMeasurements() {
+        val row = ApiaryUiFormatter.formatArchivedReading(
+            ApiaryReading(
+                apiaryId = "hive-1",
+                timestamp = 1_700_000_000_000L,
+                temperature = 24.5f,
+                humidity = 61.0f,
+                weight = 42.25f,
+                batteryLevel = 88
+            )
+        )
+        assertTrue(row.contains("24,5°C") || row.contains("24.5°C"))
+        assertTrue(row.contains("61,0%") || row.contains("61.0%"))
+        assertTrue(row.contains("42,25 kg") || row.contains("42.25 kg"))
+        assertTrue(row.contains("88%"))
     }
 
     @Test fun missingTimestampIsExplicit() {

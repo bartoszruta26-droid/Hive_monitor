@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
+import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.util.isValidApiHost
 import com.apiguard.apiary.util.isValidPort
@@ -146,6 +147,10 @@ class MainActivity : AppCompatActivity() {
             viewModel.loadData()
         }
         
+        binding.connectionBanner.setOnClickListener {
+            if (viewModel.connectionState.value != true) showArchivedReadings()
+        }
+
         binding.btnChangeIp.setOnClickListener {
             showIpInputDialog()
         }
@@ -202,6 +207,36 @@ class MainActivity : AppCompatActivity() {
 
         isIpDialogShowing = true
         dialog.show()
+    }
+
+    private fun showArchivedReadings() {
+        val readings = viewModel.archivedReadings.value.orEmpty()
+        if (readings.isEmpty()) {
+            Toast.makeText(this, R.string.archive_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val rows = readings.map { ApiaryUiFormatter.formatArchivedReading(it) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.archive_dialog_title)
+            .setItems(rows.toTypedArray()) { _, position -> showArchivedReadingDetails(readings[position]) }
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showArchivedReadingDetails(reading: ApiaryReading) {
+        val details = getString(
+            R.string.archive_reading_details,
+            ApiaryUiFormatter.formatTimestamp(reading.timestamp),
+            reading.temperature,
+            reading.humidity,
+            reading.weight,
+            reading.batteryLevel
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.archive_dialog_title)
+            .setMessage(details)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun showApiaryDetails(apiaryData: ApiaryData) {

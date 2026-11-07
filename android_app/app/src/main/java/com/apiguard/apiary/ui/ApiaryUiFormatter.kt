@@ -1,5 +1,6 @@
 package com.apiguard.apiary.ui
 
+import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.util.AppConstants
 import java.text.SimpleDateFormat
@@ -20,6 +21,16 @@ internal object ApiaryUiFormatter {
         data.battery < AppConstants.BATTERY_LOW_THRESHOLD -> "UWAGA"
         else -> "OK"
     }
+
+    fun formatArchivedReading(reading: ApiaryReading): String = String.format(
+        Locale.getDefault(),
+        "%s | %.1f°C | %.1f%% | %.2f kg | %d%%",
+        formatTimestamp(reading.timestamp),
+        reading.temperature,
+        reading.humidity,
+        reading.weight,
+        reading.batteryLevel
+    )
 
     fun formatTimestamp(timestamp: Long): String {
         if (timestamp <= 0L) return "brak danych"

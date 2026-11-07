@@ -36,6 +36,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _apiaryData = MutableLiveData<List<ApiaryData>>()
     val apiaryData: LiveData<List<ApiaryData>> = _apiaryData
     
+    private val _archivedReadings = MutableLiveData<List<ApiaryReading>>(emptyList())
+    val archivedReadings: LiveData<List<ApiaryReading>> = _archivedReadings
+
     private val _archivedReadingsInfo = MutableLiveData<ArchivedReadingsInfo?>()
     val archivedReadingsInfo: LiveData<ArchivedReadingsInfo?> = _archivedReadingsInfo
 
@@ -46,6 +49,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Archiwum jest niezależne od strumienia live i pozostaje oznaczone jako historyczne.
         viewModelScope.launch {
             repository.getAllCachedReadings().collect { readings ->
+                _archivedReadings.value = readings.take(100)
                 _archivedReadingsInfo.value = readings.maxByOrNull { it.timestamp }?.let { latest ->
                     ArchivedReadingsInfo(readings.size, latest.timestamp)
                 }
