@@ -11,15 +11,17 @@ inline bool heaterSensorReady(bool detected, bool active, uint8_t consecutiveErr
            static_cast<uint32_t>(now - lastValidSample) <= maxAgeMs;
 }
 inline bool mayEnergizeHeater(int duty, bool mainLatchActive, bool heaterSensorHealthy) {
-    return duty == 0 || (!mainLatchActive && heaterSensorHealthy);
+    return duty >= 0 && duty <= 255 &&
+           (duty == 0 || (!mainLatchActive && heaterSensorHealthy));
 }
 inline bool mayReleaseMain(bool mainLatchActive, bool operatorConfirmed,
                            bool heaterSensorHealthy) {
     return mainLatchActive && operatorConfirmed && heaterSensorHealthy;
 }
 inline bool mayReleaseFlowingHive(bool flowingHiveLatchActive, bool mainLatchActive,
-                                  bool operatorConfirmed) {
-    return flowingHiveLatchActive && !mainLatchActive && operatorConfirmed;
+                                  bool operatorPhysicallyInspectedRestPosition) {
+    return flowingHiveLatchActive && !mainLatchActive &&
+           operatorPhysicallyInspectedRestPosition;
 }
 }
 #endif
