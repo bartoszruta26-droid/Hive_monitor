@@ -13,6 +13,8 @@ on:
   pull_request:
     paths:
       - "src/pico_refactored/**"
+      - "src/arduino_nano_dual_mode/**"
+      - "src/shared/**"
       - "tests/**"
       - "docs/firmware/actuator-safety.md"
       - ".github/workflows/firmware-build.yml"
