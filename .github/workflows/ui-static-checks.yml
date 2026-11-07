@@ -65,6 +65,9 @@ jobs:
       - name: Verify deployment and TLS security contracts
         run: python3 src/rpi_tui/tests/test_deployment_security.py
 
+      - name: Verify Apache access to SQLite WAL/SHM during concurrent writes
+        run: sudo bash tests/sqlite_wal_apache_permissions_test.sh
+
       - name: Verify workflow action pinning
         run: python3 src/rpi_tui/tests/test_workflow_pins.py
 
