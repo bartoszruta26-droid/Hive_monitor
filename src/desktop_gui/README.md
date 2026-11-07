@@ -1,36 +1,41 @@
-# ApiaryGuard Desktop
+# HiveMonitor Desktop — C++ / Qt 6
 
-Desktopowy klient istniejącego WebUI. Aplikacja osadza WebUI w oknie Qt WebEngine i łączy się z API oraz kolektorem działającym na serwerze Raspberry Pi/Linux. Nie tworzy osobnej bazy danych, drugiego kolektora ani fikcyjnych pomiarów.
+Natywny klient desktopowy C++ oparty na Qt 6. Nie używa PySide, PyQt, Pythona ani PyInstaller.
 
-## Obsługiwane systemy
+## Architektura
 
-- Linux x86_64 (budowanie na Ubuntu 22.04).
-- Windows x86_64, w tym Windows Server 2022 i Windows Server 2025.
+- Zakładka **Monitoring** osadza istniejący WebUI przez Qt WebEngine.
+- Zakładka **Diagnostyka** odpytuje te same endpointy pośredniczącego API PHP, z których korzysta WebUI: `api.php?endpoint=health` i `api.php?endpoint=status`.
+- WebUI i TUI pozostają klientami tego samego kolektora C++ i tej samej bazy danych. Desktop nie uruchamia drugiego kolektora ani nie ma osobnej logiki pomiarowej.
+- Diagnostyka przechodzi przez proxy PHP WebUI; aplikacja nie łączy się bezpośrednio z portem kolektora 8080.
+- Nawigacja wbudowanego WebEngine jest ograniczona do tego samego hosta i portu oraz HTTP/HTTPS. Weryfikacja certyfikatów TLS pozostaje włączona.
 
-Pakiet uruchomieniowy jest budowany przez PyInstaller. Na komputerze klienckim nie trzeba instalować Pythona ani PHP. Serwer WebUI/API musi być dostępny w sieci.
+## Wymagania
 
-## Uruchomienie ze źródeł
+- CMake 3.21+
+- kompilator C++17
+- Qt 6.4+ z modułami Widgets, Network i WebEngineWidgets
 
-Python 3.11:
+### Linux (Ubuntu 22.04+)
 
-    python -m venv .venv
-    # Linux: source .venv/bin/activate
-    # Windows PowerShell: .venv\Scripts\Activate.ps1
-    python -m pip install -r requirements.txt
-    python desktop_gui.py
+    sudo apt-get install cmake ninja-build g++ qt6-base-dev qt6-webengine-dev qt6-webengine-dev-tools
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
 
-W polu „Adres WebUI” wpisz adres wdrożenia, np. https://192.168.1.100/apiary/, i wybierz „Połącz”. Adres zostaje zapamiętany w ustawieniach użytkownika. W środowisku produkcyjnym zalecany jest HTTPS z poprawnym certyfikatem.
+Uruchomienie: `./build/HiveMonitorDesktop`.
 
-## Budowanie pakietu
+### Windows Server 2022 / 2025
 
-    pyinstaller --noconfirm --clean --windowed --name HiveMonitorDesktop --collect-all PySide6 --collect-all shiboken6 desktop_gui.py
+Zainstaluj Qt 6 dla MSVC 2022 wraz z modułem Qt WebEngine oraz Visual Studio 2022 C++ Build Tools. Następnie w Developer PowerShell:
 
-Plik wynikowy znajduje się w katalogu dist/. Dla Windows należy budować na Windows; dla Linux — na Linux. Nie jest to kompilacja krzyżowa.
+    cmake -S . -B build -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64
+    cmake --build build --config Release --parallel
+    windeployqt --release --dir deploy build/Release/HiveMonitorDesktop.exe
 
-## Architektura i ograniczenia
+Uruchom `deploy/HiveMonitorDesktop.exe`.
 
-- TUI nadal działa bez środowiska graficznego i pozostaje narzędziem diagnostycznym.
-- Desktop GUI korzysta z tego samego WebUI, API i danych co przeglądarka.
-- Desktop GUI nie steruje bezpośrednio GPIO, przekaźnikami, grzałką ani pompą.
-- Klient wymaga działającego serwera WebUI; nie zastępuje kolektora Raspberry Pi.
-- Nawigacja wbudowanej przeglądarki jest ograniczona do HTTP/HTTPS oraz about:. Dostęp do lokalnych plików nie jest włączony, a kontrola certyfikatów TLS pozostaje aktywna.
+## Połączenie
+
+Podaj adres wdrożonego WebUI, np. `https://192.168.1.100/apiary/`. Adres jest zapamiętywany w ustawieniach użytkownika. W produkcji używaj HTTPS z poprawnym certyfikatem.
+
+Serwer Raspberry Pi/Linux nadal uruchamia kolektor, bazę danych, PHP i WebUI. Desktop jest klientem sieciowym, nie zamiennikiem serwera.
