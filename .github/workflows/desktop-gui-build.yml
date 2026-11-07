@@ -48,7 +48,7 @@ jobs:
         working-directory: src/desktop_gui
         run: pyinstaller --noconfirm --clean --windowed --name HiveMonitorDesktop --collect-all PySide6 --collect-all shiboken6 desktop_gui.py
       - name: Upload desktop package
-        uses: actions/upload-artifact@ea0bdf5e3a137c1e3d2c5b5f3a8e8f5f6f0a9a3b # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: HiveMonitorDesktop-${{ matrix.artifact }}
           path: src/desktop_gui/dist/HiveMonitorDesktop*
