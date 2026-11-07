@@ -16,6 +16,8 @@
 #include "effectors.h"
 #include "effectors_flowing_hive.h"
 #include <Arduino.h>
+#include <string.h>
+#include "safe_mode_policy.h"
 
 // External actuator settings (defined in main .ino)
 extern int heaterDuty;
@@ -33,6 +35,7 @@ static unsigned long last_warning_time = 0;
 
 // Safe mode flag
 static bool safe_mode_active = false;
+static char safe_mode_reason[96] = "No latched fault";
 
 /**
  * @brief Update all outputs based on current duty cycles and states
@@ -83,8 +86,12 @@ void activateSafeMode(const char* reason) {
     // Synchronize the Flowing Hive servo interlock with the main safe mode.
     // This cancels any active auto-empty sequence before outputs are applied.
     activateFlowingHiveSafeMode(reason);
+    if (!safe_mode_active) {
+        strncpy(safe_mode_reason, reason ? reason : "Unspecified fault", sizeof(safe_mode_reason) - 1);
+        safe_mode_reason[sizeof(safe_mode_reason) - 1] = '\0';
+    }
     safe_mode_active = true;
-    LOG_ERROR("EFFECTORS", reason);
+    LOG_ERROR("EFFECTORS", reason ? reason : "Unspecified fault");
     DBG_EFF("[EFFECTORS] Safe mode activated: %s\n", reason);
     
     // Apply the complete safe output state immediately, not on the next loop.
@@ -94,7 +101,7 @@ void activateSafeMode(const char* reason) {
 /**
  * @brief Deactivate safe mode and restore normal operation
  */
-void deactivateSafeMode() {
+static void deactivateSafeMode() {
     // Releasing the interlock must never resume stale actuator commands.
     // Clear remembered setpoints; the operator must issue fresh commands
     // after investigating and resolving the condition that caused safe mode.
@@ -132,6 +139,18 @@ void deactivateSafeMode() {
  */
 bool isSafeModeActive() {
     return safe_mode_active;
+}
+
+const char* getSafeModeReason() {
+    return safe_mode_reason;
+}
+
+bool releaseSafeMode(bool operatorConfirmed, bool heaterSensorHealthy) {
+    if (!safeModePolicy::mayReleaseMain(safe_mode_active, operatorConfirmed, heaterSensorHealthy)) {
+        return false;
+    }
+    deactivateSafeMode();
+    return true;
 }
 
 /**
