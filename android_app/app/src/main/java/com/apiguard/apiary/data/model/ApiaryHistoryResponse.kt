@@ -8,7 +8,8 @@ data class ApiaryHistoryResponse(
     val start: Long,
     val end: Long,
     @SerializedName("data_quality") val dataQuality: String,
-    val records: List<ApiaryHistoryRecord>
+    val records: List<ApiaryHistoryRecord>,
+    val metrics: List<ApiaryMetricAggregate> = emptyList()
 )
 
 data class ApiaryHistoryRecord(
@@ -36,4 +37,15 @@ data class ApiaryHistoryRecord(
     @SerializedName("hx711_current_avg") val hx711CurrentAverage: Double = 0.0,
     @SerializedName("hx711_slope_24h_avg") val hx711Slope24hAverage: Double = 0.0,
     @SerializedName("record_count") val recordCount: Long
+)
+
+
+data class ApiaryMetricAggregate(
+    @SerializedName("timestamp_start") val timestampStart: Long,
+    @SerializedName("timestamp_end") val timestampEnd: Long,
+    val name: String,
+    val average: Double,
+    val minimum: Double,
+    val maximum: Double,
+    @SerializedName("sample_count") val sampleCount: Long
 )

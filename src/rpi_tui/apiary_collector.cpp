@@ -1502,10 +1502,10 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
         first_metric = false;
         std::string escaped_name;
         for (unsigned char ch : metric.metric_name) {
-            if (ch == '"' || ch == '\\\\') { escaped_name.push_back('\\\\'); escaped_name.push_back(static_cast<char>(ch)); }
+            if (ch == '"' || ch == '\\') { escaped_name.push_back('\\'); escaped_name.push_back(static_cast<char>(ch)); }
             else if (ch < 0x20) {
                 const char hex[] = "0123456789abcdef";
-                escaped_name += "\\\\u00";
+                escaped_name += "\\u00";
                 escaped_name.push_back(hex[ch >> 4]);
                 escaped_name.push_back(hex[ch & 0x0f]);
             } else escaped_name.push_back(static_cast<char>(ch));
