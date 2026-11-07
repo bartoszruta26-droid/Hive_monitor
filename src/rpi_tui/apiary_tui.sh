@@ -839,8 +839,12 @@ draw_settings_panel() {
     
     local content_start=$((start_y + 2))
     
+    local refresh_mark=" "
+    if [ "$AUTO_REFRESH" = true ]; then
+        refresh_mark="✓"
+    fi
     tput cup $content_start $((start_x + 4))
-    echo -ne "${COLOR_YELLOW}[${AUTO_REFRESH:+✓}${AUTO_REFRESH:- }] Auto-odświeżanie${COLOR_RESET}"
+    echo -ne "${COLOR_YELLOW}[${refresh_mark}] Auto-odświeżanie${COLOR_RESET}"
     
     tput cup $((content_start + 1)) $((start_x + 4))
     echo -ne "${COLOR_YELLOW}Interwał: ${REFRESH_INTERVAL}s${COLOR_RESET}"
