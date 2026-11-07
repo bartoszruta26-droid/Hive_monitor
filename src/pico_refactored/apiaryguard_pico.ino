@@ -209,7 +209,10 @@ void processCommand(String cmd) {
             Serial.println("ERROR: Tryb bezpieczny aktywny; polecenie grzania odrzucone.");
             return;
         }
-        heaterDuty = static_cast<int>(value);
+        if (!setHeaterPWM(static_cast<int>(value))) {
+            Serial.println("ERROR: Polecenie grzania odrzucone przez zabezpieczenie wykonawcze.");
+            return;
+        }
         Serial.println("OK: Grzałka ustawiona na " + String(heaterDuty));
     }
     else if (parseUnsignedArgument(cmd, "SET_FAN", 0, 255, value)) {
