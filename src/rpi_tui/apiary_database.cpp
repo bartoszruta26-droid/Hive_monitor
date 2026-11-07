@@ -454,78 +454,85 @@ void ApiaryDatabase::aggregationLoop() {
 }
 
 void ApiaryDatabase::performAggregation() {
-    // Kaskada agregacji: RAW → MINUTE → HOUR → DAY → WEEK → MONTH → QUARTER → YEAR
-    
-    // 1. Agregacja RAW → MINUTE
+    // Agreguj wyłącznie zamknięte przedziały. Każdy poziom ma własne,
+    // kalendarzowe granice; miesiące, kwartały i lata nie są stałą liczbą dni.
     aggregateData(AggregationType::RAW, AggregationType::MINUTE);
-    
-    // 2. Agregacja MINUTE → HOUR (co godzinę)
-    static time_t last_hour_agg = 0;
-    time_t now = std::time(nullptr);
-    if (std::difftime(now, last_hour_agg) >= 3600) {
-        aggregateData(AggregationType::MINUTE, AggregationType::HOUR);
-        last_hour_agg = now;
-    }
-    
-    // 3. Agregacja HOUR → DAY (co dobę)
-    static time_t last_day_agg = 0;
-    if (std::difftime(now, last_day_agg) >= 86400) {
-        aggregateData(AggregationType::HOUR, AggregationType::DAY);
-        last_day_agg = now;
-    }
-    
-    // 4. Agregacja DAY → WEEK (co tydzień)
-    static time_t last_week_agg = 0;
-    if (std::difftime(now, last_week_agg) >= 604800) {
-        aggregateData(AggregationType::DAY, AggregationType::WEEK);
-        last_week_agg = now;
-    }
-    
-    // 5. Agregacja WEEK → MONTH (co miesiąc ~30 dni)
-    static time_t last_month_agg = 0;
-    if (std::difftime(now, last_month_agg) >= 2592000) {
-        aggregateData(AggregationType::WEEK, AggregationType::MONTH);
-        last_month_agg = now;
-    }
-    
-    // 6. Agregacja MONTH → QUARTER (co kwartał ~90 dni)
-    static time_t last_quarter_agg = 0;
-    if (std::difftime(now, last_quarter_agg) >= 7776000) {
-        aggregateData(AggregationType::MONTH, AggregationType::QUARTER);
-        last_quarter_agg = now;
-    }
-    
-    // 7. Agregacja QUARTER → YEAR (co rok ~365 dni)
-    static time_t last_year_agg = 0;
-    if (std::difftime(now, last_year_agg) >= 31536000) {
-        aggregateData(AggregationType::QUARTER, AggregationType::YEAR);
-        last_year_agg = now;
-    }
+    aggregateData(AggregationType::MINUTE, AggregationType::HOUR);
+    aggregateData(AggregationType::HOUR, AggregationType::DAY);
+    aggregateData(AggregationType::DAY, AggregationType::WEEK);
+    aggregateData(AggregationType::DAY, AggregationType::MONTH);
+    aggregateData(AggregationType::MONTH, AggregationType::QUARTER);
+    aggregateData(AggregationType::MONTH, AggregationType::YEAR);
 }
 
 int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType target_type) {
     if (source_type == target_type || target_type == AggregationType::RAW) return 0;
 
-    std::lock_guard<std::mutex> lock(db_mutex_);
-    if (!db_) return 0;
-
     const bool source_is_raw = source_type == AggregationType::RAW;
+    if (!source_is_raw && source_type == AggregationType::RAW) return 0;
     const std::string source_table = source_is_raw ? "raw_data" : "aggregated_data";
     const std::string source_time_column = source_is_raw ? "timestamp" : "timestamp_start";
+    const std::string source_time = "src." + source_time_column;
 
-    int interval_sec = 60;
+    // Granice minut i godzin są stałe. Doba, tydzień, miesiąc, kwartał i rok
+    // są wyznaczane według kalendarza UTC, z uwzględnieniem długości miesięcy
+    // i lat przestępnych.
+    std::string bucket_start;
+    std::string bucket_end;
+    int minimum_records = 1;
     switch (target_type) {
-        case AggregationType::MINUTE: interval_sec = 60; break;
-        case AggregationType::HOUR: interval_sec = 3600; break;
-        case AggregationType::DAY: interval_sec = 86400; break;
-        case AggregationType::WEEK: interval_sec = 604800; break;
-        case AggregationType::MONTH: interval_sec = 2592000; break;
-        case AggregationType::QUARTER: interval_sec = 7776000; break;
-        case AggregationType::YEAR: interval_sec = 31536000; break;
-        default: return 0;
+        case AggregationType::MINUTE:
+            bucket_start = "(" + source_time + " / 60 * 60)";
+            bucket_end = "(" + bucket_start + " + 60)";
+            minimum_records = 6;
+            break;
+        case AggregationType::HOUR:
+            bucket_start = "(" + source_time + " / 3600 * 3600)";
+            bucket_end = "(" + bucket_start + " + 3600)";
+            minimum_records = 30;
+            break;
+        case AggregationType::DAY:
+            bucket_start = "CAST(strftime('%s', date(" + source_time + ", 'unixepoch')) AS INTEGER)";
+            bucket_end = "(" + bucket_start + " + 86400)";
+            minimum_records = 12;
+            break;
+        case AggregationType::WEEK:
+            bucket_start = "CAST(strftime('%s', date(" + source_time +
+                ", 'unixepoch', '-' || ((CAST(strftime('%w', " + source_time +
+                ", 'unixepoch') AS INTEGER) + 6) % 7) || ' days')) AS INTEGER)";
+            bucket_end = "(" + bucket_start + " + 604800)";
+            minimum_records = 4;
+            break;
+        case AggregationType::MONTH:
+            bucket_start = "CAST(strftime('%s', date(" + source_time +
+                ", 'unixepoch', 'start of month')) AS INTEGER)";
+            bucket_end = "CAST(strftime('%s', date(" + bucket_start +
+                ", 'unixepoch', '+1 month')) AS INTEGER)";
+            minimum_records = 15;
+            break;
+        case AggregationType::QUARTER: {
+            const std::string month_index = "(CAST(strftime('%m', " + source_time +
+                ", 'unixepoch') AS INTEGER) - 1)";
+            const std::string quarter_month = "(CAST(" + month_index + " / 3 AS INTEGER) * 3)";
+            bucket_start = "CAST(strftime('%s', date(" + source_time +
+                ", 'unixepoch', 'start of year', '+' || " + quarter_month +
+                " || ' months')) AS INTEGER)";
+            bucket_end = "CAST(strftime('%s', date(" + bucket_start +
+                ", 'unixepoch', '+3 months')) AS INTEGER)";
+            minimum_records = 2;
+            break;
+        }
+        case AggregationType::YEAR:
+            bucket_start = "CAST(strftime('%s', date(" + source_time +
+                ", 'unixepoch', 'start of year')) AS INTEGER)";
+            bucket_end = "CAST(strftime('%s', date(" + bucket_start +
+                ", 'unixepoch', '+1 year')) AS INTEGER)";
+            minimum_records = 6;
+            break;
+        default:
+            return 0;
     }
 
-    const std::string source_time = "src." + source_time_column;
     const std::string temperature_column = source_is_raw ? "src.temperature" : "src.temperature_avg";
     const std::string humidity_column = source_is_raw ? "src.humidity" : "src.humidity_avg";
     const std::string weight_column = source_is_raw ? "src.weight" : "src.weight_avg";
@@ -541,22 +548,9 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
     const std::string radar_activity_column = source_is_raw ? "src.radar_activity" : "src.radar_activity_avg";
     const std::string hx711_current_column = source_is_raw ? "src.hx711_current" : "src.hx711_current_avg";
     const std::string hx711_slope_column = source_is_raw ? "src.hx711_slope_24h" : "src.hx711_slope_24h_avg";
-    int minimum_source_interval = 60;
-    switch (source_type) {
-        case AggregationType::MINUTE: minimum_source_interval = 60; break;
-        case AggregationType::HOUR: minimum_source_interval = 3600; break;
-        case AggregationType::DAY: minimum_source_interval = 86400; break;
-        case AggregationType::WEEK: minimum_source_interval = 604800; break;
-        case AggregationType::MONTH: minimum_source_interval = 2592000; break;
-        case AggregationType::QUARTER: minimum_source_interval = 7776000; break;
-        default: break;
-    }
-    const int minimum_records = source_is_raw
-        ? 6
-        : std::max(1, (interval_sec / minimum_source_interval + 1) / 2);
+
     const long long target_type_value = static_cast<int>(target_type);
     const long long source_type_value = static_cast<int>(source_type);
-
     std::stringstream sql;
     sql << "INSERT INTO aggregated_data ("
            "timestamp_start, timestamp_end, hive_id, agg_type,"
@@ -568,10 +562,7 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
            "radar_distance_avg, radar_energy_avg, radar_activity_avg,"
            "hx711_current_avg, hx711_slope_24h_avg, record_count"
         ") SELECT "
-        << source_time << " / " << interval_sec << " * " << interval_sec << " AS ts_start,"
-        << "(" << source_time << " / " << interval_sec << " + 1) * " << interval_sec << " AS ts_end,"
-        << "src.hive_id,"
-        << target_type_value << ","
+        << bucket_start << ", " << bucket_end << ", src.hive_id, " << target_type_value << ","
         << "AVG(" << temperature_column << "), MIN(" << temperature_column << "), MAX(" << temperature_column << "),"
         << "AVG(" << humidity_column << "), MIN(" << humidity_column << "), MAX(" << humidity_column << "),"
         << "AVG(" << weight_column << "), MIN(" << weight_column << "), MAX(" << weight_column << "),"
@@ -581,21 +572,19 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
         << "AVG(" << radar_distance_column << "), AVG(" << radar_energy_column << "), AVG(" << radar_activity_column << "),"
         << "AVG(" << hx711_current_column << "), AVG(" << hx711_slope_column << "), COUNT(*) "
         << "FROM " << source_table << " AS src "
-        << "WHERE " << source_time << " < (strftime('%s', 'now') - " << interval_sec << ") ";
+        << "WHERE " << bucket_end << " <= CAST(strftime('%s', 'now') AS INTEGER) ";
 
     if (!source_is_raw) {
         sql << "AND src.agg_type = " << source_type_value << " ";
     }
 
-    // Każdy zamknięty przedział może zostać zagregowany tylko raz.
-    // Chroni to przed wielokrotnym dopisywaniem tych samych minut/godzin.
+    // Klucz idempotencji jest początkiem rzeczywistego przedziału kalendarzowego.
     sql << "AND NOT EXISTS ("
         << "SELECT 1 FROM aggregated_data AS existing "
         << "WHERE existing.hive_id = src.hive_id "
         << "AND existing.agg_type = " << target_type_value << " "
-        << "AND existing.timestamp_start = ("
-        << source_time << " / " << interval_sec << " * " << interval_sec << ")) "
-        << "GROUP BY " << source_time << " / " << interval_sec << ", src.hive_id "
+        << "AND existing.timestamp_start = " << bucket_start << ") "
+        << "GROUP BY " << bucket_start << ", src.hive_id "
         << "HAVING COUNT(*) >= " << minimum_records;
 
     char* error_message = nullptr;
