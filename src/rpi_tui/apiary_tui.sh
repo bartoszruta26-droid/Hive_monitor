@@ -45,6 +45,8 @@ SCROLL_OFFSET_DEBUG=0
 AUTO_REFRESH=true
 REFRESH_INTERVAL=2
 LAST_REFRESH=0
+DATA_LOADED=false
+MANUAL_REFRESH_REQUESTED=true
 COLLECTOR_PID=""
 
 # Tablice do przechowywania danych - rozszerzone o wszystkie 18 parametrów
@@ -573,13 +575,9 @@ load_logs() {
         done < <(tail -n 100 "$LOG_FILE" 2>/dev/null)
     fi
     
-    # Dodaj przykładowe logi jeśli puste
+    # Pusty dziennik pozostaje pusty — nie prezentuj danych demonstracyjnych jako zdarzeń.
     if [ ${#LOG_LINES[@]} -eq 0 ]; then
-        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] System uruchomiony")
-        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] Połączono z UL-001")
-        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [WARN] Wysoka temperatura w UL-002: 38°C")
-        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [INFO] Zapisano dane pomiarowe")
-        LOG_LINES+=("$(date '+%Y-%m-%d %H:%M:%S') [ERROR] Utracono połączenie z UL-003")
+        LOG_LINES+=("BRAK LOGÓW — nie zarejestrowano zdarzeń")
     fi
 }
 
@@ -592,15 +590,9 @@ load_debug() {
         done < <(tail -n 100 "$DEBUG_FILE" 2>/dev/null)
     fi
     
-    # Dodaj przykładowe debugi jeśli puste
+    # Brak wpisów debugowania sygnalizujemy jawnie, bez generowania fikcyjnych danych.
     if [ ${#DEBUG_LINES[@]} -eq 0 ]; then
-        DEBUG_LINES+=("[DEBUG] Inicjalizacja modułu sieciowego")
-        DEBUG_LINES+=("[DEBUG] ETH0: IP 192.168.1.100, MASK 255.255.255.0")
-        DEBUG_LINES+=("[DEBUG] MQTT: Próba połączenia z brokerem...")
-        DEBUG_LINES+=("[DEBUG] MQTT: Połączono successfully")
-        DEBUG_LINES+=("[DEBUG] Thread sensor_001 started")
-        DEBUG_LINES+=("[DEBUG] Memory usage: 45MB / 512MB")
-        DEBUG_LINES+=("[DEBUG] CPU load: 12%")
+        DEBUG_LINES+=("BRAK DANYCH DEBUG — brak zarejestrowanych komunikatów")
     fi
 }
 
@@ -737,35 +729,54 @@ draw_hive_panel() {
     tput cup $((content_start - 1)) $((start_x + 1 + col_width*7))
     echo -ne "${COLOR_CYAN}WagT${COLOR_RESET}"
     
-    # Pobierz aktualne dane z kolektora
-    fetch_hive_data
+    # Pobieranie jest oddzielone od rysowania. Wyłączenie auto-odświeżania
+    # zatrzymuje odpytywanie kolektora; klawisz r wymusza pojedynczy odczyt.
+    local now
+    now=$(date +%s)
+    if [ "$AUTO_REFRESH" = true ]; then
+        if [ "$DATA_LOADED" != true ] || (( now - LAST_REFRESH >= REFRESH_INTERVAL )); then
+            fetch_hive_data
+            DATA_LOADED=true
+            LAST_REFRESH=$now
+            MANUAL_REFRESH_REQUESTED=false
+        fi
+    elif [ "$MANUAL_REFRESH_REQUESTED" = true ] || [ "$DATA_LOADED" != true ]; then
+        fetch_hive_data
+        DATA_LOADED=true
+        LAST_REFRESH=$now
+        MANUAL_REFRESH_REQUESTED=false
+    fi
     
-    # Dane uli - użyj danych z tablic (z kolektora lub fallback)
+    # Dane uli pochodzą z kolektora lub jawnie włączonego trybu demo.
+    if [ ${#HIVES[@]} -eq 0 ]; then
+        tput cup $content_start $((start_x + 2))
+        echo -ne "${COLOR_YELLOW}BRAK DANYCH — oczekiwanie na kolektor lub poprawny odczyt CSV${COLOR_RESET}"
+    fi
     for i in "${!HIVES[@]}"; do
         local hive="${HIVES[$i]}"
-        local status="${HIVE_STATUS[$i]:-ONLINE}"
-        local temp="${HIVE_TEMP[$i]:-25.0}"
-        local humidity="${HIVE_HUM[$i]:-50.0}"
-        local weight="${HIVE_WEIGHT[$i]:-40.0}"
-        local battery="${HIVE_BAT[$i]:-90}"
-        local co2="${HIVE_CO2[$i]:-450}"
-        local voc="${HIVE_VOC[$i]:-30}"
-        local motion="${HIVE_MOTION[$i]:-0}"
-        local iaq="${HIVE_IAQ[$i]:-70}"
+        local status="${HIVE_STATUS[$i]:-UNKNOWN}"
+        local temp="${HIVE_TEMP[$i]:-—}"
+        local humidity="${HIVE_HUM[$i]:-—}"
+        local weight="${HIVE_WEIGHT[$i]:-—}"
+        local battery="${HIVE_BAT[$i]:-—}"
+        local co2="${HIVE_CO2[$i]:-—}"
+        local voc="${HIVE_VOC[$i]:-—}"
+        local motion="${HIVE_MOTION[$i]:-—}"
+        local iaq="${HIVE_IAQ[$i]:-—}"
         
         # Parametry audio
-        local audio_rms="${HIVE_AUDIO_RMS[$i]:-0.020}"
-        local audio_freq="${HIVE_AUDIO_FREQ[$i]:-250}"
-        local swarm_prob="${HIVE_SWARM_PROB[$i]:-0.10}"
+        local audio_rms="${HIVE_AUDIO_RMS[$i]:-—}"
+        local audio_freq="${HIVE_AUDIO_FREQ[$i]:-—}"
+        local swarm_prob="${HIVE_SWARM_PROB[$i]:-—}"
         
         # Parametry radaru
-        local radar_dist="${HIVE_RADAR_DIST[$i]:-1.0}"
-        local radar_energy="${HIVE_RADAR_ENERGY[$i]:-45.0}"
-        local radar_act="${HIVE_RADAR_ACT[$i]:-0.30}"
+        local radar_dist="${HIVE_RADAR_DIST[$i]:-—}"
+        local radar_energy="${HIVE_RADAR_ENERGY[$i]:-—}"
+        local radar_act="${HIVE_RADAR_ACT[$i]:-—}"
         
         # Parametry wagi
-        local wag_rate="${HIVE_WAG_RATE[$i]:-0.00}"
-        local wag_trend="${HIVE_WAG_TREND[$i]:-0.5}"
+        local wag_rate="${HIVE_WAG_RATE[$i]:-—}"
+        local wag_trend="${HIVE_WAG_TREND[$i]:-—}"
         
         local status_color="$COLOR_GREEN"
         [ "$status" == "OFFLINE" ] && status_color="$COLOR_RED"
@@ -828,8 +839,12 @@ draw_settings_panel() {
     
     local content_start=$((start_y + 2))
     
+    local refresh_mark=" "
+    if [ "$AUTO_REFRESH" = true ]; then
+        refresh_mark="✓"
+    fi
     tput cup $content_start $((start_x + 4))
-    echo -ne "${COLOR_YELLOW}[${AUTO_REFRESH:+✓}${AUTO_REFRESH:- }] Auto-odświeżanie${COLOR_RESET}"
+    echo -ne "${COLOR_YELLOW}[${refresh_mark}] Auto-odświeżanie${COLOR_RESET}"
     
     tput cup $((content_start + 1)) $((start_x + 4))
     echo -ne "${COLOR_YELLOW}Interwał: ${REFRESH_INTERVAL}s${COLOR_RESET}"
@@ -898,25 +913,25 @@ handle_input() {
                 case "$key3" in
                     'A') # Strzałka w górę
                         if [ $CURRENT_TAB -eq 0 ]; then
-                            [ $SCROLL_OFFSET_LOG -gt 0 ] && ((SCROLL_OFFSET_LOG--))
+                            [ $SCROLL_OFFSET_LOG -gt 0 ] && SCROLL_OFFSET_LOG=$((SCROLL_OFFSET_LOG - 1))
                         elif [ $CURRENT_TAB -eq 1 ]; then
-                            [ $SCROLL_OFFSET_DEBUG -gt 0 ] && ((SCROLL_OFFSET_DEBUG--))
+                            [ $SCROLL_OFFSET_DEBUG -gt 0 ] && SCROLL_OFFSET_DEBUG=$((SCROLL_OFFSET_DEBUG - 1))
                         fi
                         ;;
                     'B') # Strzałka w dół
                         if [ $CURRENT_TAB -eq 0 ]; then
-                            ((SCROLL_OFFSET_LOG++))
+                            SCROLL_OFFSET_LOG=$((SCROLL_OFFSET_LOG + 1))
                         elif [ $CURRENT_TAB -eq 1 ]; then
-                            ((SCROLL_OFFSET_DEBUG++))
+                            SCROLL_OFFSET_DEBUG=$((SCROLL_OFFSET_DEBUG + 1))
                         fi
                         ;;
                     'C') # Strzałka w prawo
-                        ((CURRENT_TAB = (CURRENT_TAB + 1) % TAB_COUNT))
+                        CURRENT_TAB=$(((CURRENT_TAB + 1) % TAB_COUNT))
                         SCROLL_OFFSET_LOG=0
                         SCROLL_OFFSET_DEBUG=0
                         ;;
                     'D') # Strzałka w lewo
-                        ((CURRENT_TAB = (CURRENT_TAB - 1 + TAB_COUNT) % TAB_COUNT))
+                        CURRENT_TAB=$(((CURRENT_TAB - 1 + TAB_COUNT) % TAB_COUNT))
                         SCROLL_OFFSET_LOG=0
                         SCROLL_OFFSET_DEBUG=0
                         ;;
@@ -926,10 +941,16 @@ handle_input() {
                 return 1
                 ;;
             'r'|'R')
-                # Ręczne odświeżenie
+                # Jednorazowe pobranie danych przy następnym odświeżeniu widoku.
+                MANUAL_REFRESH_REQUESTED=true
                 ;;
             'a'|'A')
-                AUTO_REFRESH=!$AUTO_REFRESH
+                if [ "$AUTO_REFRESH" = true ]; then
+                    AUTO_REFRESH=false
+                else
+                    AUTO_REFRESH=true
+                    LAST_REFRESH=0
+                fi
                 ;;
             'h'|'H'|'?')
                 # Pomoc (można rozwinąć)

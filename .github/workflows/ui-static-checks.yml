@@ -56,6 +56,9 @@ jobs:
       - name: Check installer and TUI Bash syntax
         run: bash -n hive_monitor_installer.sh src/rpi_tui/install_apiary.sh src/rpi_tui/apiary_tui.sh
 
+      - name: Verify TUI interaction and telemetry contracts
+        run: python3 src/rpi_tui/tests/test_tui_behavior_contract.py
+
       - name: Verify collector CSV and TUI column contract
         run: python3 src/rpi_tui/tests/test_csv_contract.py
 
