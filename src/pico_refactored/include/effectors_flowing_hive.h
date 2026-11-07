@@ -415,7 +415,7 @@ void activateFlowingHiveSafeMode(const char* reason);
  * 
  * PREREQUISITES:
  * - Underlying issue must be resolved
- * - Operator confirmation recommended
+ * - Explicit operator confirmation required
  * 
  * @note Does not automatically restart interrupted sequences
  *       Call executeAutoEmptySequence() again if needed
