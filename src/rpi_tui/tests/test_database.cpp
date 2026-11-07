@@ -2,6 +2,10 @@
 #include "csv_utils.h"
 
 #include <cassert>
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <vector>
 #include <cstdio>
 #include <string>
 #include <ctime>
@@ -88,6 +92,39 @@ int main() {
     assert(hourly.size() == 1);
     assert(hourly.front().record_count == 30);
 
+    // Concurrent producers and concurrent statistics reads must not race
+    // with buffer updates or database lifecycle transitions.
+    std::atomic<bool> observer_running{true};
+    std::thread observer([&] {
+        while (observer_running.load()) {
+            const auto snapshot = database.getStats();
+            assert(snapshot.at("accepted_records") >= snapshot.at("raw_records"));
+        }
+    });
+    std::vector<std::thread> producers;
+    for (int producer = 0; producer < 4; ++producer) {
+        producers.emplace_back([&, producer] {
+            for (int i = 0; i < 50; ++i) {
+                HiveData item;
+                item.hive_id = "UL-CONCURRENT-" + std::to_string(producer);
+                item.timestamp = 1000 + producer * 50 + i;
+                item.temperature = 20.0f + static_cast<float>(i) / 10.0f;
+                item.humidity = 55.0f;
+                item.weight = 35.0f;
+                item.battery_level = 95;
+                database.storeRawData(item);
+            }
+        });
+    }
+    for (auto& producer : producers) producer.join();
+    observer_running = false;
+    observer.join();
+
+    const auto concurrent_stats = database.getStats();
+    assert(concurrent_stats.at("accepted_records") == 200);
+    assert(concurrent_stats.at("buffered_records") == 0);
+    assert(concurrent_stats.at("raw_records") == 200);
+
     // A partial batch must be persisted on orderly shutdown.
     HiveData reading;
     reading.hive_id = "UL-2";
@@ -98,17 +135,76 @@ int main() {
     reading.battery_level = 90;
     database.storeRawData(reading);
     const auto pending_stats = database.getStats();
-    assert(pending_stats.at("accepted_records") == 1);
+    assert(pending_stats.at("accepted_records") == 201);
     assert(pending_stats.at("buffered_records") == 1);
-    assert(pending_stats.at("raw_records") == 0);
-    assert(pending_stats.at("total_records") == 0);
+    assert(pending_stats.at("raw_records") == 200);
+    assert(pending_stats.at("total_records") == 200);
+
+    // Force a transactional failure. shutdown() must retain the in-memory
+    // batch and open connection, then succeed after the fault is removed.
+    sqlite3* fault_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &fault_db) == SQLITE_OK);
+    assert(sqlite3_exec(
+        fault_db,
+        "CREATE TRIGGER fail_raw_insert BEFORE INSERT ON raw_data "
+        "BEGIN SELECT RAISE(ABORT, 'forced regression failure'); END;",
+        nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(fault_db);
+
+    database.shutdown();
+    const auto failed_shutdown_stats = database.getStats();
+    assert(failed_shutdown_stats.at("accepted_records") == 201);
+    assert(failed_shutdown_stats.at("buffered_records") == 1);
+    assert(failed_shutdown_stats.at("raw_records") == 200);
+    assert(failed_shutdown_stats.at("initialized") == 1);
+    assert(failed_shutdown_stats.at("write_errors") >= 1);
+
+    fault_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &fault_db) == SQLITE_OK);
+    assert(sqlite3_exec(fault_db, "DROP TRIGGER fail_raw_insert;", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(fault_db);
 
     database.shutdown();
     const auto committed_stats = database.getStats();
-    assert(committed_stats.at("accepted_records") == 1);
+    assert(committed_stats.at("accepted_records") == 201);
     assert(committed_stats.at("buffered_records") == 0);
-    assert(committed_stats.at("raw_records") == 1);
-    assert(committed_stats.at("total_records") == 1);
+    assert(committed_stats.at("raw_records") == 201);
+    assert(committed_stats.at("total_records") == 201);
+    assert(committed_stats.at("initialized") == 0);
+
+    // Reinitialize and race a producer against shutdown. Calls linearized
+    // before shutdown are flushed; calls after shutdown are rejected.
+    database.initialize(config);
+    std::atomic<bool> race_writer_started{false};
+    std::atomic<size_t> race_writer_accepted{0};
+    std::thread race_writer([&] {
+        race_writer_started = true;
+        for (int i = 0; i < 5000; ++i) {
+            HiveData item;
+            item.hive_id = "UL-SHUTDOWN-RACE";
+            item.timestamp = 5000 + i;
+            item.temperature = 30.0f;
+            item.humidity = 50.0f;
+            try {
+                database.storeRawData(item);
+                ++race_writer_accepted;
+            } catch (const apiary::DatabaseWriteException&) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+    });
+    while (!race_writer_started.load()) std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    database.shutdown();
+    race_writer.join();
+
+    const auto race_stats = database.getStats();
+    const size_t expected_after_race = 201 + race_writer_accepted.load();
+    assert(race_stats.at("accepted_records") == expected_after_race);
+    assert(race_stats.at("buffered_records") == 0);
+    assert(race_stats.at("raw_records") == expected_after_race);
+    assert(race_stats.at("initialized") == 0);
 
     sqlite3* verify_db = nullptr;
     assert(sqlite3_open(path.c_str(), &verify_db) == SQLITE_OK);

@@ -11,7 +11,7 @@ object AppConstants {
     const val PREF_API_PORT = "pref_api_port"
     
     // Domyślny port API
-    const val DEFAULT_PORT = 8080
+    const val DEFAULT_PORT = 443
     
     // Zakres portów
     const val MIN_PORT = 1
@@ -50,6 +50,23 @@ fun String.isValidIpAddress(): Boolean {
         "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
     )
     return ipPattern.matches(this)
+}
+
+/**
+ * Waliduje host DNS albo adres IPv4 używany jako nazwa hosta TLS.
+ * Nie przyjmuje URL, portu, ścieżki ani znaków sterujących.
+ */
+fun String.isValidApiHost(): Boolean {
+    if (isValidIpAddress()) return true
+    if (isBlank() || length > 253 || any { it.isWhitespace() || it == '/' || it == ':' || it == '@' }) {
+        return false
+    }
+    if (matches(Regex("^[0-9.]+$"))) return false
+    val labels = split('.')
+    return labels.all { label ->
+        label.length in 1..63 &&
+            Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$").matches(label)
+    }
 }
 
 /**

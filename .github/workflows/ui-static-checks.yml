@@ -5,6 +5,7 @@ on:
     paths:
       - "src/webui/**"
       - "src/rpi_tui/**"
+      - "hive_monitor_installer.sh"
       - ".github/workflows/ui-static-checks.yml"
   push:
     branches:
@@ -13,6 +14,7 @@ on:
     paths:
       - "src/webui/**"
       - "src/rpi_tui/**"
+      - "hive_monitor_installer.sh"
       - ".github/workflows/ui-static-checks.yml"
   workflow_dispatch:
 
@@ -28,19 +30,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up PHP with SQLite and cURL
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: curl, sqlite3
+          coverage: none
 
       - name: Check WebUI JavaScript syntax
         run: node --check src/webui/app.js
 
       - name: Check PHP API syntax
-        run: php -l src/webui/api.php
+        run: |
+          php -l src/webui/api.php
+          php -l src/webui/legacy_api.php
 
       - name: Run PHP API authentication and configuration regressions
         run: php tests/php/api_security_config_test.php
 
-      - name: Check TUI Bash syntax
-        run: bash -n src/rpi_tui/apiary_tui.sh
+      - name: Run legacy PHP API security regressions
+        run: python3 tests/php/legacy_api_security_test.py
+
+      - name: Check installer and TUI Bash syntax
+        run: bash -n hive_monitor_installer.sh src/rpi_tui/install_apiary.sh src/rpi_tui/apiary_tui.sh
 
       - name: Verify collector CSV and TUI column contract
         run: python3 src/rpi_tui/tests/test_csv_contract.py
@@ -48,8 +62,14 @@ jobs:
       - name: Verify software security contracts without hardware
         run: python3 src/rpi_tui/tests/test_security_contracts.py
 
-      - name: Verify installer and Android security defaults
+      - name: Verify deployment and TLS security contracts
         run: python3 src/rpi_tui/tests/test_deployment_security.py
+
+      - name: Verify Apache access to SQLite WAL/SHM during concurrent writes
+        run: sudo bash tests/sqlite_wal_apache_permissions_test.sh
+
+      - name: Verify workflow action pinning
+        run: python3 src/rpi_tui/tests/test_workflow_pins.py
 
       - name: Build TUI collector and logger tests
         run: |
@@ -65,6 +85,9 @@ jobs:
 
       - name: Run structural JSON parser regression tests
         run: make -C src/rpi_tui test-json
+
+      - name: Run sensor measurement domain validation tests
+        run: make -C src/rpi_tui test-validation
 
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network

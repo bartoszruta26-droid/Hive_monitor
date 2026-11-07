@@ -6,6 +6,11 @@
 # Strict mode for better error handling and safety
 set -euo pipefail
 
+if [[ -z "${HOME:-}" || "$HOME" == "/" ]]; then
+    echo "Refusing to run with an unsafe HOME directory." >&2
+    exit 1
+fi
+
 # ============================================================================
 # GLOBAL VARIABLES
 # ============================================================================
@@ -16,6 +21,16 @@ BACKUP_DIR="${CONFIG_DIR}/backups"
 LOG_FILE="${CONFIG_DIR}/installer.log"
 CURRENT_LANG="en"
 INSTALL_FAILED=0
+
+# Pliki konfiguracji, dzienniki i kopie mogą zawierać sekrety.
+if [[ -L "$CONFIG_DIR" || -L "$BACKUP_DIR" || -L "$LOG_FILE" ]]; then
+    echo "Refusing to use a symlink as the private configuration directory." >&2
+    exit 1
+fi
+install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+chmod 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+touch "$LOG_FILE"
+chmod 0600 "$LOG_FILE"
 
 # Color codes
 RED='\033[0;31m'
@@ -222,7 +237,7 @@ option_install_software() {
     print_header "${LANG[MENU_3]}"
     
     GITHUB_REPO="https://github.com/bartoszruta26-droid/Hive_monitor"
-    INSTALL_DIR="${HOME}/hive_monitor"
+    INSTALL_DIR="${HOME%/}/hive_monitor"
     
     echo "This option will clone and install software from:"
     echo "$GITHUB_REPO"
@@ -249,18 +264,44 @@ option_install_software() {
         case $update_choice in
             1)
                 echo "Updating existing installation..."
-                cd "$INSTALL_DIR" || { echo -e "${RED}Failed to change directory${NC}"; return 1; }
-                
+                # Do not run update operations in a directory with an unexpected origin.
+                if [[ -L "$INSTALL_DIR" || ! -d "$INSTALL_DIR/.git" ]]; then
+                    echo -e "${RED}Refusing to update a non-Git or symlink installation directory.${NC}"
+                    log_message "ERROR" "Unsafe installation directory rejected"
+                    wait_for_key
+                    return 1
+                fi
+                origin_url=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null) || {
+                    echo -e "${RED}Cannot verify Git origin.${NC}"
+                    wait_for_key
+                    return 1
+                }
+                case "$origin_url" in
+                    "https://github.com/bartoszruta26-droid/Hive_monitor"|"https://github.com/bartoszruta26-droid/Hive_monitor.git"|"git@github.com:bartoszruta26-droid/Hive_monitor.git") ;;
+                    *)
+                        echo -e "${RED}Unexpected Git origin; update cancelled.${NC}"
+                        log_message "ERROR" "Unexpected Git origin rejected: $origin_url"
+                        wait_for_key
+                        return 1
+                        ;;
+                esac
+
                 # Check current branch and pull from correct branch
-                current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+                current_branch=$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null) || {
                     echo -e "${RED}Failed to determine git branch${NC}"
                     log_message "ERROR" "Failed to determine git branch"
                     wait_for_key
                     return 1
                 }
                 
+                if ! git check-ref-format --branch "$current_branch" >/dev/null 2>&1; then
+                    echo -e "${RED}Invalid local Git branch name; update cancelled.${NC}"
+                    wait_for_key
+                    return 1
+                fi
                 echo "Current branch: $current_branch"
-                if ! git pull origin "$current_branch" 2>&1; then
+                # Disable repository-local hooks during update; the checkout is not trusted.
+                if ! git -c core.hooksPath=/dev/null -C "$INSTALL_DIR" pull --ff-only origin "$current_branch" 2>&1; then
                     echo -e "${RED}Failed to update repository from branch '$current_branch'${NC}"
                     log_message "ERROR" "Failed to update repository from branch '$current_branch'"
                     wait_for_key
@@ -338,9 +379,29 @@ option_install_software() {
                 ;;
             2)
                 echo "Removing existing installation..."
-                rm -rf "$INSTALL_DIR"
+                if [[ -L "$INSTALL_DIR" || ! -d "$INSTALL_DIR/.git" || "$INSTALL_DIR" != "${HOME%/}/hive_monitor" || "$HOME" == "/" ]]; then
+                    echo -e "${RED}Refusing unsafe removal target: $INSTALL_DIR${NC}"
+                    log_message "ERROR" "Unsafe reinstall target rejected"
+                    wait_for_key
+                    return 1
+                fi
+                origin_url=$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null) || {
+                    echo -e "${RED}Cannot verify Git origin; reinstall cancelled.${NC}"
+                    wait_for_key
+                    return 1
+                }
+                case "$origin_url" in
+                    "https://github.com/bartoszruta26-droid/Hive_monitor"|"https://github.com/bartoszruta26-droid/Hive_monitor.git"|"git@github.com:bartoszruta26-droid/Hive_monitor.git") ;;
+                    *)
+                        echo -e "${RED}Unexpected Git origin; reinstall cancelled.${NC}"
+                        log_message "ERROR" "Unsafe reinstall origin rejected: $origin_url"
+                        wait_for_key
+                        return 1
+                        ;;
+                esac
+                rm -rf -- "$INSTALL_DIR"
                 echo "Cloning repository..."
-                if ! git clone "$GITHUB_REPO" "$INSTALL_DIR"; then
+                if ! git clone -- "$GITHUB_REPO" "$INSTALL_DIR"; then
                     echo -e "${RED}Failed to clone repository${NC}"
                     log_message "ERROR" "Failed to clone repository from GitHub during reinstall"
                     wait_for_key
@@ -483,14 +544,15 @@ option_backup_config() {
     print_header "${LANG[MENU_4]}"
     
     TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-    BACKUP_FILE="${BACKUP_DIR}/hive_monitor_backup_${TIMESTAMP}.tar.gz"
+    BACKUP_FILE=$(mktemp "${BACKUP_DIR}/hive_monitor_backup_${TIMESTAMP}_XXXXXX.tar.gz")
     
     echo "This option will create backups of edited/replaced configuration files."
     echo "Backup location: ${BACKUP_DIR}"
     echo ""
     
-    # Create backup directory if it doesn't exist
-    mkdir -p "$BACKUP_DIR"
+    # Keep archives containing API keys and environment files private.
+    install -d -m 0700 "$CONFIG_DIR" "$BACKUP_DIR"
+    chmod 0700 "$CONFIG_DIR" "$BACKUP_DIR"
     
     # Define config files to backup with their relative paths for preservation
     declare -A CONFIG_FILES_MAP=(
@@ -543,9 +605,21 @@ option_backup_config() {
     
     echo ""
     echo "Creating backup archive: $BACKUP_FILE"
-    tar -czf "$BACKUP_FILE" -C "$TEMP_BACKUP_DIR" .
-    
-    if [[ $? -eq 0 ]]; then
+    local previous_umask
+    previous_umask=$(umask)
+    umask 077
+    if tar -czf "$BACKUP_FILE" -C "$TEMP_BACKUP_DIR" .; then
+        chmod 0600 "$BACKUP_FILE"
+        umask "$previous_umask"
+    else
+        umask "$previous_umask"
+        echo -e "${RED}Failed to create configuration backup${NC}"
+        rm -rf -- "$TEMP_BACKUP_DIR"
+        wait_for_key
+        return 1
+    fi
+
+    if [[ -f "$BACKUP_FILE" ]]; then
         echo -e "${GREEN}Backup created successfully!${NC}"
         echo "Backup file: $BACKUP_FILE"
         echo "Size: $(du -h "$BACKUP_FILE" | cut -f1)"
@@ -783,27 +857,23 @@ configure_database() {
 setup_database() {
     local config_file="${CONFIG_DIR}/database.conf"
     local DB_PATH
-    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "/var/lib/apiaryguard/apiary.db")
+    DB_PATH=$(get_config_value "$config_file" "DB_PATH" "${CONFIG_DIR}/data/hive_monitor.db")
     
     echo "Database path: $DB_PATH"
     echo ""
     
-    # Create directory for database
+    # This installer manages the interactive user's private TUI database.
+    # The collector's shared /var/lib/apiaryguard database is provisioned only
+    # by src/rpi_tui/install_apiary.sh with its apiaryguard:www-data ACL model.
     local db_dir
     db_dir=$(dirname "$DB_PATH")
-    mkdir -p "$db_dir"
-    
-    if [[ $? -ne 0 ]]; then
+    if ! mkdir -p "$db_dir"; then
         echo -e "${RED}Failed to create database directory: $db_dir${NC}"
         log_message "ERROR" "Failed to create database directory: $db_dir"
         return 1
     fi
-    
-    echo "Created database directory: $db_dir"
-    
-    # Set proper permissions
-    chmod 755 "$db_dir"
-    chmod 644 "$db_dir" 2>/dev/null || true
+    chmod 0700 "$db_dir"
+    echo "Created private database directory: $db_dir"
     
     # Check if sqlite3 is available
     if ! command -v sqlite3 &> /dev/null; then
@@ -924,9 +994,10 @@ EOF
         echo "Skipping table creation."
     fi
     
-    # Set proper file permissions
-    chmod 664 "$DB_PATH" 2>/dev/null || true
-    chown root:root "$DB_PATH" 2>/dev/null || true
+    # Keep this per-user database private. Do not chown it to root:
+    # the interactive application must retain access as its invoking user.
+    chmod 0600 "$DB_PATH"
+    chmod 0700 "$db_dir"
     
     echo ""
     echo "Database setup completed!"

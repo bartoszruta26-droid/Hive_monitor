@@ -2,6 +2,7 @@
 """Static regression checks for security properties that do not require hardware."""
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -15,6 +16,9 @@ collector = (ROOT / "src/rpi_tui/apiary_collector.cpp").read_text(encoding="utf-
 network = (ROOT / "src/rpi_tui/network_security.h").read_text(encoding="utf-8")
 protocol = (ROOT / "src/rpi_tui/http_protocol.h").read_text(encoding="utf-8")
 database = (ROOT / "src/rpi_tui/apiary_database.cpp").read_text(encoding="utf-8")
+database_header = (ROOT / "src/rpi_tui/apiary_database.h").read_text(encoding="utf-8")
+measurement_validation = (ROOT / "src/rpi_tui/measurement_validation.h").read_text(encoding="utf-8")
+collector_types = (ROOT / "src/rpi_tui/apiary_collector_types.h").read_text(encoding="utf-8")
 firmware_sensors = (ROOT / "src/pico_refactored/src/sensors.cpp").read_text(encoding="utf-8")
 firmware_flow = (ROOT / "src/pico_refactored/src/effectors_flowing_hive.cpp").read_text(encoding="utf-8")
 php_api = (ROOT / "src/webui/api.php").read_text(encoding="utf-8")
@@ -57,5 +61,40 @@ require("raw_records_ += batch_size" in database and
 require("CURLOPT_CONNECTTIMEOUT" in php_api and
         "callCollector('/health', 'GET', null, 3)" in php_api,
         "PHP collector health checks must use a bounded connection and total timeout")
+
+require("validateHivePayloadFields" in collector and "json_validation_errors" in collector,
+        "collector must validate measurement payloads before conversion and persistence")
+require("measurementRanges()" in measurement_validation and "std::isfinite(value)" in measurement_validation,
+        "measurement schema must enforce finite, field-specific numeric bounds")
+
+parse_start = collector.index("void parseJSON")
+parse_end = collector.index("void parseCSV", parse_start)
+parser_keys = set(re.findall(r'getValue\("([^"]+)"\)', collector[parse_start:parse_end]))
+range_keys = set(re.findall(r'\{"([^"]+)",\s*\{', measurement_validation))
+unvalidated_keys = parser_keys - {"hive_id", "data_source"} - range_keys
+require(not unvalidated_keys,
+        "every numeric key consumed by parseJSON must have a domain rule: " + ", ".join(sorted(unvalidated_keys)))
+
+struct_fields = re.findall(
+    r'^\s*(std::string|bool|int|long long|unsigned(?:\s+\w+)?|float|double|size_t)\s+(\w+)\s*(?:=\s*([^;]+))?;\s*(?://\s*(.*))?$',
+    collector_types, re.MULTILINE
+)
+numeric_struct_fields = {name for kind, name, _, _ in struct_fields if kind not in {"std::string", "bool"}}
+unvalidated_struct_fields = numeric_struct_fields - range_keys
+require(not unvalidated_struct_fields,
+        "every numeric HiveData field must have an explicit domain rule: " +
+        ", ".join(sorted(unvalidated_struct_fields)))
+
+boolean_struct_fields = {name for kind, name, _, _ in struct_fields if kind == "bool"}
+require(boolean_struct_fields == {"is_precomputed", "is_online"} and
+        all(field in measurement_validation for field in boolean_struct_fields),
+        "every boolean HiveData field must have an explicit boolean validator")
+
+require("lifecycle_mutex_" in database_header and "accepting_" in database_header,
+        "SQLite lifecycle must serialize initialization, producers and shutdown")
+require("if (!flushBuffer())" in database and "ROLLBACK;" in database and
+        "sqlite3_busy_timeout" in database,
+        "SQLite shutdown must preserve failed batches and use bounded busy waits")
+
 
 print("Software security contract checks passed")

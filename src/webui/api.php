@@ -78,9 +78,9 @@ $COLLECTOR_URL = "{$protocol}://{$COLLECTOR_HOST}:{$COLLECTOR_PORT}";
 // ============================================================================
 // KONFIGURACJA ŚCIEŻEK LOGÓW
 // ============================================================================
-$logFile = '/var/log/apiaryguard/webui.log';
-$errorLogFile = '/var/log/apiaryguard/webui_errors.log';
-$accessLogFile = '/var/log/apiaryguard/webui_access.log';
+$logFile = '/var/log/apiaryguard-web/webui.log';
+$errorLogFile = '/var/log/apiaryguard-web/webui_errors.log';
+$accessLogFile = '/var/log/apiaryguard-web/webui_access.log';
 
 // Funkcja tworząca katalogi rekurencyjnie z obsługą błędów i walidacją ścieżki
 /**
@@ -98,7 +98,7 @@ function ensureDirectoryExists($path) {
     
     if (!is_dir($path)) {
         try {
-            if (!mkdir($path, 0755, true)) {
+            if (!mkdir($path, 0700, true)) {
                 error_log("[FILESYSTEM ERROR] Cannot create directory: {$path}");
                 return false;
             }

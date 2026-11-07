@@ -11,7 +11,7 @@ import com.apiguard.apiary.data.remote.ApiaryPayloadMapper
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.network.RetrofitClient
 import com.apiguard.apiary.util.AppConstants
-import com.apiguard.apiary.util.isValidIpAddress
+import com.apiguard.apiary.util.isValidApiHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -68,7 +68,10 @@ class ApiaryRepository(private val application: Application) {
     }
 
     fun saveIpAddress(ipAddress: String, port: Int = DEFAULT_PORT) {
-        // Walidacja zakresu portów przed zapisem
+        // Walidacja hosta i portu przed trwałym zapisem ustawień.
+        if (!ipAddress.isValidApiHost()) {
+            throw IllegalArgumentException("Nieprawidłowy host lub adres IP")
+        }
         if (port < MIN_PORT || port > MAX_PORT) {
             throw IllegalArgumentException("Port musi być w zakresie $MIN_PORT-$MAX_PORT")
         }
@@ -126,9 +129,9 @@ class ApiaryRepository(private val application: Application) {
             return ConnectionResult.Error("Nieprawidłowy numer portu: musi być w zakresie $MIN_PORT-$MAX_PORT")
         }
         
-        // Walidacja formatu adresu IP
-        if (!isValidIpAddress(ipAddress)) {
-            return ConnectionResult.Error("Nieprawidłowy format adresu IP")
+        // Walidacja hosta DNS lub adresu IPv4.
+        if (!ipAddress.isValidApiHost()) {
+            return ConnectionResult.Error("Nieprawidłowy host lub adres IP")
         }
         
         return withContext(Dispatchers.IO) {
@@ -164,13 +167,6 @@ class ApiaryRepository(private val application: Application) {
         }
     }
     
-    /**
-     * Waliduje format adresu IPv4
-     */
-    private fun isValidIpAddress(ip: String): Boolean {
-        return ip.isValidIpAddress()
-    }
-
     suspend fun fetchApiaries(): Result<List<ApiaryData>> {
         return withContext(Dispatchers.IO) {
             val service = getApiService() ?: return@withContext Result.failure(Exception("Brak zapisanego adresu IP"))

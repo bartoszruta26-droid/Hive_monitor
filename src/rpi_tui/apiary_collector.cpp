@@ -74,6 +74,7 @@
 #include "http_protocol.h"
 #include "network_security.h"
 #include "json_object_parser.h"
+#include "measurement_validation.h"
 
 // Uzywamy przestrzeni nazw apiary dla wygody
 using namespace apiary;
@@ -713,16 +714,20 @@ public:
                 DEBUG_FUNC_EXIT();
                 return;
             }
+            std::string validation_error;
+            if (!apiary::validateHivePayloadFields(json_values, validation_error)) {
+                Logger::getInstance().warning(
+                    "Odrzucono pomiar z " + source_ip + ": " + validation_error, "VALIDATION");
+                DEBUG_COUNTER_INC("json_validation_errors");
+                DEBUG_FUNC_EXIT();
+                return;
+            }
             auto getValue = [&json_values](const std::string& key) -> std::string {
                 const auto it = json_values.find(key);
                 return it == json_values.end() ? std::string() : it->second;
             };
             
-            std::string hive_id = getValue("hive_id");
-            if (hive_id.empty()) {
-                hive_id = "UNKNOWN";
-                apiary::Logger::getInstance().warning("Missing hive_id in JSON from " + source_ip, "PARSER");
-            }
+            const std::string hive_id = getValue("hive_id");
             
             HiveData data;
             data.hive_id = hive_id;

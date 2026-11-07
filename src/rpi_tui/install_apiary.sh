@@ -4,7 +4,7 @@
 # Instaluje zależności, konfiguruje bazę danych, Apache2 i usługi systemd
 # UWAGA: Ten skrypt wykonuje PEŁNĄ instalację z WebUI i API
 
-set -e
+set -euo pipefail
 
 echo "🚀 Rozpoczynanie PEŁNEJ instalacji Apiary Collector..."
 echo ""
@@ -40,6 +40,8 @@ sudo apt-get install -y \
     apache2 \
     php \
     libapache2-mod-php \
+    php-sqlite3 \
+    openssl \
     || {
         echo -e "${RED}❌ Failed to install dependencies${NC}"
         exit 1
@@ -57,8 +59,8 @@ if [[ ! -f "Makefile" ]]; then
     exit 1
 fi
 
-make clean 2>/dev/null || true
-make all -j$(nproc) || {
+make clean
+make all -j"$(nproc)" || {
     echo -e "${RED}❌ Kompilacja nieudana${NC}"
     exit 1
 }
@@ -68,23 +70,61 @@ echo ""
 
 # 3. Instalacja binarek w systemie
 echo "⚙️ Instalowanie binarek w systemie..."
-sudo make install || {
-    echo -e "${YELLOW}⚠️ Instalacja binarek miała problemy, ale kompilacja succeeded${NC}"
-}
+sudo make install
 
 echo -e "${GREEN}✅ Binarki zainstalowane${NC}"
 echo ""
 
+# Klucz API dla starszego i nowszego endpointu PHP; kolektor nie otrzymuje tego sekretu.
+# Plik jest czytelny wyłącznie dla roota i grupy serwera WWW.
+# Oddziel konto usługi od Apache: kolektor nie może odczytać klucza API PHP.
+if ! id -u apiaryguard >/dev/null 2>&1; then
+    sudo useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin apiaryguard
+fi
+
+sudo install -d -o root -g www-data -m 0750 /etc/apiaryguard
+if ! sudo test -s /etc/apiaryguard/apiary_api_key; then
+    umask 077
+    openssl rand -hex 32 | sudo tee /etc/apiaryguard/apiary_api_key >/dev/null
+fi
+sudo chown root:www-data /etc/apiaryguard/apiary_api_key
+sudo chmod 0640 /etc/apiaryguard/apiary_api_key
+API_KEY="$(sudo cat /etc/apiaryguard/apiary_api_key)"
+
+# Apache udostępnia sekret wyłącznie procesom PHP przez lokalną konfigurację serwera.
+sudo tee /etc/apache2/conf-available/apiaryguard-env.conf >/dev/null <<EOF
+SetEnv APIARY_API_KEY "$API_KEY"
+EOF
+sudo chown root:www-data /etc/apache2/conf-available/apiaryguard-env.conf
+sudo chmod 0640 /etc/apache2/conf-available/apiaryguard-env.conf
+sudo a2enconf apiaryguard-env
+
 # 4. Konfiguracja bazy danych
 echo "💾 Konfigurowanie bazy danych SQLite..."
 DB_PATH="/var/lib/apiaryguard/apiary.db"
-sudo mkdir -p /var/lib/apiaryguard
-sudo touch $DB_PATH
-sudo chown www-data:www-data $DB_PATH
-sudo chmod 664 $DB_PATH
+# Setgid keeps every SQLite sidecar in the Apache-readable shared group.
+# The collector is the owner; Apache receives only group access.
+sudo install -d -o apiaryguard -g www-data -m 2770 /var/lib/apiaryguard
+sudo chown apiaryguard:www-data /var/lib/apiaryguard
+sudo chmod 2770 /var/lib/apiaryguard
+sudo touch "$DB_PATH"
+sudo chown apiaryguard:www-data "$DB_PATH"
+sudo chmod 0660 "$DB_PATH"
+for sidecar in "$DB_PATH-wal" "$DB_PATH-shm" "$DB_PATH-journal"; do
+    if sudo test -e "$sidecar"; then
+        sudo chown apiaryguard:www-data "$sidecar"
+        sudo chmod 0660 "$sidecar"
+    fi
+done
+sudo install -d -o apiaryguard -g apiaryguard -m 0750 /var/log/apiaryguard
+sudo chown apiaryguard:apiaryguard /var/log/apiaryguard
+sudo chmod 0750 /var/log/apiaryguard
+sudo install -d -o www-data -g www-data -m 0700 /var/log/apiaryguard-web
+sudo chown www-data:www-data /var/log/apiaryguard-web
+sudo chmod 0700 /var/log/apiaryguard-web
 
 # Inicjalizacja schematu bazy danych z pełną obsługą agregacji
-sudo -u www-data sqlite3 $DB_PATH <<EOF
+sudo -u apiaryguard sqlite3 "$DB_PATH" <<EOF
 -- Tabela dla danych surowych (sekundowych)
 CREATE TABLE IF NOT EXISTS raw_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -281,158 +321,12 @@ else
     echo "   Pliki WebUI nie zostaną skopiowane"
 fi
 
-# Zaawansowany plik index.php z obsługą wszystkich poziomów agregacji
-sudo tee /var/www/html/apiary/index.php > /dev/null <<'PHP_EOF'
-<?php
-header('Content-Type: application/json');
+# Legacy endpoint: read-only, authenticated and bounded API.
+sudo install -o root -g www-data -m 0640 "$WEBUI_SOURCE/legacy_api.php" "$WEB_DIR/index.php"
+sudo chown www-data:www-data "$WEB_DIR"
+sudo chmod 0750 "$WEB_DIR"
 
-$db = new SQLite3('/var/lib/apiaryguard/apiary.db');
-if (!$db) {
-    echo json_encode(['error' => 'Database connection failed']);
-    exit;
-}
 
-$action = $_GET['action'] ?? 'latest';
-$hive_id = $_GET['hive_id'] ?? '%';
-$limit = intval($_GET['limit'] ?? 100);
-
-switch ($action) {
-    case 'latest':
-        // Najnowsze dane zagregowane (minutowe)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 1 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT 1");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-        echo json_encode($result ?: ['status' => 'no_data']);
-        break;
-        
-    case 'history_minute':
-        // Historia minutowa (ostatnie 60 minut)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 1 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_hour':
-        // Historia godzinowa (ostatnie 168 godzin = tydzień)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 2 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_day':
-        // Historia dzienna (ostatnie 365 dni)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 3 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_week':
-        // Historia tygodniowa (ostatnie 52 tygodnie)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 4 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_month':
-        // Historia miesięczna (ostatnie 60 miesięcy = 5 lat)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 5 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_quarter':
-        // Historia kwartalna (ostatnie 40 kwartałów = 10 lat)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 6 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'history_year':
-        // Historia roczna (ostatnie 100 lat)
-        $stmt = $db->prepare("SELECT * FROM aggregated_data WHERE agg_type = 7 AND hive_id LIKE :hive ORDER BY timestamp_start DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'raw':
-        // Dane surowe (ostatnie 7 dni)
-        $stmt = $db->prepare("SELECT * FROM raw_data WHERE hive_id LIKE :hive AND timestamp > (strftime('%s', 'now') - 604800) ORDER BY timestamp DESC LIMIT :limit");
-        $stmt->bindValue(':hive', $hive_id, SQLITE3_TEXT);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-        $results = [];
-        $query = $stmt->execute();
-        while ($row = $query->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = $row;
-        }
-        echo json_encode($results);
-        break;
-        
-    case 'stats':
-        // Statystyki bazy danych
-        $stats = [];
-        $stats['raw_count'] = $db->querySingle("SELECT COUNT(*) FROM raw_data");
-        $stats['minute_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 1");
-        $stats['hour_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 2");
-        $stats['day_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 3");
-        $stats['week_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 4");
-        $stats['month_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 5");
-        $stats['quarter_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 6");
-        $stats['year_count'] = $db->querySingle("SELECT COUNT(*) FROM aggregated_data WHERE agg_type = 7");
-        $stats['oldest_raw'] = $db->querySingle("SELECT datetime(timestamp, 'unixepoch') FROM raw_data ORDER BY timestamp ASC LIMIT 1");
-        $stats['newest_raw'] = $db->querySingle("SELECT datetime(timestamp, 'unixepoch') FROM raw_data ORDER BY timestamp DESC LIMIT 1");
-        echo json_encode($stats);
-        break;
-        
-    default:
-        echo json_encode(['error' => 'Unknown action. Use: latest, history_minute, history_hour, history_day, history_week, history_month, history_quarter, history_year, raw, stats']);
-        break;
-}
-
-$db->close();
-?>
-PHP_EOF
 
 # Konfiguracja uprawnień
 sudo chmod 644 /var/www/html/apiary/index.php
@@ -451,21 +345,45 @@ COLLECTOR_BIN=$(which apiary-collector 2>/dev/null || echo "/usr/local/bin/apiar
 sudo tee /etc/systemd/system/apiary-collector.service > /dev/null <<EOF
 [Unit]
 Description=Apiary Data Collector Service
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=apiaryguard
+Group=apiaryguard
+SupplementaryGroups=www-data
 ExecStart=${COLLECTOR_BIN}
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+# SQLite creates WAL/SHM files dynamically. The shared setgid directory
+# and this mask keep those files group-readable/writable by Apache.
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/apiaryguard /var/log/apiaryguard
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
+sudo apache2ctl configtest
+sudo systemctl restart apache2
 sudo systemctl enable apiary-collector
+sudo systemctl restart apiary-collector
 
 echo "✅ Instalacja zakończona pomyślnie!"
 echo ""
