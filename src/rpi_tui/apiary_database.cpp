@@ -466,7 +466,9 @@ bool ApiaryDatabase::flushBuffer() {
             if (parseJsonObjectScalars(data.raw_payload_json, values)) {
                 for (const auto& item : values) {
                     if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
-                        item.second == "true" || item.second == "false" || item.second == "null") continue;
+                        item.first == "timestamp" || item.first == "time" || item.first == "ts" ||
+                        item.first == "id" || item.second == "true" || item.second == "false" ||
+                        item.second == "null") continue;
                     char* number_end = nullptr;
                     const double value = std::strtod(item.second.c_str(), &number_end);
                     if (number_end == item.second.c_str() || *number_end != '\\0' || !std::isfinite(value)) continue;

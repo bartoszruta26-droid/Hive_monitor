@@ -196,7 +196,7 @@ int main() {
     sqlite3_close(metric_seed_db);
     assert(database.aggregateData(apiary::AggregationType::RAW, apiary::AggregationType::MINUTE) >= 1);
     const auto dynamic_metrics = database.getHistoricalMetrics(
-        "UL-DYNAMIC", apiary::AggregationType::MINUTE, 1699999980, 1700000040);
+        "UL-DYNAMIC", apiary::AggregationType::MINUTE, 1699999980, 1700000040, "future_sensor_index");
     assert(dynamic_metrics.size() == 1);
     assert(dynamic_metrics.front().metric_name == "future_sensor_index");
     assert(dynamic_metrics.front().average == 10.5);
@@ -330,6 +330,13 @@ int main() {
     const auto* stored_payload = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
     assert(stored_payload != nullptr);
     assert(std::string(stored_payload).find("extended_metric") != std::string::npos);
+    sqlite3_finalize(stmt);
+    assert(sqlite3_prepare_v2(
+        verify_db,
+        "SELECT metric_value FROM raw_metric_values WHERE hive_id='UL-2' AND metric_name='extended_metric'",
+        -1, &stmt, nullptr) == SQLITE_OK);
+    assert(sqlite3_step(stmt) == SQLITE_ROW);
+    assert(sqlite3_column_double(stmt, 0) == 12.5);
     sqlite3_finalize(stmt);
     sqlite3_close(verify_db);
 
