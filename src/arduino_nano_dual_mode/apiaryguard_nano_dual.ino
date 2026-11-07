@@ -96,6 +96,10 @@ const uint8_t MAX_CONSECUTIVE_FAILURES = 5;  // Reset sensor after this many fai
 
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 1000;  // 1 sekunda
+// Heater interlock: a positive duty requires a recent, valid DHT22 sample.
+bool dhtTemperatureValid = false;
+unsigned long lastDhtGoodAt = 0;
+const unsigned long DHT_MAX_AGE_MS = 5000;
 unsigned long lastHeartbeat = 0;
 const unsigned long HEARTBEAT_INTERVAL = 10000;  // 10 sekund
 
@@ -352,6 +356,16 @@ int readPiezo() {
  */
 void setPWM(int pin, int value, int pwmType) {
   uint8_t constrainedValue = constrain(value, 0, 255);
+  // Fail closed for heater energization if the temperature sensor is invalid
+  // or stale. A zero-duty command is always allowed as a de-energize action.
+  if (pwmType == 0 && constrainedValue > 0 &&
+      (!dhtTemperatureValid || (millis() - lastDhtGoodAt > DHT_MAX_AGE_MS))) {
+    analogWrite(HEATER_PWM, 0);
+    pwm_state.heater = 0;
+    sensors.heater_pwm = 0;
+    logWarning("HEATER", "Command rejected: DHT22 sample invalid or stale");
+    return;
+  }
   analogWrite(pin, constrainedValue);
   
   if (pwmType == 0) {
@@ -443,12 +457,15 @@ bool readDHT22() {
     if (checkSensorHealth(sensorErrors.dht_errors, "DHT22")) {
       logWarning("DHT22", "Read failed, retrying next cycle");
     }
+    dhtTemperatureValid = false;
     sensors.temp_raw = -99.9;
     sensors.hum_raw = -99.9;
     return false;
   }
   
   resetSensorError(sensorErrors.dht_errors);
+  dhtTemperatureValid = true;
+  lastDhtGoodAt = millis();
   sensors.temp_raw = t;
   sensors.hum_raw = h;
   return true;
@@ -864,6 +881,9 @@ void setup() {
   pinMode(PUMP_PWM, OUTPUT);
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
+  analogWrite(HEATER_PWM, 0);
+  analogWrite(FAN_PWM, 0);
+  analogWrite(PUMP_PWM, 0);
   digitalWrite(RELAY_1, LOW);
   digitalWrite(RELAY_2, LOW);
   
