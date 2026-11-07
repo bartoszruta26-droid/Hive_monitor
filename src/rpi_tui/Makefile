@@ -20,6 +20,7 @@ DATABASE_TEST_TARGET = database_regression_test
 NETWORK_TEST_TARGET = network_security_test
 JSON_TEST_TARGET = json_object_parser_test
 VALIDATION_TEST_TARGET = measurement_validation_test
+PICO_UDP_TEST_TARGET = pico_udp_contract_test
 
 # Tryb testowy (standalone)
 TEST_FLAGS = -DSTANDALONE_TEST
@@ -81,9 +82,16 @@ $(VALIDATION_TEST_TARGET): tests/test_measurement_validation.cpp measurement_val
 test-validation: $(VALIDATION_TEST_TARGET)
 	./$(VALIDATION_TEST_TARGET)
 
+# Kontrakt firmware Pico -> kolektor: kształt JSON, walidacja i mapowanie pól.
+$(PICO_UDP_TEST_TARGET): tests/test_pico_udp_contract.cpp json_object_parser.h measurement_validation.h
+	$(CXX) $(CXXFLAGS) -I. tests/test_pico_udp_contract.cpp -o $@
+
+test-pico-udp: $(PICO_UDP_TEST_TARGET)
+	./$(PICO_UDP_TEST_TARGET)
+
 # Czyszczenie
 clean:
-	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) $(VALIDATION_TEST_TARGET) *.log
+	rm -f *.o $(LOGGER_TARGET) $(COLLECTOR_TARGET) $(TEST_TARGET) $(HTTP_TEST_TARGET) $(DATABASE_TEST_TARGET) $(NETWORK_TEST_TARGET) $(JSON_TEST_TARGET) $(VALIDATION_TEST_TARGET) $(PICO_UDP_TEST_TARGET) *.log
 
 # Instalacja (wymaga sudo)
 install: $(COLLECTOR_TARGET) $(TEST_TARGET)
