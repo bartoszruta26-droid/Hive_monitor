@@ -309,6 +309,8 @@ void ApiaryDatabase::createTables() {
         );
         CREATE INDEX IF NOT EXISTS idx_agg_metric_hive_type_time
             ON aggregated_metric_values(hive_id, agg_type, timestamp_start, metric_name);
+        CREATE INDEX IF NOT EXISTS idx_agg_metric_catalog
+            ON aggregated_metric_values(hive_id, agg_type, metric_name, timestamp_start);
     )";
     char* metric_error = nullptr;
     if (sqlite3_exec(db_, metric_tables, nullptr, nullptr, &metric_error) != SQLITE_OK) {

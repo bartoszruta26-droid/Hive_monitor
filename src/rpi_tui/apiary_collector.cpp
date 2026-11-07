@@ -1473,6 +1473,7 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
     const std::string start_value = queryParameter(target, "start");
     const std::string end_value = queryParameter(target, "end");
     const std::string metric_filter = queryParameter(target, "metric");
+    const bool include_records = queryParameter(target, "include_records") != "false";
     long long start_time = 0;
     long long end_time = 0;
 
@@ -1506,7 +1507,9 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
         return "{\"error\":\"history_database_unavailable\"}";
     }
 
-    const auto records = database.getHistoricalData(hive_id, type, start_time, end_time);
+    const auto records = include_records
+        ? database.getHistoricalData(hive_id, type, start_time, end_time)
+        : std::vector<apiary::AggregatedRecord>{};
     std::ostringstream json;
     json << std::setprecision(8)
          << "{\"hive_id\":\"" << hive_id
