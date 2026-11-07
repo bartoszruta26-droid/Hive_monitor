@@ -19,7 +19,7 @@ int main() {
     assert(values.at("weight") == "45");
     assert(values.at("voc") == "35");
     assert(values.at("nox") == "12");
-    assert(values.at("co2_available") == "true");
+    assert(values.at("co2_available") == "__JSON_BOOL_TRUE__");
     assert(values.at("co2") == "450");
 
     const std::string no_co2_payload =
