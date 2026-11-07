@@ -92,11 +92,14 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.connectionState.observe(this) { isConnected ->
             val hasSavedHost = viewModel.getSavedIpAddress() != null
-            binding.connectionBanner.visibility =
-                if (isConnected == false && hasSavedHost) View.VISIBLE else View.GONE
+            renderConnectionBanner(isConnected == true, hasSavedHost)
             if (!isConnected && !hasSavedHost) {
                 showIpInputDialog()
             }
+        }
+
+        viewModel.archivedReadingsInfo.observe(this) {
+            renderConnectionBanner(viewModel.connectionState.value == true, viewModel.getSavedIpAddress() != null)
         }
 
         viewModel.isLoading.observe(this) { isLoading ->
@@ -114,6 +117,16 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(data)
             binding.emptyState.visibility = if (data.isEmpty()) View.VISIBLE else View.GONE
             binding.recyclerView.visibility = if (data.isEmpty()) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun renderConnectionBanner(isConnected: Boolean, hasSavedHost: Boolean) {
+        val info = viewModel.archivedReadingsInfo.value
+        binding.connectionBanner.visibility = if (!isConnected && hasSavedHost) View.VISIBLE else View.GONE
+        binding.connectionBanner.text = if (!isConnected && hasSavedHost && info != null) {
+            getString(R.string.connection_offline_with_archive, info.count, ApiaryUiFormatter.formatTimestamp(info.latestTimestamp))
+        } else {
+            getString(R.string.connection_offline_banner)
         }
     }
 

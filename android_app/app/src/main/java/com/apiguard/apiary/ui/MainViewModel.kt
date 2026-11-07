@@ -5,11 +5,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.apiguard.apiary.data.model.ApiaryReading
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.repository.ApiaryRepository
 import com.apiguard.apiary.repository.ConnectionResult
 import com.apiguard.apiary.util.isValidPort
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 /**
  * ViewModel dla MainActivity.
@@ -34,8 +36,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _apiaryData = MutableLiveData<List<ApiaryData>>()
     val apiaryData: LiveData<List<ApiaryData>> = _apiaryData
     
+    private val _archivedReadingsInfo = MutableLiveData<ArchivedReadingsInfo?>()
+    val archivedReadingsInfo: LiveData<ArchivedReadingsInfo?> = _archivedReadingsInfo
+
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
+
+    init {
+        // Archiwum jest niezależne od strumienia live i pozostaje oznaczone jako historyczne.
+        viewModelScope.launch {
+            repository.getAllCachedReadings().collect { readings ->
+                _archivedReadingsInfo.value = readings.maxByOrNull { it.timestamp }?.let { latest ->
+                    ArchivedReadingsInfo(readings.size, latest.timestamp)
+                }
+            }
+        }
+    }
 
     fun checkSavedConnection() {
         val savedIp = repository.getSavedIpAddress()
@@ -175,3 +191,6 @@ class MainViewModelFactory(
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+
+
+data class ArchivedReadingsInfo(val count: Int, val latestTimestamp: Long)

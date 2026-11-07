@@ -45,4 +45,5 @@
     <string name="desc_status_warning">Uwaga: parametr poza zakresem</string>
     <string name="desc_status_alert">Alert: krytyczny parametr</string>
     <string name="connection_offline_banner">Brak połączenia z API. Bieżące pomiary są niedostępne.</string>
+    <string name="connection_offline_with_archive">Brak połączenia z API. Bieżące pomiary są niedostępne. Archiwum lokalne: %1$d zapisanych odczytów; najnowszy z %2$s. Dane archiwalne nie są pomiarami bieżącymi.</string>
 </resources>
