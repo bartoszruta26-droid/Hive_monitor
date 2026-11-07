@@ -118,7 +118,7 @@ int main() {
     assert(sqlite3_prepare_v2(calendar_db,
         "INSERT INTO aggregated_data (timestamp_start,timestamp_end,hive_id,agg_type,"
         "temperature_avg,temperature_min,temperature_max,humidity_avg,humidity_min,humidity_max,"
-        "weight_avg,weight_min,weight_max,record_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "weight_avg,weight_min,weight_max,audio_rms_avg,record_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         -1, &seed_day, nullptr) == SQLITE_OK);
     const auto seedMonthDays = [&](int year, int month, int days) {
         std::tm start_tm{};
@@ -141,7 +141,9 @@ int main() {
             sqlite3_bind_double(seed_day, 11, 40.0);
             sqlite3_bind_double(seed_day, 12, 39.0);
             sqlite3_bind_double(seed_day, 13, 41.0);
-            sqlite3_bind_int(seed_day, 14, 24);
+            if (day == 0) sqlite3_bind_double(seed_day, 14, 10.0);
+            else sqlite3_bind_null(seed_day, 14);
+            sqlite3_bind_int(seed_day, 15, 24);
             assert(sqlite3_step(seed_day) == SQLITE_DONE);
             assert(sqlite3_reset(seed_day) == SQLITE_OK);
             sqlite3_clear_bindings(seed_day);
@@ -160,6 +162,7 @@ int main() {
     assert(monthly[0].timestamp_start == 1704067200LL); // 2024-01-01 UTC
     assert(monthly[0].timestamp_end == 1706745600LL);   // 2024-02-01 UTC
     assert(monthly[0].record_count == 31 * 24);
+    assert(monthly[0].audio_rms_avg == 10.0f);
     assert(monthly[1].timestamp_start == 1706745600LL); // 2024-02-01 UTC
     assert(monthly[1].timestamp_end == 1709251200LL);   // 2024-03-01 UTC
     assert(monthly[1].record_count == 29 * 24);
