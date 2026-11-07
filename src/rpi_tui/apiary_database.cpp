@@ -184,6 +184,7 @@ void ApiaryDatabase::createTables() {
             
             -- Air Quality
             aq_gas_idx REAL,
+            payload_json TEXT,
             
             created_at INTEGER DEFAULT (strftime('%s', 'now'))
         );
@@ -257,6 +258,29 @@ void ApiaryDatabase::createTables() {
         throw DatabaseInitException(err);
     }
     
+    // Migracja wstecznie zgodna: starsze bazy otrzymują kolumnę oryginalnego payloadu.
+    bool has_payload_column = false;
+    sqlite3_stmt* columns_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "PRAGMA table_info(raw_data);", -1, &columns_stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(columns_stmt) == SQLITE_ROW) {
+            const auto* column_name = reinterpret_cast<const char*>(sqlite3_column_text(columns_stmt, 1));
+            if (column_name && std::string(column_name) == "payload_json") {
+                has_payload_column = true;
+                break;
+            }
+        }
+    }
+    sqlite3_finalize(columns_stmt);
+    if (!has_payload_column) {
+        char* migration_error = nullptr;
+        if (sqlite3_exec(db_, "ALTER TABLE raw_data ADD COLUMN payload_json TEXT;", nullptr, nullptr, &migration_error) != SQLITE_OK) {
+            const std::string detail = migration_error ? migration_error : sqlite3_errmsg(db_);
+            sqlite3_free(migration_error);
+            throw DatabaseInitException("Cannot add raw payload column: " + detail);
+        }
+        sqlite3_free(migration_error);
+    }
+
     LOG_DEBUG("Tabele bazy danych utworzone pomyślnie");
 }
 
@@ -336,8 +360,8 @@ bool ApiaryDatabase::flushBuffer() {
             radar_distance, radar_energy, radar_activity,
             hx711_current, hx711_slope_24h,
             th_heat_index, th_dew_point, th_vpd,
-            aq_gas_idx
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            aq_gas_idx, payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
     sqlite3_stmt* stmt = nullptr;
@@ -382,6 +406,7 @@ bool ApiaryDatabase::flushBuffer() {
         if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 20, data.th_dew_point);
         if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 21, data.th_vpd);
         if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 22, data.aq_gas_idx);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_text(stmt, 23, data.raw_payload_json.c_str(), -1, SQLITE_TRANSIENT);
 
         if (rc == SQLITE_OK) rc = sqlite3_step(stmt);
         if (rc != SQLITE_DONE) {

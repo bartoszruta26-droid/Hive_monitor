@@ -211,6 +211,7 @@ int main() {
     // A partial batch must be persisted on orderly shutdown.
     HiveData reading;
     reading.hive_id = "UL-2";
+    reading.raw_payload_json = "{\\"hive_id\\":\\"UL-2\\",\\"extended_metric\\":12.5}";
     reading.timestamp = 200;
     reading.temperature = 35.0f;
     reading.humidity = 60.0f;
@@ -294,10 +295,12 @@ int main() {
     sqlite3_stmt* stmt = nullptr;
     assert(sqlite3_prepare_v2(
         verify_db,
-        "SELECT COUNT(*) FROM raw_data WHERE hive_id = 'UL-2'",
+        "SELECT payload_json FROM raw_data WHERE hive_id = 'UL-2'",
         -1, &stmt, nullptr) == SQLITE_OK);
     assert(sqlite3_step(stmt) == SQLITE_ROW);
-    assert(sqlite3_column_int(stmt, 0) == 1);
+    const auto* stored_payload = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    assert(stored_payload != nullptr);
+    assert(std::string(stored_payload).find("extended_metric") != std::string::npos);
     sqlite3_finalize(stmt);
     sqlite3_close(verify_db);
 

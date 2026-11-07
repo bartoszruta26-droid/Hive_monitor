@@ -732,6 +732,7 @@ public:
             
             HiveData data;
             data.hive_id = hive_id;
+            data.raw_payload_json = json_str;
             data.timestamp = timestamp;
             data.is_online = true;
             
@@ -1007,6 +1008,7 @@ public:
                     Logger::getInstance().info("Wykryto nowy ul: " + hive_id + " z IP " + source_ip);
                     HiveData new_hive;
                     new_hive.hive_id = hive_id;
+                    new_hive.raw_payload_json = raw_data;
                     new_hive.temperature = temp;
                     new_hive.humidity = humidity;
                     new_hive.weight = weight;
