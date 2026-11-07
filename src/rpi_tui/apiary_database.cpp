@@ -533,21 +533,38 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
             return 0;
     }
 
-    const std::string temperature_column = source_is_raw ? "src.temperature" : "src.temperature_avg";
-    const std::string humidity_column = source_is_raw ? "src.humidity" : "src.humidity_avg";
-    const std::string weight_column = source_is_raw ? "src.weight" : "src.weight_avg";
-    const std::string battery_column = source_is_raw ? "src.battery_level" : "src.battery_avg";
-    const std::string co2_column = source_is_raw ? "src.co2_eq" : "src.co2_avg";
-    const std::string voc_column = source_is_raw ? "src.voc_idx" : "src.voc_avg";
-    const std::string audio_rms_column = source_is_raw ? "src.audio_rms" : "src.audio_rms_avg";
-    const std::string audio_frequency_column = source_is_raw ? "src.audio_dominant_freq" : "src.audio_dominant_freq_avg";
-    const std::string audio_swarm_column = source_is_raw ? "src.audio_swarm_prob" : "src.audio_swarm_prob_avg";
-    const std::string audio_activity_column = source_is_raw ? "src.audio_bee_activity" : "src.audio_bee_activity_avg";
-    const std::string radar_distance_column = source_is_raw ? "src.radar_distance" : "src.radar_distance_avg";
-    const std::string radar_energy_column = source_is_raw ? "src.radar_energy" : "src.radar_energy_avg";
-    const std::string radar_activity_column = source_is_raw ? "src.radar_activity" : "src.radar_activity_avg";
-    const std::string hx711_current_column = source_is_raw ? "src.hx711_current" : "src.hx711_current_avg";
-    const std::string hx711_slope_column = source_is_raw ? "src.hx711_slope_24h" : "src.hx711_slope_24h_avg";
+    const auto averageExpression = [source_is_raw](const std::string& raw, const std::string& average) {
+        return source_is_raw ? "AVG(src." + raw + ")" :
+            "SUM(src." + average + " * src.record_count) / NULLIF(SUM(src.record_count), 0)";
+    };
+    const auto minimumExpression = [source_is_raw](const std::string& raw, const std::string& minimum) {
+        return source_is_raw ? "MIN(src." + raw + ")" : "MIN(src." + minimum + ")";
+    };
+    const auto maximumExpression = [source_is_raw](const std::string& raw, const std::string& maximum) {
+        return source_is_raw ? "MAX(src." + raw + ")" : "MAX(src." + maximum + ")";
+    };
+    const std::string temperature_avg = averageExpression("temperature", "temperature_avg");
+    const std::string temperature_min = minimumExpression("temperature", "temperature_min");
+    const std::string temperature_max = maximumExpression("temperature", "temperature_max");
+    const std::string humidity_avg = averageExpression("humidity", "humidity_avg");
+    const std::string humidity_min = minimumExpression("humidity", "humidity_min");
+    const std::string humidity_max = maximumExpression("humidity", "humidity_max");
+    const std::string weight_avg = averageExpression("weight", "weight_avg");
+    const std::string weight_min = minimumExpression("weight", "weight_min");
+    const std::string weight_max = maximumExpression("weight", "weight_max");
+    const std::string battery_avg = averageExpression("battery_level", "battery_avg");
+    const std::string co2_avg = averageExpression("co2_eq", "co2_avg");
+    const std::string voc_avg = averageExpression("voc_idx", "voc_avg");
+    const std::string audio_rms_avg = averageExpression("audio_rms", "audio_rms_avg");
+    const std::string audio_frequency_avg = averageExpression("audio_dominant_freq", "audio_dominant_freq_avg");
+    const std::string audio_swarm_avg = averageExpression("audio_swarm_prob", "audio_swarm_prob_avg");
+    const std::string audio_activity_avg = averageExpression("audio_bee_activity", "audio_bee_activity_avg");
+    const std::string radar_distance_avg = averageExpression("radar_distance", "radar_distance_avg");
+    const std::string radar_energy_avg = averageExpression("radar_energy", "radar_energy_avg");
+    const std::string radar_activity_avg = averageExpression("radar_activity", "radar_activity_avg");
+    const std::string hx711_current_avg = averageExpression("hx711_current", "hx711_current_avg");
+    const std::string hx711_slope_avg = averageExpression("hx711_slope_24h", "hx711_slope_24h_avg");
+    const std::string source_record_count = source_is_raw ? "COUNT(*)" : "SUM(src.record_count)";
 
     const long long target_type_value = static_cast<int>(target_type);
     const long long source_type_value = static_cast<int>(source_type);
@@ -563,14 +580,14 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
            "hx711_current_avg, hx711_slope_24h_avg, record_count"
         ") SELECT "
         << bucket_start << ", " << bucket_end << ", src.hive_id, " << target_type_value << ","
-        << "AVG(" << temperature_column << "), MIN(" << temperature_column << "), MAX(" << temperature_column << "),"
-        << "AVG(" << humidity_column << "), MIN(" << humidity_column << "), MAX(" << humidity_column << "),"
-        << "AVG(" << weight_column << "), MIN(" << weight_column << "), MAX(" << weight_column << "),"
-        << "AVG(" << battery_column << "), AVG(" << co2_column << "), AVG(" << voc_column << "),"
-        << "AVG(" << audio_rms_column << "), AVG(" << audio_frequency_column << "),"
-        << "AVG(" << audio_swarm_column << "), AVG(" << audio_activity_column << "),"
-        << "AVG(" << radar_distance_column << "), AVG(" << radar_energy_column << "), AVG(" << radar_activity_column << "),"
-        << "AVG(" << hx711_current_column << "), AVG(" << hx711_slope_column << "), COUNT(*) "
+        << temperature_avg << ", " << temperature_min << ", " << temperature_max << ","
+        << humidity_avg << ", " << humidity_min << ", " << humidity_max << ","
+        << weight_avg << ", " << weight_min << ", " << weight_max << ","
+        << battery_avg << ", " << co2_avg << ", " << voc_avg << ","
+        << audio_rms_avg << ", " << audio_frequency_avg << ","
+        << audio_swarm_avg << ", " << audio_activity_avg << ","
+        << radar_distance_avg << ", " << radar_energy_avg << ", " << radar_activity_avg << ","
+        << hx711_current_avg << ", " << hx711_slope_avg << ", " << source_record_count << " "
         << "FROM " << source_table << " AS src "
         << "WHERE " << bucket_end << " <= CAST(strftime('%s', 'now') AS INTEGER) ";
 

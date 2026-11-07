@@ -110,6 +110,68 @@ int main() {
     assert(hourly.size() == 1);
     assert(hourly.front().record_count == 30);
 
+    // Calendar month boundaries must respect the real Gregorian calendar,
+    // including leap February 2024 (29 days), not fixed 30-day buckets.
+    sqlite3* calendar_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &calendar_db) == SQLITE_OK);
+    sqlite3_stmt* seed_day = nullptr;
+    assert(sqlite3_prepare_v2(calendar_db,
+        "INSERT INTO aggregated_data (timestamp_start,timestamp_end,hive_id,agg_type,"
+        "temperature_avg,temperature_min,temperature_max,humidity_avg,humidity_min,humidity_max,"
+        "weight_avg,weight_min,weight_max,record_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        -1, &seed_day, nullptr) == SQLITE_OK);
+    const auto seedMonthDays = [&](int year, int month, int days) {
+        std::tm start_tm{};
+        start_tm.tm_year = year - 1900;
+        start_tm.tm_mon = month - 1;
+        start_tm.tm_mday = 1;
+        const long long start_epoch = static_cast<long long>(timegm(&start_tm));
+        for (int day = 0; day < days; ++day) {
+            const long long timestamp = start_epoch + static_cast<long long>(day) * 86400;
+            sqlite3_bind_int64(seed_day, 1, timestamp);
+            sqlite3_bind_int64(seed_day, 2, timestamp + 86400);
+            sqlite3_bind_text(seed_day, 3, "UL-CALENDAR", -1, SQLITE_STATIC);
+            sqlite3_bind_int(seed_day, 4, static_cast<int>(apiary::AggregationType::DAY));
+            sqlite3_bind_double(seed_day, 5, 30.0 + month);
+            sqlite3_bind_double(seed_day, 6, 29.0 + month);
+            sqlite3_bind_double(seed_day, 7, 31.0 + month);
+            sqlite3_bind_double(seed_day, 8, 55.0);
+            sqlite3_bind_double(seed_day, 9, 54.0);
+            sqlite3_bind_double(seed_day, 10, 56.0);
+            sqlite3_bind_double(seed_day, 11, 40.0);
+            sqlite3_bind_double(seed_day, 12, 39.0);
+            sqlite3_bind_double(seed_day, 13, 41.0);
+            sqlite3_bind_int(seed_day, 14, 24);
+            assert(sqlite3_step(seed_day) == SQLITE_DONE);
+            assert(sqlite3_reset(seed_day) == SQLITE_OK);
+            sqlite3_clear_bindings(seed_day);
+        }
+    };
+    seedMonthDays(2024, 1, 31);
+    seedMonthDays(2024, 2, 29);
+    sqlite3_finalize(seed_day);
+    sqlite3_close(calendar_db);
+
+    assert(database.aggregateData(
+        apiary::AggregationType::DAY, apiary::AggregationType::MONTH) == 2);
+    const auto monthly = database.getHistoricalData(
+        "UL-CALENDAR", apiary::AggregationType::MONTH, 1704067200, 1709251200);
+    assert(monthly.size() == 2);
+    assert(monthly[0].timestamp_start == 1704067200LL); // 2024-01-01 UTC
+    assert(monthly[0].timestamp_end == 1706745600LL);   // 2024-02-01 UTC
+    assert(monthly[0].record_count == 31 * 24);
+    assert(monthly[1].timestamp_start == 1706745600LL); // 2024-02-01 UTC
+    assert(monthly[1].timestamp_end == 1709251200LL);   // 2024-03-01 UTC
+    assert(monthly[1].record_count == 29 * 24);
+    assert(database.aggregateData(
+        apiary::AggregationType::MONTH, apiary::AggregationType::QUARTER) == 1);
+    const auto quarterly = database.getHistoricalData(
+        "UL-CALENDAR", apiary::AggregationType::QUARTER, 1704067200, 1711929600);
+    assert(quarterly.size() == 1);
+    assert(quarterly.front().timestamp_start == 1704067200LL);
+    assert(quarterly.front().timestamp_end == 1711929600LL);
+    assert(quarterly.front().record_count == 60 * 24);
+
     // Concurrent producers and concurrent statistics reads must not race
     // with buffer updates or database lifecycle transitions.
     std::atomic<bool> observer_running{true};
