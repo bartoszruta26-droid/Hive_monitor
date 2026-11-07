@@ -731,36 +731,14 @@ void sendEthernetJSON(EthernetClient& client) {
  * Wysyłanie odpowiedzi HTTP
  */
 void sendHTTPResponse(EthernetClient& client, const char* contentType, const char* content) {
-  const size_t length = strlen(content);
+  const size_t length = strlen_P(content);
   client.println(F("HTTP/1.1 200 OK"));
   client.print(F("Content-Type: ")); client.println(contentType);
   client.println(F("Connection: close"));
   client.print(F("Content-Length: ")); client.println(length);
   client.println();
-  client.write((const uint8_t*)content, length);
+  for (size_t i = 0; i < length; ++i) client.write(pgm_read_byte(content + i));
   client.stop();
-}
-
-/**
- * Obsługa komend HTTP
- */
-void handleHTTPCommand(String cmd) {
-  if (cmd.startsWith("SET_HEATER:")) {
-    int val = cmd.substring(11).toInt();
-    setPWM(HEATER_PWM, val, 0);
-  } else if (cmd.startsWith("SET_FAN:")) {
-    int val = cmd.substring(8).toInt();
-    setPWM(FAN_PWM, val, 1);
-  } else if (cmd.startsWith("SET_PUMP:")) {
-    int val = cmd.substring(9).toInt();
-    setPWM(PUMP_PWM, val, 2);
-  } else if (cmd.startsWith("SET_RELAY1:")) {
-    setRelay(RELAY_1, cmd.substring(11).toInt());
-  } else if (cmd.startsWith("SET_RELAY2:")) {
-    setRelay(RELAY_2, cmd.substring(11).toInt());
-  } else if (cmd.startsWith("CALIB_WEIGHT")) {
-    weightOffset = readHX711Raw();
-  }
 }
 
 /**
@@ -806,9 +784,7 @@ void handleEthernetServer() {
       "<h1>ApiaryGuard Nano</h1><pre id=d>Loading...</pre>"
       "<script>setInterval(()=>fetch('/api/raw').then(r=>r.json())"
       ".then(x=>d.textContent=JSON.stringify(x,null,2)),2000);</script>";
-    char pageBuffer[sizeof(page)];
-    memcpy_P(pageBuffer, page, sizeof(page));
-    sendHTTPResponse(client, "text/html", pageBuffer);
+    sendHTTPResponse(client, "text/html", page);
   }
   else {
     client.println("HTTP/1.1 404 Not Found");
