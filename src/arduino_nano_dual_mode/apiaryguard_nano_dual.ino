@@ -27,6 +27,7 @@
 #include <DHT.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
+#include <string.h>
 
 // ==================== KONFIGURACJA PINÓW ====================
 // Ethernet SPI
