@@ -185,7 +185,8 @@ void setHeaterPWM(int duty) {
 
     // Guard the immediate hardware write, not only the end-of-loop update.
     // This prevents even a brief heater pulse when the safety sensor is stale.
-    if (duty > 0 && !isHeaterSensorReadyForActuation()) {
+    if (duty > 0 && !safeModePolicy::mayEnergizeHeater(
+            duty, safe_mode_active, isHeaterSensorReadyForActuation())) {
         ++effector_error_count;
         LOG_ERROR("EFFECTORS", "Rejected heater activation: temperature sensor is unavailable, invalid or stale");
         activateSafeMode("Heater command rejected: temperature sensor unavailable, invalid or stale");
