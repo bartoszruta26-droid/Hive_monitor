@@ -622,6 +622,8 @@ void printFlowingHiveEffectorStatus() {
     Serial.printf("  Servo:\n");
     Serial.printf("    Controller ready: %s\n", servoControllerReady ? "YES" : "NO");
     Serial.printf("    Initialized: %s\n", servoInitialized ? "YES" : "NO");
+    Serial.printf("    Rest command accepted by driver: %s\n", servoRestCommandAccepted ? "YES" : "NO");
+    Serial.println("    Physical position feedback: UNAVAILABLE (manual inspection required)");
     if (servoControllerReady) {
         Serial.printf("    Current angle: %d degrees\n", currentServoAngle);
         Serial.printf("    Auto-empty active: %s\n", autoEmptyActive ? "YES" : "NO");
