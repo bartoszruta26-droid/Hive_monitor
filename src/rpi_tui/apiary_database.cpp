@@ -24,6 +24,48 @@
 
 namespace apiary {
 
+namespace {
+
+using NumericMetricMap = std::map<std::string, double>;
+
+NumericMetricMap extractNumericMetrics(const std::string& payload) {
+    NumericMetricMap metrics;
+    std::map<std::string, std::string> values;
+    if (payload.empty() || !parseJsonObjectScalars(payload, values)) return metrics;
+    for (const auto& item : values) {
+        if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
+            item.first == "timestamp" || item.first == "time" || item.first == "ts" ||
+            item.first == "id" || item.first == "hive_id" || item.first == "apiary_id" ||
+            item.second == "__JSON_NULL__") continue;
+        double value = 0.0;
+        if (item.second == "__JSON_BOOL_TRUE__") value = 1.0;
+        else if (item.second == "__JSON_BOOL_FALSE__") value = 0.0;
+        else {
+            char* number_end = nullptr;
+            value = std::strtod(item.second.c_str(), &number_end);
+            if (number_end == item.second.c_str() || *number_end != '\\0' || !std::isfinite(value)) continue;
+        }
+        metrics.emplace(item.first, value);
+    }
+    return metrics;
+}
+
+bool insertMetricRow(sqlite3_stmt* stmt, sqlite3_int64 raw_id, sqlite3_int64 timestamp,
+                     const std::string& hive_id, const std::string& name, double value) {
+    int rc = sqlite3_bind_int64(stmt, 1, raw_id);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 2, timestamp);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_text(stmt, 3, hive_id.c_str(), -1, SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_text(stmt, 4, name.c_str(), -1, SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_double(stmt, 5, value);
+    if (rc == SQLITE_OK) rc = sqlite3_step(stmt);
+    const bool success = rc == SQLITE_DONE;
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
+    return success;
+}
+
+} // namespace
+
 // ============================================================================
 // KONFIGURACJA BAZY DANYCH
 // ============================================================================
@@ -287,6 +329,7 @@ void ApiaryDatabase::createTables() {
     const char* metric_tables = R"(
         CREATE TABLE IF NOT EXISTS raw_metric_values (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id INTEGER,
             timestamp INTEGER NOT NULL,
             hive_id TEXT NOT NULL,
             metric_name TEXT NOT NULL,
@@ -319,6 +362,95 @@ void ApiaryDatabase::createTables() {
         throw DatabaseInitException("Cannot create dynamic metric archive: " + detail);
     }
     sqlite3_free(metric_error);
+
+    // Wstecznie zgodna migracja identyfikatora rekordu źródłowego.
+    bool has_raw_id_column = false;
+    sqlite3_stmt* metric_columns = nullptr;
+    if (sqlite3_prepare_v2(db_, "PRAGMA table_info(raw_metric_values);", -1, &metric_columns, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(metric_columns) == SQLITE_ROW) {
+            const auto* column_name = reinterpret_cast<const char*>(sqlite3_column_text(metric_columns, 1));
+            if (column_name && std::string(column_name) == "raw_id") {
+                has_raw_id_column = true;
+                break;
+            }
+        }
+    }
+    sqlite3_finalize(metric_columns);
+    if (!has_raw_id_column) {
+        char* migration_error = nullptr;
+        if (sqlite3_exec(db_, "ALTER TABLE raw_metric_values ADD COLUMN raw_id INTEGER;", nullptr, nullptr, &migration_error) != SQLITE_OK) {
+            const std::string detail = migration_error ? migration_error : sqlite3_errmsg(db_);
+            sqlite3_free(migration_error);
+            throw DatabaseInitException("Cannot add raw metric source id: " + detail);
+        }
+        sqlite3_free(migration_error);
+    }
+    char* index_error = nullptr;
+    if (sqlite3_exec(db_,
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_raw_metric_source ON raw_metric_values(raw_id,metric_name);",
+        nullptr, nullptr, &index_error) != SQLITE_OK) {
+        const std::string detail = index_error ? index_error : sqlite3_errmsg(db_);
+        sqlite3_free(index_error);
+        throw DatabaseInitException("Cannot create raw metric source index: " + detail);
+    }
+    sqlite3_free(index_error);
+
+    // Backfill starszych pomiarów: odtwarzaj metryki dynamiczne z zachowanego
+    // payloadu i zawsze uzupełnij znane kolumny źródłowe. Nie dotykaj rekordów,
+    // dla których istnieje już zestaw metryk.
+    sqlite3_stmt* raw_rows = nullptr;
+    const char* raw_rows_sql =
+        "SELECT r.id,r.timestamp,r.hive_id,r.temperature,r.humidity,r.weight,r.battery_level,"
+        "r.co2_eq,r.voc_idx,r.motion_detected,r.audio_rms,r.audio_dominant_freq,"
+        "r.audio_swarm_prob,r.audio_bee_activity,r.radar_distance,r.radar_energy,"
+        "r.radar_activity,r.hx711_current,r.hx711_slope_24h,r.th_heat_index,"
+        "r.th_dew_point,r.th_vpd,r.aq_gas_idx,r.payload_json "
+        "FROM raw_data r WHERE NOT EXISTS (SELECT 1 FROM raw_metric_values m WHERE m.raw_id=r.id) "
+        "ORDER BY r.id";
+    if (sqlite3_prepare_v2(db_, raw_rows_sql, -1, &raw_rows, nullptr) != SQLITE_OK) {
+        throw DatabaseInitException(std::string("Cannot prepare raw metric backfill: ") + sqlite3_errmsg(db_));
+    }
+    sqlite3_stmt* backfill_metric = nullptr;
+    if (sqlite3_prepare_v2(db_,
+        "INSERT OR IGNORE INTO raw_metric_values(raw_id,timestamp,hive_id,metric_name,metric_value) VALUES(?,?,?,?,?)",
+        -1, &backfill_metric, nullptr) != SQLITE_OK) {
+        sqlite3_finalize(raw_rows);
+        throw DatabaseInitException(std::string("Cannot prepare raw metric backfill insert: ") + sqlite3_errmsg(db_));
+    }
+    int backfill_rc = SQLITE_OK;
+    while ((backfill_rc = sqlite3_step(raw_rows)) == SQLITE_ROW) {
+        const sqlite3_int64 raw_id = sqlite3_column_int64(raw_rows, 0);
+        const sqlite3_int64 timestamp = sqlite3_column_int64(raw_rows, 1);
+        const auto* hive_text = reinterpret_cast<const char*>(sqlite3_column_text(raw_rows, 2));
+        const std::string hive_id = hive_text ? hive_text : "";
+        const auto* payload_text = reinterpret_cast<const char*>(sqlite3_column_text(raw_rows, 23));
+        NumericMetricMap metrics = extractNumericMetrics(payload_text ? payload_text : "");
+        const char* fixed_names[] = {
+            "temperature","humidity","weight","battery_level","co2_eq","voc_idx","motion_detected",
+            "audio_rms","audio_dominant_freq","audio_swarm_prob","audio_bee_activity",
+            "radar_distance","radar_energy","radar_activity","hx711_current","hx711_slope_24h",
+            "th_heat_index","th_dew_point","th_vpd","aq_gas_idx"
+        };
+        for (int column = 0; column < 20; ++column) {
+            const int sqlite_column = column + 3;
+            if (sqlite3_column_type(raw_rows, sqlite_column) != SQLITE_NULL &&
+                metrics.find(fixed_names[column]) == metrics.end()) {
+                metrics.emplace(fixed_names[column], sqlite3_column_double(raw_rows, sqlite_column));
+            }
+        }
+        for (const auto& metric : metrics) {
+            if (!insertMetricRow(backfill_metric, raw_id, timestamp, hive_id, metric.first, metric.second)) {
+                sqlite3_finalize(backfill_metric);
+                sqlite3_finalize(raw_rows);
+                throw DatabaseInitException(std::string("Raw metric backfill failed: ") + sqlite3_errmsg(db_));
+            }
+        }
+    }
+    sqlite3_finalize(backfill_metric);
+    sqlite3_finalize(raw_rows);
+    if (backfill_rc != SQLITE_DONE) {
+        throw DatabaseInitException(std::string("Raw metric backfill scan failed: ") + sqlite3_errmsg(db_));
+    }
 
     LOG_DEBUG("Tabele bazy danych utworzone pomyślnie");
 }
