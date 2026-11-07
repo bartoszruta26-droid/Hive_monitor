@@ -365,7 +365,7 @@ void sendUDPData() {
     int payload_len = snprintf(
         payload, sizeof(payload),
         "{\"hive_id\":\"%s\",\"data_source\":\"pico\","
-        "\"temp\":%.1f,\"hum\":%.1f,\"weight\":%ld,"
+        "\"temp\":%.1f,\"hum\":%.1f,\"weight_raw\":%ld,"
         "\"voc\":%u,\"nox\":%u,\"co2_available\":%s",
         APIARY_HIVE_ID, temperature, humidity, hx711_value,
         static_cast<unsigned int>(voc_idx),
