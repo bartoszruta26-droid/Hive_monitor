@@ -30,7 +30,7 @@ assert "ReadWritePaths=/var/lib/apiaryguard /var/log/apiaryguard" in installer
 assert "sudo systemctl restart apiary-collector" in installer
 assert "for sidecar in \"$DB_PATH-wal\" \"$DB_PATH-shm\" \"$DB_PATH-journal\";" in installer
 assert "EnvironmentFile=/etc/apiaryguard/apiary.env" not in installer
-assert "sudo install -d -o apiaryguard -g www-data -m 0750 /var/lib/apiaryguard" in installer
+assert "sudo install -d -o apiaryguard -g www-data -m 2770 /var/lib/apiaryguard" in installer
 assert "sudo install -d -o www-data -g www-data -m 0700 /var/log/apiaryguard-web" in installer
 assert "chmod 777" not in installer and "User=root" not in installer
 assert 'chmod 0600 "$BACKUP_FILE"' in root_installer
