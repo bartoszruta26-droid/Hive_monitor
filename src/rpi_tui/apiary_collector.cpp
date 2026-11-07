@@ -1424,6 +1424,7 @@ std::string buildHistoryJson(const std::string& request_line, int& status_code) 
     const std::string aggregation = queryParameter(target, "aggregation");
     const std::string start_value = queryParameter(target, "start");
     const std::string end_value = queryParameter(target, "end");
+    const std::string metric_filter = queryParameter(target, "metric");
     long long start_time = 0;
     long long end_time = 0;
 
