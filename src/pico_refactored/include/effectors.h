@@ -31,6 +31,7 @@ void printEffectorStatus();
 void updateOutputs();
 
 // Safe mode functions
+bool isHeaterSensorReadyForActuation();
 void activateSafeMode(const char* reason);
 bool isSafeModeActive();
 const char* getSafeModeReason();
