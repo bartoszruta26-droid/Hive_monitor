@@ -69,7 +69,7 @@ bool setServoAngle(uint16_t angle) {
     // GENTLE CODE: Check hardware presence before operation
     if (!servoDetected || !servoInitialized) {
         DBG_SERVO("[SERVO] Command ignored - servo not detected/initialized\n");
-        return;  // Graceful exit - no error thrown
+        return false;  // Graceful exit - no error thrown
     }
     
     // GENTLE CODE: Respect safe mode
