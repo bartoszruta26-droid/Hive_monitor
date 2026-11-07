@@ -190,6 +190,11 @@ static bool isHeaterSensorReadyForRecovery(unsigned long now) {
         now, HEATER_SENSOR_MAX_AGE_MS, HEATER_SENSOR_MAX_ERRORS);
 }
 
+// Public guard used by the actuator layer before it writes non-zero heater PWM.
+bool isHeaterSensorReadyForActuation() {
+    return isHeaterSensorReadyForRecovery(millis());
+}
+
 /**
  * @brief Process strictly validated text commands from USB.
  */
