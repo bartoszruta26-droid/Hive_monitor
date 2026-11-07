@@ -12,12 +12,15 @@
 #include "csv_utils.h"
 #include "apiary_collector_types.h"
 #include "apiary_logger.h"
+#include "json_object_parser.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
 #include <ctime>
 #include <sys/stat.h>
+#include <cstdlib>
+#include <cmath>
 
 namespace apiary {
 
@@ -281,6 +284,40 @@ void ApiaryDatabase::createTables() {
         sqlite3_free(migration_error);
     }
 
+    const char* metric_tables = R"(
+        CREATE TABLE IF NOT EXISTS raw_metric_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            hive_id TEXT NOT NULL,
+            metric_name TEXT NOT NULL,
+            metric_value REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_raw_metric_hive_time
+            ON raw_metric_values(hive_id, timestamp, metric_name);
+        CREATE TABLE IF NOT EXISTS aggregated_metric_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp_start INTEGER NOT NULL,
+            timestamp_end INTEGER NOT NULL,
+            hive_id TEXT NOT NULL,
+            agg_type INTEGER NOT NULL,
+            metric_name TEXT NOT NULL,
+            value_avg REAL NOT NULL,
+            value_min REAL NOT NULL,
+            value_max REAL NOT NULL,
+            sample_count INTEGER NOT NULL,
+            UNIQUE(hive_id, agg_type, timestamp_start, metric_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agg_metric_hive_type_time
+            ON aggregated_metric_values(hive_id, agg_type, timestamp_start, metric_name);
+    )";
+    char* metric_error = nullptr;
+    if (sqlite3_exec(db_, metric_tables, nullptr, nullptr, &metric_error) != SQLITE_OK) {
+        const std::string detail = metric_error ? metric_error : sqlite3_errmsg(db_);
+        sqlite3_free(metric_error);
+        throw DatabaseInitException("Cannot create dynamic metric archive: " + detail);
+    }
+    sqlite3_free(metric_error);
+
     LOG_DEBUG("Tabele bazy danych utworzone pomyślnie");
 }
 
@@ -371,12 +408,21 @@ bool ApiaryDatabase::flushBuffer() {
         return false; // Zachowaj bufor do kolejnej próby.
     }
 
+    sqlite3_stmt* metric_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "INSERT INTO raw_metric_values(timestamp,hive_id,metric_name,metric_value) VALUES(?,?,?,?)", -1, &metric_stmt, nullptr) != SQLITE_OK) {
+        ++write_errors_;
+        LOG_ERROR(std::string("Nie można przygotować zapisu metryk dynamicznych: ") + sqlite3_errmsg(db_));
+        sqlite3_finalize(stmt);
+        return false;
+    }
+
     char* error_message = nullptr;
     if (sqlite3_exec(db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &error_message) != SQLITE_OK) {
         ++write_errors_;
         LOG_ERROR(std::string("Nie można rozpocząć transakcji SQLite: ") +
                   (error_message ? error_message : sqlite3_errmsg(db_)));
         sqlite3_free(error_message);
+        sqlite3_finalize(metric_stmt);
         sqlite3_finalize(stmt);
         return false;
     }
@@ -414,6 +460,32 @@ bool ApiaryDatabase::flushBuffer() {
             LOG_ERROR(std::string("Zapis rekordu SQLite nie powiódł się: ") + sqlite3_errmsg(db_));
             break;
         }
+
+        if (!data.raw_payload_json.empty()) {
+            std::map<std::string, std::string> values;
+            if (parseJsonObjectScalars(data.raw_payload_json, values)) {
+                for (const auto& item : values) {
+                    if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
+                        item.second == "true" || item.second == "false" || item.second == "null") continue;
+                    char* number_end = nullptr;
+                    const double value = std::strtod(item.second.c_str(), &number_end);
+                    if (number_end == item.second.c_str() || *number_end != '\\0' || !std::isfinite(value)) continue;
+                    int metric_rc = sqlite3_bind_int64(metric_stmt, 1, data.timestamp);
+                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 2, data.hive_id.c_str(), -1, SQLITE_TRANSIENT);
+                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_text(metric_stmt, 3, item.first.c_str(), -1, SQLITE_TRANSIENT);
+                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_bind_double(metric_stmt, 4, value);
+                    if (metric_rc == SQLITE_OK) metric_rc = sqlite3_step(metric_stmt);
+                    if (metric_rc != SQLITE_DONE) {
+                        batch_ok = false;
+                        LOG_ERROR(std::string("Zapis metryki dynamicznej nie powiódł się: ") + sqlite3_errmsg(db_));
+                        break;
+                    }
+                    sqlite3_reset(metric_stmt);
+                    sqlite3_clear_bindings(metric_stmt);
+                }
+            }
+        }
+        if (!batch_ok) break;
 
         rc = sqlite3_reset(stmt);
         if (rc != SQLITE_OK) {
@@ -453,6 +525,7 @@ bool ApiaryDatabase::flushBuffer() {
         total_records_ += batch_size;
     }
 
+    sqlite3_finalize(metric_stmt);
     sqlite3_finalize(stmt);
     return batch_ok;
 }
@@ -639,7 +712,39 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
         return 0;
     }
 
-    const int changes = sqlite3_changes(db_);
+    const int fixed_changes = sqlite3_changes(db_);
+
+    const std::string metric_source = source_is_raw ? "raw_metric_values" : "aggregated_metric_values";
+    const std::string metric_time = "src." + std::string(source_is_raw ? "timestamp" : "timestamp_start");
+    const std::string metric_avg = source_is_raw ? "AVG(src.metric_value)" :
+        "SUM(src.value_avg * src.sample_count) / NULLIF(SUM(src.sample_count),0)";
+    const std::string metric_min = source_is_raw ? "MIN(src.metric_value)" : "MIN(src.value_min)";
+    const std::string metric_max = source_is_raw ? "MAX(src.metric_value)" : "MAX(src.value_max)";
+    const std::string metric_count = source_is_raw ? "COUNT(*)" : "SUM(src.sample_count)";
+    std::stringstream metric_sql;
+    metric_sql << "INSERT OR IGNORE INTO aggregated_metric_values("
+        << "timestamp_start,timestamp_end,hive_id,agg_type,metric_name,value_avg,value_min,value_max,sample_count) "
+        << "SELECT " << bucket_start << "," << bucket_end << ",src.hive_id," << target_type_value
+        << ",src.metric_name," << metric_avg << "," << metric_min << "," << metric_max << "," << metric_count
+        << " FROM " << metric_source << " AS src WHERE " << bucket_end
+        << " <= CAST(strftime('%s','now') AS INTEGER) ";
+    if (!source_is_raw) metric_sql << "AND src.agg_type = " << source_type_value << " ";
+    metric_sql << "AND NOT EXISTS (SELECT 1 FROM aggregated_metric_values e WHERE e.hive_id=src.hive_id "
+        << "AND e.agg_type=" << target_type_value << " AND e.timestamp_start=" << bucket_start
+        << " AND e.metric_name=src.metric_name) GROUP BY " << bucket_start
+        << ",src.hive_id,src.metric_name HAVING COUNT(*) >= " << minimum_records;
+    char* metric_error = nullptr;
+    const int metric_rc = sqlite3_exec(db_, metric_sql.str().c_str(), nullptr, nullptr, &metric_error);
+    int metric_changes = 0;
+    if (metric_rc == SQLITE_OK) metric_changes = sqlite3_changes(db_);
+    else {
+        const std::string detail = metric_error ? metric_error : sqlite3_errmsg(db_);
+        sqlite3_free(metric_error);
+        LOG_WARNING("Agregacja metryk dynamicznych nie powiodła się: " + detail);
+        return fixed_changes;
+    }
+    sqlite3_free(metric_error);
+    const int changes = fixed_changes + metric_changes;
     aggregated_records_ += static_cast<size_t>(changes);
     if (changes > 0) {
         LOG_DEBUG("Zagregowano " + std::to_string(changes) + " rekordów z " +
@@ -761,6 +866,39 @@ std::vector<AggregatedRecord> ApiaryDatabase::getHistoricalData(
         result.clear();
     }
 
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<MetricAggregateRecord> ApiaryDatabase::getHistoricalMetrics(
+    const std::string& hive_id, AggregationType agg_type,
+    long long start_time, long long end_time
+) {
+    std::vector<MetricAggregateRecord> result;
+    if (start_time > end_time) return result;
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!db_) return result;
+    const char* sql = "SELECT timestamp_start,timestamp_end,metric_name,value_avg,value_min,value_max,sample_count "
+        "FROM aggregated_metric_values WHERE hive_id=? AND agg_type=? "
+        "AND timestamp_start>=? AND timestamp_start<=? ORDER BY timestamp_start,metric_name";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return result;
+    int rc = sqlite3_bind_text(stmt,1,hive_id.c_str(),-1,SQLITE_TRANSIENT);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int(stmt,2,static_cast<int>(agg_type));
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,3,start_time);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt,4,end_time);
+    while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        MetricAggregateRecord record;
+        record.timestamp_start = sqlite3_column_int64(stmt,0);
+        record.timestamp_end = sqlite3_column_int64(stmt,1);
+        const auto* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt,2));
+        record.metric_name = name ? name : "";
+        record.average = sqlite3_column_double(stmt,3);
+        record.minimum = sqlite3_column_double(stmt,4);
+        record.maximum = sqlite3_column_double(stmt,5);
+        record.sample_count = sqlite3_column_int64(stmt,6);
+        result.push_back(record);
+    }
     sqlite3_finalize(stmt);
     return result;
 }

@@ -112,6 +112,16 @@ struct AggregatedRecord {
     AggregatedRecord() : timestamp_start(0), timestamp_end(0), agg_type(AggregationType::RAW) {}
 };
 
+struct MetricAggregateRecord {
+    long long timestamp_start = 0;
+    long long timestamp_end = 0;
+    std::string metric_name;
+    double average = 0.0;
+    double minimum = 0.0;
+    double maximum = 0.0;
+    long long sample_count = 0;
+};
+
 // Wyjątki bazy danych
 class DatabaseException : public std::runtime_error {
 public:
@@ -180,6 +190,11 @@ public:
         long long end_time
     );
     
+    std::vector<MetricAggregateRecord> getHistoricalMetrics(
+        const std::string& hive_id, AggregationType agg_type,
+        long long start_time, long long end_time
+    );
+
     /**
      * @brief Eksportuje dane do CSV
      * @param filename Nazwa pliku wyjściowego

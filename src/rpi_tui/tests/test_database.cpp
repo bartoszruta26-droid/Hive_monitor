@@ -175,6 +175,35 @@ int main() {
     assert(quarterly.front().timestamp_end == 1711929600LL);
     assert(quarterly.front().record_count == 60 * 24);
 
+    // Dynamic metric aggregation supports fields unknown to the compiled HiveData model.
+    sqlite3* metric_seed_db = nullptr;
+    assert(sqlite3_open(path.c_str(), &metric_seed_db) == SQLITE_OK);
+    sqlite3_stmt* metric_seed = nullptr;
+    assert(sqlite3_prepare_v2(metric_seed_db,
+        "INSERT INTO raw_metric_values(timestamp,hive_id,metric_name,metric_value) VALUES(?,?,?,?)",
+        -1, &metric_seed, nullptr) == SQLITE_OK);
+    const long long dynamic_time = 1700000000LL;
+    for (int sample = 0; sample < 8; ++sample) {
+        sqlite3_bind_int64(metric_seed,1,dynamic_time + sample * 5);
+        sqlite3_bind_text(metric_seed,2,"UL-DYNAMIC",-1,SQLITE_STATIC);
+        sqlite3_bind_text(metric_seed,3,"future_sensor_index",-1,SQLITE_STATIC);
+        sqlite3_bind_double(metric_seed,4,7.0 + sample);
+        assert(sqlite3_step(metric_seed) == SQLITE_DONE);
+        sqlite3_reset(metric_seed);
+        sqlite3_clear_bindings(metric_seed);
+    }
+    sqlite3_finalize(metric_seed);
+    sqlite3_close(metric_seed_db);
+    assert(database.aggregateData(apiary::AggregationType::RAW, apiary::AggregationType::MINUTE) >= 1);
+    const auto dynamic_metrics = database.getHistoricalMetrics(
+        "UL-DYNAMIC", apiary::AggregationType::MINUTE, 1699999980, 1700000040);
+    assert(dynamic_metrics.size() == 1);
+    assert(dynamic_metrics.front().metric_name == "future_sensor_index");
+    assert(dynamic_metrics.front().average == 10.5);
+    assert(dynamic_metrics.front().minimum == 7.0);
+    assert(dynamic_metrics.front().maximum == 14.0);
+    assert(dynamic_metrics.front().sample_count == 8);
+
     // Concurrent producers and concurrent statistics reads must not race
     // with buffer updates or database lifecycle transitions.
     std::atomic<bool> observer_running{true};
