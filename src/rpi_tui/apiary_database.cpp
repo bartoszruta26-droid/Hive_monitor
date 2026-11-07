@@ -535,7 +535,8 @@ int ApiaryDatabase::aggregateData(AggregationType source_type, AggregationType t
 
     const auto averageExpression = [source_is_raw](const std::string& raw, const std::string& average) {
         return source_is_raw ? "AVG(src." + raw + ")" :
-            "SUM(src." + average + " * src.record_count) / NULLIF(SUM(src.record_count), 0)";
+            "SUM(src." + average + " * src.record_count) / NULLIF(SUM(CASE WHEN src." +
+            average + " IS NOT NULL THEN src.record_count ELSE 0 END), 0)";
     };
     const auto minimumExpression = [source_is_raw](const std::string& raw, const std::string& minimum) {
         return source_is_raw ? "MIN(src." + raw + ")" : "MIN(src." + minimum + ")";
