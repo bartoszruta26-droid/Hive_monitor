@@ -6,6 +6,7 @@ import androidx.preference.PreferenceManager
 import com.apiguard.apiary.data.local.ApiaryDao
 import com.apiguard.apiary.data.local.ApiaryDatabase
 import com.apiguard.apiary.data.model.ApiaryReading
+import com.apiguard.apiary.data.model.ApiaryHistoryResponse
 import com.apiguard.apiary.data.remote.ApiaryApiService
 import com.apiguard.apiary.data.remote.ApiaryPayloadMapper
 import com.apiguard.apiary.model.ApiaryData
@@ -191,6 +192,38 @@ class ApiaryRepository(private val application: Application) {
         }
     }
     
+    /**
+     * Pobiera archiwalne agregaty z API kolektora. Zakres może obejmować
+     * wiele lat; agregacja jest wykonywana po stronie trwałej bazy SQLite.
+     */
+    suspend fun fetchHistory(
+        apiaryId: String,
+        aggregation: String,
+        startTimestamp: Long,
+        endTimestamp: Long
+    ): Result<ApiaryHistoryResponse> = withContext(Dispatchers.IO) {
+        if (apiaryId.isBlank() || startTimestamp < 0L || endTimestamp < startTimestamp) {
+            return@withContext Result.failure(IllegalArgumentException("Nieprawidłowy zakres historii"))
+        }
+        val allowed = setOf("MINUTE", "HOUR", "DAY", "WEEK", "MONTH", "QUARTER", "YEAR")
+        if (aggregation !in allowed) {
+            return@withContext Result.failure(IllegalArgumentException("Nieprawidłowy poziom agregacji"))
+        }
+        val service = getApiService()
+            ?: return@withContext Result.failure(Exception("Brak zapisanego adresu API"))
+        try {
+            val response = service.getHistory(apiaryId, aggregation, startTimestamp, endTimestamp)
+            if (response.isSuccessful) {
+                response.body()?.let { Result.success(it) }
+                    ?: Result.failure(Exception("Pusta odpowiedź historii"))
+            } else {
+                Result.failure(Exception("Błąd pobierania historii: HTTP ${response.code()}"))
+            }
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     fun getCachedReadings(apiaryId: String): Flow<List<ApiaryReading>> {
         return dao.getReadingsByApiary(apiaryId)
     }

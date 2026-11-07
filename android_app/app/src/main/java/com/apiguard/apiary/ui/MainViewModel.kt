@@ -6,6 +6,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.apiguard.apiary.data.model.ApiaryReading
+import com.apiguard.apiary.data.model.ApiaryHistoryResponse
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.repository.ApiaryRepository
 import com.apiguard.apiary.repository.ConnectionResult
@@ -36,6 +37,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _apiaryData = MutableLiveData<List<ApiaryData>>()
     val apiaryData: LiveData<List<ApiaryData>> = _apiaryData
     
+    private val _history = MutableLiveData<ApiaryHistoryResponse?>()
+    val history: LiveData<ApiaryHistoryResponse?> = _history
+
     private val _archivedReadings = MutableLiveData<List<ApiaryReading>>(emptyList())
     val archivedReadings: LiveData<List<ApiaryReading>> = _archivedReadings
 
@@ -162,6 +166,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _apiaryData.value = emptyList()
                     }
                 }
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun loadHistory(apiaryId: String, aggregation: String, startTimestamp: Long, endTimestamp: Long) {
+        if (_isLoading.value == true) return
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                repository.fetchHistory(apiaryId, aggregation, startTimestamp, endTimestamp)
+                    .onSuccess {
+                        _history.value = it
+                        _errorMessage.value = null
+                    }
+                    .onFailure {
+                        _history.value = null
+                        _errorMessage.value = "Błąd pobierania historii: ${it.message}"
+                    }
             } finally {
                 _isLoading.value = false
             }
