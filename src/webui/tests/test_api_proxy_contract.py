@@ -26,4 +26,4 @@ print("WebUI same-origin API proxy contract: PASS")
 
 assert "http_build_query($historyParams, '', '&', PHP_QUERY_RFC3986)" in PROXY
 
-assert "foreach (['hive_id', 'aggregation', 'start', 'end', 'metric'] as $key)" in PROXY
+assert "foreach (['hive_id', 'aggregation', 'start', 'end', 'metric', 'include_records'] as $key)" in PROXY

@@ -742,7 +742,7 @@ try {
             // Walidacja wartości (ID ula, agregacja i zakres czasu) odbywa się
             // ponownie po stronie kolektora, przed zapytaniem SQLite.
             $historyParams = [];
-            foreach (['hive_id', 'aggregation', 'start', 'end', 'metric'] as $key) {
+            foreach (['hive_id', 'aggregation', 'start', 'end', 'metric', 'include_records'] as $key) {
                 if (isset($_GET[$key]) && (is_string($_GET[$key]) || is_int($_GET[$key]))) {
                     $historyParams[$key] = (string)$_GET[$key];
                 }

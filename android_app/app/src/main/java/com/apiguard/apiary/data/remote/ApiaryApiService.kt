@@ -18,6 +18,7 @@ interface ApiaryApiService {
         @Query("aggregation") aggregation: String,
         @Query("start") startTimestamp: Long,
         @Query("end") endTimestamp: Long,
-        @Query("metric") metric: String? = null
+        @Query("metric") metric: String? = null,
+        @Query("include_records") includeRecords: Boolean = false
     ): Response<com.apiguard.apiary.data.model.ApiaryHistoryResponse>
 }
