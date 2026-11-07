@@ -689,7 +689,7 @@ void activateFlowingHiveSafeMode(const char* reason) {
     flowingHiveSafeMode = true;
     
     LOG_ERROR("FLOWING_HIVE", reason ? reason : "Unspecified fault");
-    DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason);
+    DBG_SERVO("[SERVO] Safe mode activated: %s\n", reason ? reason : "Unspecified fault");
 }
 
 /**
