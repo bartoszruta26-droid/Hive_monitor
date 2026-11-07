@@ -183,6 +183,15 @@ void setHeaterPWM(int duty) {
         return;
     }
 
+    // Guard the immediate hardware write, not only the end-of-loop update.
+    // This prevents even a brief heater pulse when the safety sensor is stale.
+    if (duty > 0 && !isHeaterSensorReadyForActuation()) {
+        ++effector_error_count;
+        LOG_ERROR("EFFECTORS", "Rejected heater activation: temperature sensor is unavailable, invalid or stale");
+        activateSafeMode("Heater command rejected: temperature sensor unavailable, invalid or stale");
+        return;
+    }
+
     heaterDuty = duty;
     analogWrite(HEATER_PWM, duty);
     ++pwm_writes;
