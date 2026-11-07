@@ -46,6 +46,34 @@ internal object ApiaryUiFormatter {
         .take(100)
         .toList()
 
+    fun formatHistoryYearComparison(
+        response: com.apiguard.apiary.data.model.ApiaryHistoryResponse
+    ): String {
+        if (response.dataQuality != "ARCHIVE") return "Źródło danych nie jest oznaczone jako archiwalne."
+        if (response.records.isEmpty()) return "Brak zapisanych danych w wybranym zakresie."
+        val yearFormat = SimpleDateFormat("yyyy", Locale.ROOT).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        return response.records
+            .groupBy { yearFormat.format(Date(it.timestampStart * 1000L)) }
+            .toSortedMap()
+            .map { (year, records) ->
+                val totalWeight = records.sumOf { it.recordCount.coerceAtLeast(1L) }
+                fun weightedAverage(value: (com.apiguard.apiary.data.model.ApiaryHistoryRecord) -> Double): Double =
+                    records.sumOf { value(it) * it.recordCount.coerceAtLeast(1L) } / totalWeight
+                String.format(
+                    Locale.getDefault(),
+                    "%s — średnia temperatura %.1f°C; wilgotność %.1f%%; masa %.2f kg; próbek %d",
+                    year,
+                    weightedAverage { it.temperatureAverage },
+                    weightedAverage { it.humidityAverage },
+                    weightedAverage { it.weightAverage },
+                    records.sumOf { it.recordCount }
+                )
+            }
+            .joinToString("\\n")
+    }
+
     fun formatTimestamp(timestamp: Long): String {
         if (timestamp <= 0L) return "brak danych"
         return try {

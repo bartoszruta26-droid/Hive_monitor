@@ -85,6 +85,43 @@ class ApiaryAdapterLogicTest {
         assertEquals(300L, filtered.first().timestamp)
     }
 
+    @Test fun historyComparisonGroupsRecordsByUtcYearAndWeightsBySourceCount() {
+        val response = com.apiguard.apiary.data.model.ApiaryHistoryResponse(
+            hiveId = "hive-1",
+            aggregation = "DAY",
+            start = 1_672_531_200L,
+            end = 1_735_689_600L,
+            dataQuality = "ARCHIVE",
+            records = listOf(
+                com.apiguard.apiary.data.model.ApiaryHistoryRecord(
+                    timestampStart = 1_672_531_200L, timestampEnd = 1_672_617_600L,
+                    temperatureAverage = 10.0, temperatureMinimum = 8.0, temperatureMaximum = 12.0,
+                    humidityAverage = 40.0, humidityMinimum = 35.0, humidityMaximum = 45.0,
+                    weightAverage = 30.0, weightMinimum = 29.0, weightMaximum = 31.0,
+                    batteryAverage = 90.0, co2Average = 400.0, vocAverage = 20.0, recordCount = 1L
+                ),
+                com.apiguard.apiary.data.model.ApiaryHistoryRecord(
+                    timestampStart = 1_704_067_200L, timestampEnd = 1_704_153_600L,
+                    temperatureAverage = 10.0, temperatureMinimum = 8.0, temperatureMaximum = 12.0,
+                    humidityAverage = 40.0, humidityMinimum = 35.0, humidityMaximum = 45.0,
+                    weightAverage = 30.0, weightMinimum = 29.0, weightMaximum = 31.0,
+                    batteryAverage = 90.0, co2Average = 400.0, vocAverage = 20.0, recordCount = 1L
+                ),
+                com.apiguard.apiary.data.model.ApiaryHistoryRecord(
+                    timestampStart = 1_704_067_200L, timestampEnd = 1_704_153_600L,
+                    temperatureAverage = 20.0, temperatureMinimum = 18.0, temperatureMaximum = 22.0,
+                    humidityAverage = 60.0, humidityMinimum = 55.0, humidityMaximum = 65.0,
+                    weightAverage = 40.0, weightMinimum = 39.0, weightMaximum = 41.0,
+                    batteryAverage = 90.0, co2Average = 400.0, vocAverage = 20.0, recordCount = 3L
+                )
+            )
+        )
+        val comparison = ApiaryUiFormatter.formatHistoryYearComparison(response)
+        assertTrue(comparison.indexOf("2023") < comparison.indexOf("2024"))
+        assertTrue(comparison.contains("17.5°C"))
+        assertTrue(comparison.contains("55.0%"))
+    }
+
     @Test fun missingTimestampIsExplicit() {
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(0L))
         assertEquals("brak danych", ApiaryUiFormatter.formatTimestamp(-100L))

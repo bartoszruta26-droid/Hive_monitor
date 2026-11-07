@@ -56,4 +56,14 @@
     <string name="archive_range_empty">Brak odczytów w wybranym okresie.</string>
     <string name="archive_reading_details">Odczyt historyczny z %1$s\nTemperatura: %2$.1f°C\nWilgotność: %3$.1f%%\nWaga: %4$.2f kg\nBateria: %5$d%%\n\nDane pochodzą z lokalnego archiwum i nie opisują bieżącego stanu pasieki.</string>
     <string name="connection_offline_with_archive">Brak połączenia z API. Bieżące pomiary są niedostępne. Archiwum lokalne: %1$d zapisanych odczytów; najnowszy z %2$s. Dane archiwalne nie są pomiarami bieżącymi.</string>
+    <string name="history_compare_button">Porównaj historię z poprzednimi latami</string>
+    <string name="history_comparison_title">Porównanie wieloletnie — %1$s</string>
+    <string name="history_select_aggregation">Wybierz uśrednianie</string>
+    <string name="history_select_years">Zakres porównania</string>
+    <string name="history_hourly">Godzinowe</string>
+    <string name="history_daily">Dzienne</string>
+    <string name="history_weekly">Tygodniowe</string>
+    <string name="history_monthly">Miesięczne</string>
+    <string name="history_quarterly">Kwartalne</string>
+    <string name="history_yearly">Roczne</string>
 </resources>

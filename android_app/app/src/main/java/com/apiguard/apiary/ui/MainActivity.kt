@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.apiguard.apiary.R
 import com.apiguard.apiary.databinding.ActivityMainBinding
 import com.apiguard.apiary.data.model.ApiaryReading
+import java.util.Calendar
+import java.util.TimeZone
 import com.apiguard.apiary.model.ApiaryData
 import com.apiguard.apiary.util.isValidApiHost
 import com.apiguard.apiary.util.isValidPort
@@ -118,6 +120,16 @@ class MainActivity : AppCompatActivity() {
             adapter.submitList(data)
             binding.emptyState.visibility = if (data.isEmpty()) View.VISIBLE else View.GONE
             binding.recyclerView.visibility = if (data.isEmpty()) View.GONE else View.VISIBLE
+        }
+
+        viewModel.history.observe(this) { history ->
+            if (history != null) {
+                AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.history_comparison_title, history.hiveId))
+                    .setMessage(ApiaryUiFormatter.formatHistoryYearComparison(history))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
+            }
         }
     }
 
@@ -286,7 +298,40 @@ class MainActivity : AppCompatActivity() {
                     "Brak kompletnego zestawu aktualnych pomiarów."
                 }
             )
+            .setNeutralButton(R.string.history_compare_button) { _, _ ->
+                showHistoryComparison(apiaryData.id)
+            }
             .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun showHistoryComparison(apiaryId: String) {
+        val aggregations = arrayOf("HOUR", "DAY", "WEEK", "MONTH", "QUARTER", "YEAR")
+        val labels = arrayOf(
+            getString(R.string.history_hourly),
+            getString(R.string.history_daily),
+            getString(R.string.history_weekly),
+            getString(R.string.history_monthly),
+            getString(R.string.history_quarterly),
+            getString(R.string.history_yearly)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.history_select_aggregation)
+            .setItems(labels) { _, aggregationIndex ->
+                val yearOptions = arrayOf("2", "3", "5")
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.history_select_years)
+                    .setItems(yearOptions) { _, yearIndex ->
+                        val end = System.currentTimeMillis() / 1000L
+                        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                        calendar.timeInMillis = end * 1000L
+                        calendar.add(Calendar.YEAR, -yearOptions[yearIndex].toInt())
+                        viewModel.loadHistory(apiaryId, aggregations[aggregationIndex], calendar.timeInMillis / 1000L, end)
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 }
