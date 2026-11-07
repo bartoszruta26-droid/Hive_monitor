@@ -39,6 +39,7 @@ struct HiveData {
     // -------------------------------------------------------------------------
     std::string data_source;            // "pico" (precomputed) lub "nano" (raw only)
     std::string raw_payload_json;        // Oryginalny payload wejściowy — zachowuje wszystkie pola źródłowe
+    std::string metric_payload_json;     // Ujednolicony zestaw pól liczbowych, także dla wejścia CSV
     bool is_precomputed = false;        // true = dane już wyliczone, false = surowe dane
     
     // -------------------------------------------------------------------------

@@ -960,6 +960,31 @@ public:
         DEBUG_COUNTER_INC("csv_parsed");
         DEBUG_START_TIMER("csv_parse");
 
+        // Ujednolić wszystkie liczbowe kolumny CSV do mapy metryk.
+        // Pola poza znanym prefiksem otrzymują stabilne nazwy csv_field_N,
+        // dzięki czemu również przyszłe/rozszerzone kolumny są archiwizowane.
+        static const std::vector<std::string> known_csv_fields = {
+            "", "temperature", "humidity", "weight", "battery_level", "co2_eq",
+            "voc_idx", "motion_detected", "source_timestamp", "audio_rms",
+            "audio_dominant_freq", "audio_swarm_prob", "radar_distance",
+            "radar_energy", "radar_activity", "hx711_rate", "hx711_trend", "air_iaq"
+        };
+        std::ostringstream metric_json;
+        metric_json << "{";
+        bool first_metric_field = true;
+        for (size_t field = 1; field < parts.size(); ++field) {
+            const std::string name = field < known_csv_fields.size()
+                ? known_csv_fields[field] : "csv_field_" + std::to_string(field);
+            char* number_end = nullptr;
+            const double number = std::strtod(parts[field].c_str(), &number_end);
+            if (number_end == parts[field].c_str() || *number_end != '\\0' || !std::isfinite(number)) continue;
+            if (!first_metric_field) metric_json << ',';
+            first_metric_field = false;
+            metric_json << '"' << name << "\\":" << std::setprecision(17) << number;
+        }
+        metric_json << "}";
+        const std::string normalized_metric_payload = metric_json.str();
+
         try {
             std::string hive_id = parts[0];
             float temp = std::stof(parts[1]);
@@ -1003,6 +1028,7 @@ public:
                     hives_data[hive_id].weight_trend = weight_trend;
                     hives_data[hive_id].air_iaq = air_iaq;
                     hives_data[hive_id].raw_payload_json = raw_data;
+                    hives_data[hive_id].metric_payload_json = normalized_metric_payload;
 
                     // Każdy odebrany rekord CSV trafia do archiwum, nie tylko
                     // pierwszy rekord po wykryciu nowego ula.
@@ -1019,6 +1045,7 @@ public:
                     HiveData new_hive;
                     new_hive.hive_id = hive_id;
                     new_hive.raw_payload_json = raw_data;
+                    new_hive.metric_payload_json = normalized_metric_payload;
                     new_hive.temperature = temp;
                     new_hive.humidity = humidity;
                     new_hive.weight = weight;

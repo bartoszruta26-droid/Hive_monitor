@@ -461,9 +461,11 @@ bool ApiaryDatabase::flushBuffer() {
             break;
         }
 
-        if (!data.raw_payload_json.empty()) {
+        const std::string& metric_payload = data.metric_payload_json.empty()
+            ? data.raw_payload_json : data.metric_payload_json;
+        if (!metric_payload.empty()) {
             std::map<std::string, std::string> values;
-            if (parseJsonObjectScalars(data.raw_payload_json, values)) {
+            if (parseJsonObjectScalars(metric_payload, values)) {
                 for (const auto& item : values) {
                     if (item.first.empty() || item.first.size() > 128 || item.second.empty() ||
                         item.first == "timestamp" || item.first == "time" || item.first == "ts" ||
