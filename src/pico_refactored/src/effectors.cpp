@@ -180,7 +180,7 @@ bool setHeaterPWM(int duty) {
     if (duty < 0 || duty > 255) {
         ++effector_error_count;
         LOG_WARN("EFFECTORS", "Rejected heater PWM outside 0-255 range");
-        return;
+        return false;
     }
 
     // Guard the immediate hardware write, not only the end-of-loop update.
