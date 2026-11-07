@@ -2,31 +2,27 @@
  * ApiaryGuard WebUI - JavaScript Application
  * Komunikacja z APIARY_COLLECTOR przez HTTP API JSON
  * 
- * Endpointy API:
- * - GET /api/status - Status systemu
- * - GET /api/hives - Lista uli z danymi sensorów
- * - GET /health - Health check
- * - POST /api/sensors - Dodaj sensor
- * - POST /api/effectors - Dodaj effektor
- * - GET /api/history - Dane historyczne
+ * Wszystkie żądania przechodzą przez ten sam origin i src/webui/api.php.
+ * PHP proxy odpowiada za komunikację z kolektorem oraz politykę dostępu.
  */
 
 // ============================================================================
 // KONFIGURACJA
 // ============================================================================
 const CONFIG = {
-    apiBaseUrl: window.location.hostname ? `${window.location.protocol}//${window.location.hostname}:8080` : '',
+    // Same-origin PHP proxy; never connect the browser directly to collector port 8080.
+    apiBaseUrl: '',
     refreshInterval: 10000, // 10 sekund
     maxRetries: 3,
     endpoints: {
-        status: '/api/status',
-        hives: '/api/hives',
-        health: '/health',
-        sensors: '/api/sensors',
-        effectors: '/api/effectors',
-        history: '/api/history',
-        logs: '/api/logs',
-        config: '/api/config'
+        status: 'api.php?endpoint=status',
+        hives: 'api.php?endpoint=hives',
+        health: 'api.php?endpoint=health',
+        sensors: 'api.php?endpoint=sensors',
+        effectors: 'api.php?endpoint=effectors',
+        history: 'api.php?endpoint=history',
+        logs: 'api.php?endpoint=logs',
+        config: 'api.php?endpoint=config'
     },
     // Domyślne ustawienia (nadpisane przez loadConfig())
     settings: {
@@ -125,7 +121,7 @@ function delay(ms) {
 // INICJALIZACJA
 // ============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-    loadConfigFromBackend(); // Najpierw załaduj konfigurację
+    loadLocalPreferences(); // Preferencje przeglądarki są lokalne, nie backendowe
     initTabs();
     initSettings();
     initModals(); // Inicjalizacja modali i formularzy
@@ -137,7 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================================================
 // ŁADOWANIE KONFIGURACJI Z BACKENDU
 // ============================================================================
-async function loadConfigFromBackend() {
+function loadLocalPreferences() {
     try {
         const stored = localStorage.getItem('apiaryguard.settings');
         if (stored) {
@@ -223,7 +219,7 @@ async function checkCollectorConnection() {
         logMessage("warn", 'Brak połączenia z APIARY_COLLECTOR:', error.message);
     }
     
-    // Fallback do demo danych
+    // Brak połączenia nie uruchamia automatycznie danych demonstracyjnych.
     statusEl.textContent = '⚠️ Brak połączenia z kolektorem';
     statusEl.style.color = '#fd7e14';
     AppState.isConnected = false;
@@ -608,7 +604,7 @@ function initSettings() {
             CONFIG.settings.alertThreshold = parseFloat(document.getElementById('alertThreshold').value);
             
             // Zapisz konfigurację do backendu
-            saveConfigToBackend();
+            saveLocalPreferences();
             
             // Zrestartuj auto-refresh z nowym interwałem
             stopAutoRefresh();
@@ -620,9 +616,9 @@ function initSettings() {
 }
 
 // ============================================================================
-// ZAPIS KONFIGURACJI DO BACKENDU
+// LOKALNE PREFERENCJE PRZEGLĄDARKI
 // ============================================================================
-function saveConfigToBackend() {
+function saveLocalPreferences() {
     try {
         localStorage.setItem('apiaryguard.settings', JSON.stringify(CONFIG.settings));
         logMessage('info', 'Ustawienia zapisano lokalnie w tej przeglądarce.');
