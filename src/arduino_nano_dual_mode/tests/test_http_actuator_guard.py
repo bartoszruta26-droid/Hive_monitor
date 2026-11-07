@@ -28,4 +28,11 @@ assert 'logWarning("HEATER", "Command rejected: DHT22 sample invalid or stale")'
 setup = text[text.index("void setup() {"):]
 assert setup.index("analogWrite(HEATER_PWM, 0);") < setup.index("// DHT22")
 
+assert "void enforceHeaterSafety()" in text
+assert 'logWarning("HEATER", "Output forced OFF: DHT22 invalid or stale")' in text
+loop = text[text.index("void loop() {"):]
+assert "enforceHeaterSafety();" in loop
+assert loop.index("enforceHeaterSafety();") < loop.index("handleEthernetServer();")
+
+
 print("Arduino Nano HTTP actuator guard and heater interlock: PASS")
