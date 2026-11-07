@@ -99,6 +99,9 @@ jobs:
       - name: Verify Pico UDP telemetry contract
         run: make -C src/rpi_tui test-pico-udp
 
+      - name: Verify effector command validation contract
+        run: make -C src/rpi_tui test-effectors
+
       - name: Run network safety regression tests
         run: make -C src/rpi_tui test-network
 
