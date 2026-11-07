@@ -25,7 +25,6 @@
 #include <SPI.h>
 #include <UIPEthernet.h>
 #include <DHT.h>
-#include <ArduinoJson.h>
 #include <Wire.h>
 #include <string.h>
 
@@ -586,25 +585,21 @@ void readAllSensors() {
  * Wysyłanie danych przez USB w formacie JSON
  */
 void sendUSBData() {
-  StaticJsonDocument<512> doc;
-  
-  doc["temp"] = sensors.temp_raw;
-  doc["hum"] = sensors.hum_raw;
-  doc["weight"] = sensors.weight_raw;
-  doc["audio"] = sensors.audio_raw;
-  doc["vibration"] = sensors.vibration_raw;
-  doc["co2"] = sensors.co2_raw;
-  doc["voc"] = sensors.voc_raw;
-  doc["heater"] = sensors.heater_pwm;
-  doc["fan"] = sensors.fan_pwm;
-  doc["pump"] = sensors.pump_pwm;
-  doc["relay1"] = sensors.relay1_state;
-  doc["relay2"] = sensors.relay2_state;
-  doc["ts"] = sensors.timestamp;
-  doc["ram"] = sensors.free_ram;
-  
-  serializeJson(doc, Serial);
-  Serial.println();
+  Serial.print(F("{\"temp\":")); Serial.print(sensors.temp_raw, 1);
+  Serial.print(F(",\"hum\":")); Serial.print(sensors.hum_raw, 1);
+  Serial.print(F(",\"weight\":")); Serial.print(sensors.weight_raw);
+  Serial.print(F(",\"audio\":")); Serial.print(sensors.audio_raw);
+  Serial.print(F(",\"vibration\":")); Serial.print(sensors.vibration_raw);
+  Serial.print(F(",\"co2\":")); Serial.print(sensors.co2_raw);
+  Serial.print(F(",\"voc\":")); Serial.print(sensors.voc_raw);
+  Serial.print(F(",\"heater\":")); Serial.print(sensors.heater_pwm);
+  Serial.print(F(",\"fan\":")); Serial.print(sensors.fan_pwm);
+  Serial.print(F(",\"pump\":")); Serial.print(sensors.pump_pwm);
+  Serial.print(F(",\"relay1\":")); Serial.print(sensors.relay1_state);
+  Serial.print(F(",\"relay2\":")); Serial.print(sensors.relay2_state);
+  Serial.print(F(",\"ts\":")); Serial.print(sensors.timestamp);
+  Serial.print(F(",\"ram\":")); Serial.print(sensors.free_ram);
+  Serial.println('}');
 }
 
 /**
@@ -710,50 +705,39 @@ void sendUSBHeartbeat() {
  * Wysyłanie JSON przez Ethernet
  */
 void sendEthernetJSON(EthernetClient& client) {
-  StaticJsonDocument<512> doc;
-  
-  doc["temp_raw"] = sensors.temp_raw;
-  doc["hum_raw"] = sensors.hum_raw;
-  doc["weight_raw"] = sensors.weight_raw;
-  doc["audio_raw"] = sensors.audio_raw;
-  doc["vibration_raw"] = sensors.vibration_raw;
-  doc["co2_raw"] = sensors.co2_raw;
-  doc["voc_raw"] = sensors.voc_raw;
-  doc["heater_pwm"] = sensors.heater_pwm;
-  doc["fan_pwm"] = sensors.fan_pwm;
-  doc["pump_pwm"] = sensors.pump_pwm;
-  doc["relay1"] = sensors.relay1_state;
-  doc["relay2"] = sensors.relay2_state;
-  doc["timestamp"] = sensors.timestamp;
-  doc["free_ram"] = sensors.free_ram;
-  
-  String json;
-  serializeJson(doc, json);
-  
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: application/json");
-  client.println("Connection: close");
-  client.print("Content-Length: ");
-  client.println(json.length());
+  char body[240];
+  int n = snprintf(body, sizeof(body),
+    "{\"temp_raw\":%.1f,\"hum_raw\":%.1f,\"weight_raw\":%ld,"
+    "\"audio_raw\":%d,\"vibration_raw\":%d,\"co2_raw\":%d,"
+    "\"voc_raw\":%d,\"heater_pwm\":%u,\"fan_pwm\":%u,"
+    "\"pump_pwm\":%u,\"relay1\":%u,\"relay2\":%u,"
+    "\"timestamp\":%lu,\"free_ram\":%u}",
+    sensors.temp_raw, sensors.hum_raw, sensors.weight_raw,
+    sensors.audio_raw, sensors.vibration_raw, sensors.co2_raw,
+    sensors.voc_raw, sensors.heater_pwm, sensors.fan_pwm,
+    sensors.pump_pwm, sensors.relay1_state, sensors.relay2_state,
+    sensors.timestamp, sensors.free_ram);
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: application/json"));
+  client.println(F("Connection: close"));
+  client.print(F("Content-Length: "));
+  client.println(n > 0 ? n : 0);
   client.println();
-  client.println(json);
-  delay(1);
+  if (n > 0 && n < (int)sizeof(body)) client.write((const uint8_t*)body, n);
   client.stop();
 }
 
 /**
  * Wysyłanie odpowiedzi HTTP
  */
-void sendHTTPResponse(EthernetClient& client, const char* contentType, const String& content) {
-  client.println("HTTP/1.1 200 OK");
-  client.print("Content-Type: ");
-  client.println(contentType);
-  client.println("Connection: close");
-  client.print("Content-Length: ");
-  client.println(content.length());
+void sendHTTPResponse(EthernetClient& client, const char* contentType, const char* content) {
+  const size_t length = strlen(content);
+  client.println(F("HTTP/1.1 200 OK"));
+  client.print(F("Content-Type: ")); client.println(contentType);
+  client.println(F("Connection: close"));
+  client.print(F("Content-Length: ")); client.println(length);
   client.println();
-  client.println(content);
-  delay(1);
+  client.write((const uint8_t*)content, length);
   client.stop();
 }
 
@@ -817,21 +801,14 @@ void handleEthernetServer() {
   }
   // Strona główna
   else if (request == "GET / HTTP/1.1" || request.indexOf("/index.html") >= 0) {
-    String html = "<!DOCTYPE html><html><head>";
-    html += "<title>ApiaryGuard Nano</title>";
-    html += "<meta http-equiv='refresh' content='5'>";
-    html += "</head><body><h1>ApiaryGuard - Arduino Nano</h1>";
-    html += "<h2>Dual Mode: USB + Ethernet</h2>";
-    html += "<div id='data'>Loading...</div>";
-    html += "<script>fetch('/api/raw').then(r=>r.json()).then(d=>{";
-    html += "document.getElementById('data').innerHTML=";
-    html += "'Temp: '+d.temp_raw+'C<br>Hum: '+d.hum_raw+'%<br>";
-    html += "Weight: '+d.weight_raw+'<br>Audio: '+d.audio_raw+'<br>";
-    html += "Vibration: '+d.vibration_raw+'<br>CO2: '+d.co2_raw+'ppm<br>";
-    html += "VOC: '+d.voc_raw+'<br>RAM: '+d.free_ram+'B<br>";
-    html += "Timestamp: '+d.timestamp;";
-    html += "});</script></body></html>";
-    sendHTTPResponse(client, "text/html", html);
+    static const char page[] PROGMEM =
+      "<!doctype html><meta charset=utf-8><title>ApiaryGuard Nano</title>"
+      "<h1>ApiaryGuard Nano</h1><pre id=d>Loading...</pre>"
+      "<script>setInterval(()=>fetch('/api/raw').then(r=>r.json())"
+      ".then(x=>d.textContent=JSON.stringify(x,null,2)),2000);</script>";
+    char pageBuffer[sizeof(page)];
+    memcpy_P(pageBuffer, page, sizeof(page));
+    sendHTTPResponse(client, "text/html", pageBuffer);
   }
   else {
     client.println("HTTP/1.1 404 Not Found");
